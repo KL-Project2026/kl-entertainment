@@ -54,6 +54,15 @@ The project is structured as a pnpm monorepo using TypeScript, with distinct `ap
 - `branches.tsx`: Added empty-state div when `filteredBranches.length === 0` (distinguishes "no data" vs "no match").
 - `reservations.tsx`: Added Cards/Table view toggle in the header. Table view shows Booking #, Status, Customer, Room, Date (formatted), Time, Guests, Deposit. Imported `formatDate` for date column.
 
+**Detail Pages / Click-to-Detail (COMPLETE):**
+- `reservation-detail.tsx` (`/reservations/:id`): Full reservation detail page — booking info, customer, deposit, hostess list, action buttons (Confirm/Check-In/Check-Out/Cancel/Open POS), inline cancel modal.
+- `staff-detail.tsx` (`/staff/:id`): Staff profile with role badge, inline edit form (name/phone/email/employment type), earnings summary, this-month attendance table, Clock In/Out buttons.
+- `agent-detail.tsx` (`/agents/:id`): Agent profile with inline edit, outstanding balance card, assigned hostesses grid, recent payout list.
+- `shareholder-detail.tsx` (`/shareholders/:id`): Shareholder profile with inline edit, equity stakes per branch, settlement history table.
+- `App.tsx` routes: Added `/reservations/:id`, `/staff/:id`, `/agents/:id`, `/shareholders/:id`.
+- List pages `onRowClick`: `reservations.tsx`, `staff.tsx`, `agents.tsx`, `shareholders.tsx` all navigate to their respective detail pages on row/card click.
+- All fetch calls in detail pages leverage the global JWT interceptor in App.tsx (no manual auth headers needed).
+
 # External Dependencies
 
 -   **Database:** PostgreSQL (with Drizzle ORM)

@@ -1,0 +1,845 @@
+# 🏨 KL Project — Replit Agent Prompt
+# 리스트/카드/테이블 롤오버 · 클릭 상세 · Edit 기능 전체 적용
+> **Replit AI Agent 채팅창에 전체 내용을 붙여넣으세요.**
+
+---
+
+## 🔒 ABSOLUTE SAFETY RULES — 시작 전 반드시 확인
+
+```
+[RULE 1] READ BEFORE WRITE
+  파일 수정 전 반드시 전체 내용을 먼저 읽어라.
+  읽지 않은 파일은 절대 건드리지 마라.
+
+[RULE 2] NO DELETION — 기존 코드 절대 삭제 금지
+  기존 함수, 컴포넌트, import, 라우트, API 호출, 상태(state) 를
+  단 한 줄도 삭제하지 마라.
+  오직 추가(ADD) 또는 감싸기(WRAP) 방식으로만 변경하라.
+
+[RULE 3] SYNTAX CHECK BEFORE EVERY SAVE
+  파일 저장 전에 반드시 확인:
+  - JSX 태그가 모두 닫혀 있는가?
+  - 중괄호/괄호가 짝이 맞는가?
+  - import 경로가 실제 존재하는 파일을 가리키는가?
+  하나라도 의심스러우면 저장하지 말고 수정 후 재확인하라.
+
+[RULE 4] ONE FILE AT A TIME
+  파일 하나를 완전히 완료하고 검증한 뒤 다음으로 이동하라.
+  에러가 나면 즉시 멈추고 보고하라. 계속 진행하지 마라.
+
+[RULE 5] APP MUST STAY RUNNING
+  각 파일 수정 후 앱이 여전히 실행되는지 확인하라.
+  수정 후 앱이 죽으면 즉시 해당 파일을 원래대로 되돌려라.
+
+[RULE 6] NEVER TOUCH THESE
+  - 데이터베이스 스키마 / 마이그레이션 파일
+  - .env 환경변수 파일
+  - package.json (새 패키지 설치 금지)
+  - 백엔드 API 라우트 파일 (읽기만 허용)
+```
+
+---
+
+## 📁 STEP 0 — SCAN THE KL PROJECT (먼저 실행, 결과 보고 후 대기)
+
+```
+아래 항목을 조사하고 결과를 보고하라. 보고 완료 전까지 Step 1 시작 금지.
+
+1. 프로젝트 전체 파일 구조 (tree, 3단계까지)
+
+2. 아래 페이지들의 파일 경로를 찾아라:
+   - Room Board 페이지
+   - Reservations 페이지 (리스트)
+   - Reservation Detail 페이지
+   - Point of Sale (POS) 페이지
+   - Staff 페이지 (리스트)
+   - Staff Detail 페이지
+   - 그 외 리스트 형태의 모든 페이지
+
+3. 라우터 파일 위치와 현재 정의된 라우트 목록
+
+4. 공통 컴포넌트 폴더 위치 (components/, shared/ 등)
+
+5. 현재 스타일 방식:
+   - Tailwind CSS 사용 여부
+   - CSS Modules 사용 여부
+   - inline style 사용 여부
+   - 전역 CSS 파일 위치
+
+6. 각 리스트 페이지의 현재 구현 방식:
+   - 테이블(<table>) 사용? 카드(div grid) 사용? 둘 다?
+   - 뷰 토글 기능이 이미 있는가?
+   - onClick 핸들러가 이미 있는가?
+   - 상세 페이지 라우트가 이미 존재하는가?
+
+7. 각 상세 페이지의 현재 구현 방식:
+   - Edit 버튼/폼이 이미 있는가?
+   - PUT/PATCH API 엔드포인트가 존재하는가?
+   - 예: PUT /api/reservations/:id
+
+보고 형식 예시:
+─────────────────────────────────────────────────
+Room Board:       src/pages/RoomBoard.jsx        ✅ found
+Reservations:     src/pages/Reservations.jsx     ✅ found
+Reservation Detail: src/pages/ReservationDetail.jsx ✅ found
+POS:              src/pages/PointOfSale.jsx      ✅ found
+Staff:            src/pages/Staff.jsx            ✅ found
+Staff Detail:     src/pages/StaffDetail.jsx      ❌ NOT FOUND — detail page missing
+
+Router file:      src/App.jsx
+Style method:     inline styles + some CSS modules
+Global CSS:       src/index.css
+
+View toggle:      ✅ already implemented on Reservations
+onClick on rows:  ❌ missing on all pages
+Edit mode:        ❌ not implemented anywhere
+─────────────────────────────────────────────────
+```
+
+---
+
+## 🎨 STEP 1 — CREATE SHARED HOVER HIGHLIGHT UTILITY
+
+Step 0 보고 완료 후 시작.
+
+### 1-A. 공통 hover 색상 상수 정의
+
+프로젝트의 공통 유틸 파일을 확인하라.
+- `src/utils/` 폴더가 있으면 → `src/utils/constants.js` 파일 확인
+- 없으면 → `src/utils/constants.js` 새로 생성
+
+아래 내용을 추가하라. 기존 내용이 있으면 **끝부분에 추가**하고 기존 내용은 절대 삭제하지 마라.
+
+```javascript
+// ─────────────────────────────────────────────────────────
+// KL Project — Shared UI Constants
+// MIGRATION NOTE: move to design token system in production
+// ─────────────────────────────────────────────────────────
+
+// Hover highlight color: #D1AE38 at 15% opacity
+// Used on: all table rows, all card items, room board cells
+export const HOVER_BG = 'rgba(209, 174, 56, 0.15)';
+
+// Hover highlight for darker backgrounds (e.g., dark-themed boards)
+export const HOVER_BG_DARK = 'rgba(209, 174, 56, 0.22)';
+
+// Active/selected state
+export const SELECTED_BG = 'rgba(209, 174, 56, 0.28)';
+
+// Transition timing for all hover effects
+export const HOVER_TRANSITION = 'background-color 0.15s ease, box-shadow 0.15s ease';
+```
+
+### 1-B. 공통 useHoverRow Hook
+
+동일 파일 또는 `src/utils/useHoverRow.js` 생성:
+
+```javascript
+// src/utils/useHoverRow.js
+import { useState, useCallback } from 'react';
+import { HOVER_BG, HOVER_TRANSITION } from './constants';
+
+/**
+ * useHoverRow — manages hover state for list rows / cards
+ * Usage:
+ *   const { hoveredId, hoverProps } = useHoverRow();
+ *   <tr {...hoverProps(item.id)} style={rowStyle(item.id)}>
+ */
+export function useHoverRow() {
+  const [hoveredId, setHoveredId] = useState(null);
+
+  const hoverProps = useCallback((id) => ({
+    onMouseEnter: () => setHoveredId(id),
+    onMouseLeave: () => setHoveredId(null),
+  }), []);
+
+  const rowStyle = useCallback((id, baseStyle = {}) => ({
+    ...baseStyle,
+    backgroundColor: hoveredId === id ? HOVER_BG : (baseStyle.backgroundColor || 'transparent'),
+    transition: HOVER_TRANSITION,
+    cursor: 'pointer',
+  }), [hoveredId]);
+
+  const cardStyle = useCallback((id, baseStyle = {}) => ({
+    ...baseStyle,
+    backgroundColor: hoveredId === id ? HOVER_BG : (baseStyle.backgroundColor || '#ffffff'),
+    boxShadow: hoveredId === id
+      ? '0 4px 16px rgba(209, 174, 56, 0.2)'
+      : (baseStyle.boxShadow || '0 1px 3px rgba(0,0,0,0.05)'),
+    transform: hoveredId === id ? 'translateY(-1px)' : 'none',
+    transition: HOVER_TRANSITION,
+    cursor: 'pointer',
+  }), [hoveredId]);
+
+  return { hoveredId, hoverProps, rowStyle, cardStyle };
+}
+```
+
+---
+
+## 🖱️ STEP 2 — APPLY HOVER + CLICK TO EACH PAGE
+
+Step 0에서 찾은 각 페이지 파일에 순서대로 적용하라.
+
+**각 파일마다 반드시 이 순서를 따르라:**
+```
+① 파일 전체 내용 읽기
+② 현재 hover/onClick 구현 방식 파악
+③ 아래 패턴 중 해당하는 것 적용
+④ 문법 검증
+⑤ 저장
+```
+
+---
+
+### 2-A. TABLE VIEW — 테이블 행 hover + click 패턴
+
+현재 `<tr>` 태그를 찾아서 아래 방식으로 수정하라.
+기존 `<tr>`의 다른 속성(key, className 등)은 그대로 유지하라.
+
+```jsx
+// ─── 파일 상단 import에 추가 ───────────────────────────────
+// 기존 import 아래에 추가 (기존 import 삭제 금지)
+import { useHoverRow } from '../utils/useHoverRow';
+// ⚠️ 경로는 실제 파일 위치에 맞게 조정
+
+// ─── 컴포넌트 내부에 추가 ─────────────────────────────────
+// 기존 state 선언 아래에 추가
+const { hoveredId, hoverProps, rowStyle } = useHoverRow();
+
+// ─── <tr> 수정 패턴 ────────────────────────────────────────
+// BEFORE:
+<tr key={item.id}>
+
+// AFTER (기존 속성은 그대로, 아래 3개만 추가):
+<tr
+  key={item.id}                    // ← 기존 key 유지
+  {...hoverProps(item.id)}          // ← hover 상태 관리
+  style={rowStyle(item.id)}         // ← hover 배경색 적용
+  onClick={() => handleRowClick(item)}  // ← 상세 페이지 이동
+>
+```
+
+**handleRowClick 함수 추가 패턴:**
+```jsx
+// 기존 함수들 아래에 추가 (기존 함수 삭제 금지)
+// useNavigate가 이미 있으면 새로 import하지 말 것
+
+const handleRowClick = (item) => {
+  // ⚠️ navigate 경로는 Step 0에서 확인한 실제 라우트로 교체하라
+  navigate(`/reservations/${item.id}`);
+  // 예: navigate(`/staff/${item.id}`)
+  // 예: navigate(`/pos/orders/${item.id}`)
+};
+```
+
+---
+
+### 2-B. CARD VIEW — 카드 hover + click 패턴
+
+현재 카드 컨테이너 `<div>`를 찾아서 수정하라.
+
+```jsx
+// ─── 컴포넌트 내부에 추가 ─────────────────────────────────
+const { hoveredId, hoverProps, cardStyle } = useHoverRow();
+
+// ─── 카드 div 수정 패턴 ────────────────────────────────────
+// BEFORE:
+<div key={item.id} className="card" style={{ ... }}>
+
+// AFTER (기존 className, 기존 style 속성은 유지하고 아래 추가):
+<div
+  key={item.id}
+  className="card"                   // ← 기존 className 유지
+  {...hoverProps(item.id)}            // ← hover 상태
+  style={cardStyle(item.id, {        // ← 기존 style 값을 두 번째 인자로 이동
+    // 기존 style 속성들을 여기에 그대로 넣기
+    // 예: border: '1px solid #e5e7eb',
+    //     borderRadius: '12px',
+    //     padding: '20px',
+  })}
+  onClick={() => handleRowClick(item)}
+>
+```
+
+---
+
+### 2-C. ROOM BOARD 전용 패턴
+
+Room Board는 일반 테이블/카드와 다른 그리드 레이아웃일 수 있다.
+파일을 먼저 읽고 Room 셀(cell)을 찾아 아래 패턴을 적용하라.
+
+```jsx
+// Room Board 개별 룸 셀에 적용
+const { hoveredId, hoverProps, cardStyle } = useHoverRow();
+
+// 룸 셀 div/button 수정
+<div
+  key={room.id || room.room_number}
+  {...hoverProps(room.id || room.room_number)}
+  style={cardStyle(room.id || room.room_number, {
+    // ← 기존 style 속성들을 여기에 그대로 이동
+    // 예: background: getRoomStatusColor(room.status),
+    //     borderRadius: '8px',
+    //     padding: '12px',
+    //     border: '1px solid #e5e7eb',
+  })}
+  onClick={() => navigate(`/rooms/${room.id}`)}
+>
+  {/* 기존 내용 그대로 유지 */}
+</div>
+```
+
+**⚠️ Room Board 주의사항:**
+- 기존 룸 상태(status) 에 따른 배경색 로직이 있다면 `cardStyle` 두 번째 인자의 background에 그 값을 그대로 넣어라
+- hover 시 gold 배경이 기존 status 색상 위에 반투명하게 올라가는 것이 올바른 동작이다
+
+---
+
+### 2-D. 페이지별 적용 대상 목록
+
+Step 0 에서 찾은 파일들을 기반으로 아래 각 페이지에 2-A, 2-B, 2-C 중 해당하는 패턴을 적용하라:
+
+```
+✅ 적용 대상 페이지 (Step 0 결과로 확인된 파일명으로 교체):
+□ Room Board           → 2-C 패턴 적용
+□ Reservations List    → 2-A (테이블) + 2-B (카드) 모두 적용
+□ Point of Sale / POS  → 해당 구조에 맞는 패턴 적용
+□ Staff List           → 2-A + 2-B 적용
+□ Guests List          → 2-A + 2-B 적용
+□ Properties List      → 2-A + 2-B 적용
+□ Rooms List           → 2-A + 2-B 적용
+□ Room Types List      → 2-A + 2-B 적용
+□ Rate Plans List      → 2-A + 2-B 적용
+□ Housekeeping List    → 2-A + 2-B 적용
+□ [기타 Step 0에서 발견된 리스트 페이지]
+```
+
+---
+
+## 🔗 STEP 3 — VERIFY & FIX ROUTING
+
+각 리스트 페이지의 `onClick`이 실제 존재하는 라우트를 가리키는지 확인하라.
+
+### 3-A. 라우터 파일 확인
+
+Step 0에서 찾은 라우터 파일을 읽고 현재 정의된 모든 라우트를 나열하라.
+
+### 3-B. 누락된 Detail 라우트 추가
+
+상세 페이지 파일은 있지만 라우터에 등록이 안 된 경우:
+```jsx
+// 라우터 파일에서 기존 Route 목록 아래에 추가
+// 기존 Route는 절대 수정/삭제하지 말 것
+
+// 예시 (실제 파일명과 경로로 교체):
+<Route path="/reservations/:id" element={<ReservationDetail />} />
+<Route path="/staff/:id"        element={<StaffDetail />} />
+<Route path="/rooms/:id"        element={<RoomDetail />} />
+```
+
+### 3-C. 상세 페이지 자체가 없는 경우
+
+Step 0에서 상세 페이지 파일이 없다고 보고된 경우:
+해당 엔티티의 상세 페이지를 아래 최소 템플릿으로 생성하라.
+
+```jsx
+// 파일 생성 예시: src/pages/StaffDetail.jsx
+// (실제 엔티티명으로 교체)
+
+import { useEffect, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+
+function StaffDetail() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [record, setRecord] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    // ⚠️ API 경로를 실제 엔드포인트로 교체하라
+    fetch(`/api/staff/${id}`)
+      .then((res) => {
+        if (!res.ok) throw new Error('Not found');
+        return res.json();
+      })
+      .then((data) => { setRecord(data); setLoading(false); })
+      .catch((err) => { setError(err.message); setLoading(false); });
+  }, [id]);
+
+  if (loading) return <div style={styles.center}>Loading...</div>;
+  if (error)   return <div style={styles.center}>Error: {error}</div>;
+  if (!record) return <div style={styles.center}>Record not found.</div>;
+
+  return (
+    <div style={styles.page}>
+      {/* HEADER */}
+      <div style={styles.header}>
+        <button onClick={() => navigate(-1)} style={styles.backBtn}>
+          ← Back
+        </button>
+      </div>
+
+      {/* CONTENT — Edit 기능은 Step 4에서 추가됨 */}
+      <div style={styles.title}>
+        {record.name || record.full_name || `Record #${id}`}
+      </div>
+
+      <div style={styles.grid}>
+        <div style={styles.card}>
+          {Object.entries(record).map(([key, val]) => (
+            <div key={key} style={styles.field}>
+              <div style={styles.label}>{key.replace(/_/g, ' ')}</div>
+              <div style={styles.value}>
+                {val == null ? '—' : String(val)}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const styles = {
+  page:    { maxWidth: '1000px', margin: '0 auto', padding: '24px' },
+  center:  { padding: '60px', textAlign: 'center', color: '#9ca3af' },
+  header:  { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' },
+  backBtn: { background: 'none', border: 'none', color: '#6b7280', fontSize: '14px', cursor: 'pointer', padding: '6px 10px' },
+  title:   { fontSize: '24px', fontWeight: 700, color: '#111827', marginBottom: '24px' },
+  grid:    { display: 'grid', gridTemplateColumns: '1fr', gap: '20px' },
+  card:    { background: '#fff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '24px' },
+  field:   { marginBottom: '16px' },
+  label:   { fontSize: '11px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' },
+  value:   { fontSize: '15px', color: '#111827' },
+};
+
+export default StaffDetail;
+```
+
+---
+
+## ✏️ STEP 4 — ADD EDIT FUNCTIONALITY TO DETAIL PAGES
+
+각 상세 페이지 파일을 읽고 Edit 기능을 추가하라.
+
+### 4-A. Edit 기능 추가 원칙
+
+```
+- 기존 데이터 페칭 로직(useEffect, fetch) 은 절대 건드리지 마라
+- 기존 렌더링 JSX는 isEditMode === false 일 때 그대로 보여줘라
+- isEditMode === true 일 때만 편집 폼을 보여줘라
+- Save 버튼 클릭 시 PUT/PATCH API 호출
+- Cancel 버튼 클릭 시 원래 상태로 복원
+```
+
+### 4-B. 상세 페이지 Edit 추가 패턴
+
+파일을 읽고 기존 코드를 파악한 뒤 아래 상태와 함수들을 **기존 state 선언 아래에 추가**하라:
+
+```jsx
+// ─── 기존 state 아래에 추가 ────────────────────────────────
+const [isEditMode, setIsEditMode] = useState(false);
+const [editData, setEditData] = useState({});
+const [isSaving, setIsSaving] = useState(false);
+const [saveError, setSaveError] = useState(null);
+
+// ─── 기존 함수들 아래에 추가 ───────────────────────────────
+const handleEditStart = () => {
+  setEditData({ ...(record || {}) });   // 현재 record 복사
+  setSaveError(null);
+  setIsEditMode(true);
+};
+
+const handleEditCancel = () => {
+  setIsEditMode(false);
+  setEditData({});
+  setSaveError(null);
+};
+
+const handleFieldChange = (key, value) => {
+  setEditData((prev) => ({ ...prev, [key]: value }));
+};
+
+const handleSave = async () => {
+  setIsSaving(true);
+  setSaveError(null);
+  try {
+    // ⚠️ API 경로를 실제 엔드포인트로 교체하라
+    const res = await fetch(`/api/[entity]/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(editData),
+    });
+    if (!res.ok) {
+      const msg = await res.text();
+      throw new Error(msg || 'Save failed');
+    }
+    const updated = await res.json();
+    setRecord(updated);      // 기존 setRecord 함수 사용
+    setIsEditMode(false);
+  } catch (err) {
+    setSaveError(err.message || 'Failed to save. Please try again.');
+  } finally {
+    setIsSaving(false);
+  }
+};
+```
+
+### 4-C. 헤더 버튼 영역 수정
+
+기존 return() 안의 헤더 영역에서 Edit 버튼을 추가하라.
+기존 Back 버튼이 있다면 그 옆에 추가하라. 기존 버튼은 건드리지 마라.
+
+```jsx
+{/* 기존 Back 버튼 코드는 그대로 유지 */}
+<button onClick={() => navigate(-1)} style={...}>← Back</button>
+
+{/* ↓ 아래 Edit 버튼 블록을 Back 버튼 옆(오른쪽)에 추가 */}
+<div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+  {isEditMode ? (
+    <>
+      {saveError && (
+        <span style={{ fontSize: '13px', color: '#dc2626', marginRight: '4px' }}>
+          ⚠ {saveError}
+        </span>
+      )}
+      <button
+        onClick={handleEditCancel}
+        style={{
+          padding: '8px 16px',
+          background: '#ffffff',
+          color: '#374151',
+          border: '1px solid #d1d5db',
+          borderRadius: '8px',
+          fontSize: '14px',
+          fontWeight: 500,
+          cursor: 'pointer',
+        }}
+      >
+        Cancel
+      </button>
+      <button
+        onClick={handleSave}
+        disabled={isSaving}
+        style={{
+          padding: '8px 16px',
+          background: isSaving ? '#a5b4fc' : '#D1AE38',
+          color: '#ffffff',
+          border: 'none',
+          borderRadius: '8px',
+          fontSize: '14px',
+          fontWeight: 600,
+          cursor: isSaving ? 'not-allowed' : 'pointer',
+        }}
+      >
+        {isSaving ? 'Saving...' : '✓ Save'}
+      </button>
+    </>
+  ) : (
+    <button
+      onClick={handleEditStart}
+      style={{
+        padding: '8px 16px',
+        background: '#D1AE38',
+        color: '#ffffff',
+        border: 'none',
+        borderRadius: '8px',
+        fontSize: '14px',
+        fontWeight: 600,
+        cursor: 'pointer',
+      }}
+      onMouseEnter={(e) => e.currentTarget.style.background = '#b8962e'}
+      onMouseLeave={(e) => e.currentTarget.style.background = '#D1AE38'}
+    >
+      ✎ Edit
+    </button>
+  )}
+</div>
+```
+
+### 4-D. 필드 표시 영역 — View/Edit 토글
+
+기존 필드 렌더링 부분을 찾아서 아래 패턴으로 감싸라.
+기존 View 렌더링은 그대로 유지하고, Edit 폼을 조건부로 앞에 추가하라.
+
+```jsx
+{/* ─── FIELDS AREA ─────────────────────────────────────────── */}
+{isEditMode ? (
+  // ── EDIT MODE ──────────────────────────────────────────────
+  <div style={{ display: 'grid', gap: '16px' }}>
+    {/*
+      ⚠️ 편집 가능한 필드들을 여기에 나열하라.
+      기존 record 의 실제 field key 이름을 사용하라.
+      아래는 예시이므로 실제 엔티티 필드에 맞게 교체하라.
+    */}
+
+    {/* 텍스트 필드 예시 */}
+    <EditField
+      label="Name"
+      value={editData.name || editData.full_name || ''}
+      onChange={(v) => handleFieldChange('name', v)}
+    />
+
+    {/* 날짜 필드 예시 */}
+    <EditField
+      label="Check-in Date"
+      type="date"
+      value={editData.checkin_date || ''}
+      onChange={(v) => handleFieldChange('checkin_date', v)}
+    />
+
+    {/* select 필드 예시 */}
+    <EditField
+      label="Status"
+      type="select"
+      value={editData.status || ''}
+      options={['active', 'inactive', 'confirmed', 'cancelled']}
+      // ⚠️ options는 실제 해당 엔티티의 유효한 값으로 교체
+      onChange={(v) => handleFieldChange('status', v)}
+    />
+
+    {/* textarea 예시 */}
+    <EditField
+      label="Notes"
+      type="textarea"
+      value={editData.notes || editData.special_requests || ''}
+      onChange={(v) => handleFieldChange('notes', v)}
+    />
+  </div>
+) : (
+  // ── VIEW MODE — 기존 렌더링 코드를 여기에 그대로 유지 ──────
+  /* 기존 필드 표시 JSX 여기에 */
+  null  // ← 이 null을 기존 JSX로 교체
+)}
+```
+
+### 4-E. EditField 헬퍼 컴포넌트
+
+각 상세 페이지 파일 상단에 아래 함수를 추가하라 (파일 내부 함수로):
+
+```jsx
+// ─── 파일 내 헬퍼 컴포넌트 (import 불필요) ────────────────────
+// 기존 컴포넌트 함수 정의 위에 추가
+const EditField = ({ label, value, type = 'text', options = [], onChange }) => (
+  <div>
+    <label style={{
+      display: 'block',
+      fontSize: '11px',
+      fontWeight: 600,
+      color: '#6b7280',
+      textTransform: 'uppercase',
+      letterSpacing: '0.07em',
+      marginBottom: '6px',
+    }}>
+      {label}
+    </label>
+    {type === 'select' ? (
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={editInputStyle}
+      >
+        {options.map((opt) => (
+          <option key={opt.value ?? opt} value={opt.value ?? opt}>
+            {opt.label ?? opt}
+          </option>
+        ))}
+      </select>
+    ) : type === 'textarea' ? (
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        rows={3}
+        style={{ ...editInputStyle, resize: 'vertical', height: 'auto' }}
+      />
+    ) : (
+      <input
+        type={type === 'date' ? 'date' : type === 'number' ? 'number' : 'text'}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={editInputStyle}
+      />
+    )}
+  </div>
+);
+
+const editInputStyle = {
+  width: '100%',
+  padding: '9px 12px',
+  border: '1px solid #d1d5db',
+  borderRadius: '8px',
+  fontSize: '14px',
+  color: '#111827',
+  background: '#ffffff',
+  outline: 'none',
+  boxSizing: 'border-box',
+};
+```
+
+---
+
+## 📋 STEP 5 — PAGE-BY-PAGE EXECUTION CHECKLIST
+
+Step 2~4를 각 페이지에 적용하면서 아래 체크리스트를 채워나가라:
+
+### Room Board
+```
+① 파일 읽기 완료?                              [ ]
+② 룸 셀 구조 파악 (div/button/td)?            [ ]
+③ useHoverRow import 추가?                     [ ]
+④ 각 룸 셀에 hoverProps + cardStyle 적용?      [ ]
+⑤ onClick → navigate('/rooms/:id') 추가?       [ ]
+⑥ /rooms/:id 라우트 존재 확인?                 [ ]
+⑦ 파일 저장 전 문법 검증?                      [ ]
+⑧ 저장 후 앱 실행 확인?                        [ ]
+```
+
+### Reservations
+```
+① 파일 읽기 완료?                              [ ]
+② 테이블 뷰 <tr>에 hoverProps + rowStyle?      [ ]
+③ 카드 뷰 <div>에 hoverProps + cardStyle?      [ ]
+④ onClick → navigate('/reservations/:id')?     [ ]
+⑤ /reservations/:id 라우트 존재?               [ ]
+⑥ ReservationDetail에 Edit 추가 완료?          [ ]
+⑦ handleSave PUT /api/reservations/:id 연결?   [ ]
+⑧ 저장 후 앱 실행 확인?                        [ ]
+```
+
+### Point of Sale
+```
+① 파일 읽기 완료?                              [ ]
+② POS 구조 파악 (주문 리스트? 아이템 그리드?)  [ ]
+③ 클릭 가능한 항목에 hover 적용?               [ ]
+④ 주문 클릭 → 주문 상세 이동?                  [ ]
+⑤ 상세 페이지 존재 확인 / 없으면 생성?         [ ]
+⑥ 저장 후 앱 실행 확인?                        [ ]
+```
+
+### Staff
+```
+① 파일 읽기 완료?                              [ ]
+② 테이블/카드에 hover 적용?                    [ ]
+③ onClick → navigate('/staff/:id')?            [ ]
+④ StaffDetail 페이지 존재 확인?                [ ]
+⑤ 없으면 Step 3-C 템플릿으로 생성?            [ ]
+⑥ StaffDetail에 Edit 추가?                    [ ]
+⑦ 저장 후 앱 실행 확인?                        [ ]
+```
+
+### 나머지 모든 리스트 페이지
+```
+① 각 페이지마다 동일한 순서로 적용
+② 각 페이지 완료 후 앱 실행 상태 확인
+③ 에러 발생 시 즉시 원복 후 보고
+```
+
+---
+
+## 🔍 STEP 6 — HOVER COLOR VERIFICATION
+
+모든 페이지 적용 후 hover 색상이 올바른지 확인하라.
+
+```
+확인 기준:
+✅ hover 시 배경색: rgba(209, 174, 56, 0.15) — 금색 계열, 반투명
+✅ hover 시 글자색: 변경 없음 (기존 글자색 그대로 유지)
+✅ hover 시 transition: 부드럽게 (0.15s ease)
+✅ 카드 hover 시: 살짝 위로 올라오는 효과 (translateY -1px)
+✅ Room Board hover: 기존 status 색상 위에 gold 반투명 오버레이
+
+만약 글자색이 바뀐다면 즉시 수정:
+→ color 속성을 hover 스타일에 포함시키지 마라
+→ rowStyle / cardStyle 함수에서 color 는 절대 변경하지 말 것
+```
+
+---
+
+## ✅ STEP 7 — FINAL REPORT
+
+모든 단계 완료 후 아래 형식으로 보고하라:
+
+```
+═══════════════════════════════════════════════════════════
+  KL PROJECT — HOVER / CLICK / EDIT FIX — FINAL REPORT
+═══════════════════════════════════════════════════════════
+
+SHARED FILES
+────────────────────────────────────────────────────────
+src/utils/constants.js     ✅ Created (HOVER_BG = rgba(209,174,56,0.15))
+src/utils/useHoverRow.js   ✅ Created
+
+PAGES UPDATED
+────────────────────────────────────────────────────────
+Page              | Hover ✓ | Click→Detail ✓ | Edit ✓ | Status
+──────────────────|─────────|────────────────|────────|────────
+Room Board        |   ✅    |       ✅       |   ✅   | ✅ Done
+Reservations      |   ✅    |       ✅       |   ✅   | ✅ Done
+Reservation Detail| ──────  |      ──────    |   ✅   | ✅ Done
+Point of Sale     |   ✅    |       ✅       |   ✅   | ✅ Done
+Staff             |   ✅    |       ✅       |   ✅   | ✅ Done
+Staff Detail      | ──────  |      ──────    |   ✅   | ✅ Done
+Guests            |   ✅    |       ✅       |   ✅   | ✅ Done
+[기타 페이지...]  |   ...   |       ...      |  ...   |   ...
+
+ROUTES ADDED TO ROUTER
+────────────────────────────────────────────────────────
+/rooms/:id          ✅ existed / ✅ added
+/reservations/:id   ✅ existed / ✅ added
+/staff/:id          ✅ existed / ✅ added
+/pos/orders/:id     ✅ existed / ✅ added
+
+SKIPPED / ISSUES
+────────────────────────────────────────────────────────
+[건너뛴 파일이 있으면 이유와 함께 보고]
+[에러가 있었으면 어떻게 처리했는지 보고]
+
+HOVER COLOR VERIFIED
+────────────────────────────────────────────────────────
+Color applied:     rgba(209, 174, 56, 0.15)     ✅
+Text color change: NONE                          ✅
+Transition:        0.15s ease                   ✅
+
+═══════════════════════════════════════════════════════════
+  앱이 정상 실행됩니다. 브라우저에서 직접 확인 권장.
+═══════════════════════════════════════════════════════════
+```
+
+---
+
+## ⚠️ ERROR HANDLING PROTOCOL
+
+```
+에러 유형별 처리 방법:
+
+TYPE A — JSX Syntax Error (저장 후 앱이 죽는 경우)
+  → 즉시 해당 파일을 수정 전 내용으로 복원
+  → 에러 메시지와 줄 번호를 보고
+  → 해당 파일은 Skip 하고 계속 진행
+
+TYPE B — Import Path Error (모듈 찾을 수 없음)
+  → import 경로를 실제 파일 위치로 수정
+  → src/utils/useHoverRow.js 의 실제 위치 확인 후 경로 조정
+
+TYPE C — Route Not Found (클릭해도 이동 안 됨)
+  → 라우터 파일에 해당 Route 추가
+  → 상세 페이지 파일이 없으면 Step 3-C 템플릿으로 생성
+
+TYPE D — API Endpoint Unknown (Save 시 404/500)
+  → 백엔드 API 라우트 파일을 읽어서 실제 엔드포인트 확인
+  → 확인된 경로로 handleSave 내 fetch URL 수정
+  → 확인 불가 시: handleSave를 console.log(editData) 만 하는 
+    placeholder로 대체하고 보고
+
+TYPE E — existing onClick conflict (기존 onClick과 충돌)
+  → 기존 onClick 로직을 handleRowClick 내부에 포함시켜라
+  → 기존 onClick을 삭제하지 말고 handleRowClick 안에서 호출하라:
+    const handleRowClick = (item) => {
+      // 기존 onClick 로직 실행
+      existingClickHandler(item);
+      // 상세 페이지 이동
+      navigate(`/entity/${item.id}`);
+    };
+```

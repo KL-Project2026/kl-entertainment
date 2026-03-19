@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -440,6 +441,7 @@ const AGENT_STATUS_OPTIONS = [
 
 export default function Agents() {
   const { token } = useAuthStore();
+  const [, navigate] = useLocation();
   const [showForm, setShowForm] = useState(false);
   const [editAgent, setEditAgent] = useState<Agent | undefined>();
   const [stmtAgent, setStmtAgent] = useState<Agent | undefined>();
@@ -479,6 +481,7 @@ export default function Agents() {
           searchKeys={["name", "contactPerson", "phone", "email"]}
           searchPlaceholder="Search agents..."
           isLoading={isLoading}
+          onRowClick={(row) => navigate(`/agents/${(row as { id: string }).id}`)}
           onAddNew={() => { setEditAgent(undefined); setShowForm(true); }}
           addNewLabel="Add Agent"
           emptyIcon={<Handshake className="w-12 h-12" />}

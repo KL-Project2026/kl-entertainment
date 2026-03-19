@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -422,6 +423,7 @@ const STAFF_ROLE_OPTIONS = [
 
 export default function Staff() {
   const { token, user } = useAuthStore();
+  const [, navigate] = useLocation();
   const [branchFilter, setBranchFilter] = useState(user?.branchId ?? "__all__");
   const [showForm, setShowForm] = useState(false);
   const [editStaff, setEditStaff] = useState<StaffMember | undefined>();
@@ -493,6 +495,7 @@ export default function Staff() {
           searchKeys={["fullName", "phone", "employeeCode"]}
           searchPlaceholder="Search staff..."
           isLoading={isLoading}
+          onRowClick={(row) => navigate(`/staff/${(row as { id: string }).id}`)}
           onAddNew={() => { setEditStaff(undefined); setShowForm(true); }}
           addNewLabel="Add Staff"
           emptyIcon={<Users className="w-12 h-12" />}

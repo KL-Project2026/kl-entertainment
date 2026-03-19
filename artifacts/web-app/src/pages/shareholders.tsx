@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -525,6 +526,7 @@ const SHAREHOLDER_STATUS_OPTIONS = [
 
 export default function Shareholders() {
   const { token } = useAuthStore();
+  const [, navigate] = useLocation();
   const [showForm, setShowForm] = useState(false);
   const [editItem, setEditItem] = useState<Shareholder | undefined>();
   const [equityTarget, setEquityTarget] = useState<Shareholder | undefined>();
@@ -584,6 +586,7 @@ export default function Shareholders() {
           searchKeys={["name", "email", "nationality", "phone"]}
           searchPlaceholder="Search shareholders..."
           isLoading={isLoading}
+          onRowClick={(row) => navigate(`/shareholders/${(row as { id: string }).id}`)}
           onAddNew={() => { setEditItem(undefined); setShowForm(true); }}
           addNewLabel="Add Shareholder"
           emptyIcon={<Users className="w-12 h-12" />}

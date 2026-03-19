@@ -339,6 +339,7 @@ export default function Reservations() {
         searchKeys={["reservationNo", "customerName", "customerPhone"]}
         searchPlaceholder="Search reservations..."
         isLoading={isLoading}
+        onRowClick={(row) => navigate(`/reservations/${(row as { id: string }).id}`)}
         onAddNew={() => navigate("/reservations/new")}
         addNewLabel="New Booking"
         emptyIcon={<CalendarDays className="w-10 h-10" />}
