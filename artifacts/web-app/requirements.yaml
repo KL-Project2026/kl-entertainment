@@ -1,0 +1,20 @@
+packages:
+  "framer-motion": "For premium smooth entry animations and transitions"
+  "recharts": "For dashboard analytics and occupancy charts"
+  "socket.io-client": "Real-time updates for the room board"
+  "date-fns": "For formatting dates and check-in times"
+  "zustand": "For lightweight global authentication state management"
+  "clsx": "For conditional tailwind class merging"
+  "tailwind-merge": "For conditional tailwind class merging"
+
+images:
+  - path: "artifacts/web-app/public/images/login-bg.png"
+    description: "Dark luxury nightclub lounge interior, subtle warm gold lighting, architectural shadows, premium nightlife aesthetic, 4k photorealistic"
+    aspect_ratio: "16:9"
+  - path: "artifacts/web-app/public/images/logo.png"
+    description: "Minimalist elegant logo for KL Entertainment Group, interlocking KL letters in metallic gold on pure black background"
+    aspect_ratio: "1:1"
+
+notes:
+  - "App injects JWT into fetch via an interceptor in App.tsx"
+  - "WebSocket uses standard socket.io-client connecting to window.location.origin"

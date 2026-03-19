@@ -1,0 +1,299 @@
+# KL Project — CHUNK 02 of 06
+# Authentication + Branch / Room / Product APIs
+# ⏱️ 예상 작업 시간: 20~25분
+# ✅ 완료 기준: 로그인 동작 + 지점/룸/상품 CRUD API 작동
+
+---
+
+## 📌 PREREQUISITE
+
+Chunk 01 must be complete:
+- All 18 DB tables exist
+- Server runs on port 3000
+- `GET /health` returns OK
+
+---
+
+## 🎯 WHAT TO BUILD IN THIS CHUNK
+
+1. JWT Authentication (login, logout, refresh, me)
+2. RBAC middleware (role-based access control)
+3. Branch CRUD API
+4. Room CRUD + Room Status Board API (Socket.io)
+5. Product Catalog API (3-level: group → type → product)
+
+---
+
+## 📁 NEW FILES TO CREATE
+
+```
+server/
+├── middleware/
+│   ├── auth.js          ← JWT verify, attach req.user
+│   ├── rbac.js          ← requireRole() factory
+│   ├── audit.js         ← auto-log writes to audit_log
+│   └── validate.js      ← Joi wrapper
+├── features/
+│   ├── auth/
+│   │   ├── auth.routes.js
+│   │   └── auth.service.js
+│   ├── branches/
+│   │   ├── branches.routes.js
+│   │   └── branches.queries.js
+│   ├── rooms/
+│   │   ├── rooms.routes.js
+│   │   ├── rooms.queries.js
+│   │   └── rooms.socket.js    ← Socket.io room board emitter
+│   └── products/
+│       ├── products.routes.js
+│       └── products.queries.js
+client/
+└── src/
+    ├── pages/auth/LoginPage.jsx
+    ├── pages/settings/BranchSettingsPage.jsx
+    ├── pages/rooms/RoomBoardPage.jsx       ← ⭐ MOST IMPORTANT SCREEN
+    └── pages/products/ProductCatalogPage.jsx
+```
+
+---
+
+## 🔐 AUTH (server/features/auth/)
+
+```javascript
+// server/features/auth/auth.service.js
+// MIGRATION: .NET Identity + JWT Bearer Authentication
+
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import { pool } from '../../config/db.js';
+
+export async function login(email, password) {
+  // Try staff table first, then customers, then shareholders
+  const { rows } = await pool.query(
+    `SELECT id, full_name AS name, email, password_hash, role, branch_id, 'staff' AS user_type
+     FROM staff WHERE email = $1 AND is_active = true AND deleted_at IS NULL
+     UNION ALL
+     SELECT id, full_name AS name, email, password_hash, 'customer' AS role, NULL, 'customer'
+     FROM customers WHERE email = $1 AND is_active = true AND deleted_at IS NULL
+     UNION ALL
+     SELECT id, name, email, password_hash, 'shareholder' AS role, NULL, 'shareholder'
+     FROM shareholders WHERE email = $1 AND is_active = true
+     LIMIT 1`,
+    [email]
+  );
+  if (!rows.length) throw new Error('INVALID_CREDENTIALS');
+  const user = rows[0];
+  const valid = await bcrypt.compare(password, user.password_hash);
+  if (!valid) throw new Error('INVALID_CREDENTIALS');
+
+  const accessToken = jwt.sign(
+    { id: user.id, role: user.role, branchId: user.branch_id, userType: user.user_type },
+    process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_EXPIRY }
+  );
+  const refreshToken = jwt.sign(
+    { id: user.id },
+    process.env.REFRESH_TOKEN_SECRET,
+    { expiresIn: process.env.REFRESH_TOKEN_EXPIRY }
+  );
+  return { accessToken, refreshToken, user: { id: user.id, name: user.name, role: user.role } };
+}
+```
+
+```javascript
+// server/middleware/auth.js
+import jwt from 'jsonwebtoken';
+
+export function authenticate(req, res, next) {
+  const token = req.headers.authorization?.split(' ')[1] ||
+                req.cookies?.accessToken;
+  if (!token) return res.status(401).json({ error: 'UNAUTHORIZED' });
+  try {
+    req.user = jwt.verify(token, process.env.JWT_SECRET);
+    next();
+  } catch {
+    res.status(401).json({ error: 'TOKEN_EXPIRED' });
+  }
+}
+```
+
+```javascript
+// server/middleware/rbac.js
+import { ROLES } from '../config/constants.js';
+
+// Usage: router.get('/route', authenticate, requireRole('admin','branch_manager'), handler)
+export function requireRole(...allowedRoles) {
+  return (req, res, next) => {
+    if (allowedRoles.includes('*') || allowedRoles.includes(req.user.role)) return next();
+    res.status(403).json({ error: 'FORBIDDEN' });
+  };
+}
+
+// Branch isolation: branch_manager/manager can only access their own branch
+export function requireBranchAccess(req, res, next) {
+  const superRoles = [ROLES.SUPER_ADMIN, ROLES.ADMIN];
+  if (superRoles.includes(req.user.role)) return next();
+  const branchId = req.params.branchId || req.query.branch_id || req.body.branch_id;
+  if (branchId && branchId !== req.user.branchId) {
+    return res.status(403).json({ error: 'BRANCH_ACCESS_DENIED' });
+  }
+  next();
+}
+```
+
+**Auth routes:**
+```
+POST /api/auth/login          → { accessToken, refreshToken, user }
+POST /api/auth/logout         → clear cookies
+POST /api/auth/refresh        → { accessToken }
+GET  /api/auth/me             → { id, name, role, branchId }
+```
+
+---
+
+## 🏢 BRANCHES API (server/features/branches/)
+
+```
+GET  /api/branches                    → list (super_admin/admin: all; others: own)
+POST /api/branches                    → create [super_admin only]
+GET  /api/branches/:id                → detail
+PUT  /api/branches/:id                → update [super_admin only]
+GET  /api/branches/:id/dashboard      → today's stats
+GET  /api/branches/:id/room-board     → real-time room grid snapshot
+```
+
+**Dashboard response shape:**
+```json
+{
+  "branchId": "uuid",
+  "branchName": "Club Noir KL",
+  "localTime": "2026-03-19T21:34:00+08:00",
+  "today": {
+    "revenue": 8420.00,
+    "reservationCount": 14,
+    "checkedInCount": 8,
+    "occupancyPct": 80
+  },
+  "rooms": {
+    "total": 10,
+    "available": 2,
+    "occupied": 8,
+    "cleaning": 0,
+    "maintenance": 0
+  },
+  "arrivals": [...],
+  "departures": [...]
+}
+```
+
+---
+
+## 🚪 ROOMS API + SOCKET.IO ROOM BOARD
+
+```
+GET  /api/rooms?branch_id=            → list with current status
+POST /api/rooms                        → create
+PUT  /api/rooms/:id                    → update
+PUT  /api/rooms/:id/status             → quick status update { status }
+GET  /api/rooms/available              → ?branch_id=&date=&start_time=&duration_hours=
+```
+
+**Socket.io setup (server/features/rooms/rooms.socket.js):**
+```javascript
+// MIGRATION: .NET SignalR — RoomBoardHub
+
+export function initRoomSocket(io) {
+  io.on('connection', (socket) => {
+    socket.on('join_branch', ({ branchId }) => {
+      socket.join(`branch:${branchId}`);
+    });
+    socket.on('leave_branch', ({ branchId }) => {
+      socket.leave(`branch:${branchId}`);
+    });
+  });
+}
+
+// Call this whenever room status changes:
+export function emitRoomUpdate(io, branchId, roomData) {
+  io.to(`branch:${branchId}`).emit('room_board_update', {
+    roomId:          roomData.id,
+    roomName:        roomData.name,
+    status:          roomData.status,       // available|occupied|cleaning|maintenance
+    reservationNo:   roomData.reservationNo || null,
+    guestName:       roomData.guestName || null,
+    guestCount:      roomData.guestCount || null,
+    checkInTime:     roomData.checkInTime || null,
+    expectedCheckOut: roomData.expectedCheckOut || null,
+    updatedAt:       new Date().toISOString(),
+  });
+}
+```
+
+**Room Board UI (client/src/pages/rooms/RoomBoardPage.jsx):**
+
+This is the most-used screen. Build it as a responsive grid:
+
+```
+Design: dark background (#0D0D14), each room = a card
+Card shows:
+  - Room name + type badge (Standard / VIP / VVIP)
+  - Status color: 🟢 green=available, 🔴 red=occupied, 🟡 yellow=cleaning, ⚫ gray=maintenance
+  - If occupied: guest name (if available), check-in time, expected duration
+  - If occupied: live timer counting up from check-in time
+  - Click → open reservation detail or quick booking modal
+
+Real-time updates via Socket.io:
+  - Connect to socket on page load
+  - emit 'join_branch' with current branchId
+  - Listen for 'room_board_update' → update card in-place (no full re-render)
+
+Branch switcher at top (super_admin/admin see all branches as tabs)
+```
+
+---
+
+## 📦 PRODUCTS API (3-level hierarchy)
+
+```
+GET  /api/products/groups              → list product groups
+POST /api/products/groups              → create group
+GET  /api/products/types?group_id=     → list types in a group
+POST /api/products/types               → create type
+GET  /api/products?branch_id=&type_id= → list products
+POST /api/products                     → create product
+PUT  /api/products/:id                 → update
+PUT  /api/products/:id/toggle          → activate/deactivate
+```
+
+**Multilingual name handling:**
+```javascript
+// name is stored as JSONB: {"en":"Whisky","zh":"威士忌","ms":"Wiski","ko":"위스키","ja":"ウイスキー","th":"วิสกี้"}
+// When reading, return the name in the requested language:
+const lang = req.headers['accept-language']?.split(',')[0]?.split('-')[0] || 'en';
+const productName = product.name[lang] || product.name['en'];
+```
+
+---
+
+## 🎨 LOGIN PAGE UI
+
+Dark luxury theme matching the KTV brand:
+- Full screen dark background (#0D0D14)
+- Center card with logo placeholder + "KL Entertainment"
+- Email + Password fields
+- Language selector (EN | 中文 | BM | 日本語 | 한국어 | ภาษาไทย)
+- Login button in gold (#D4AF37)
+- Error state: shake animation on wrong credentials
+
+---
+
+## ✅ CHUNK 02 DONE WHEN:
+
+1. `POST /api/auth/login` with valid credentials returns JWT
+2. `GET /api/branches` returns branch list (requires auth header)
+3. `GET /api/branches/:id/room-board` returns room grid data
+4. Room board page loads and shows colored room cards
+5. Room status update via `PUT /api/rooms/:id/status` reflects live on room board (Socket.io)
+6. Product catalog page shows 3-level hierarchy
+
+**➡️ Next: CHUNK 03 — Reservations + POS + Invoice/Receipt**

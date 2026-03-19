@@ -27,3 +27,15 @@ timeoutMs = 20000
 
 [nix]
 channel = "stable-25_05"
+
+[userenv]
+
+[userenv.shared]
+JWT_SECRET = "kl-project-jwt-secret-min-32-chars-secure-2026"
+REFRESH_TOKEN_SECRET = "kl-project-refresh-secret-secure-2026-xyz"
+JWT_EXPIRY = "24h"
+REFRESH_TOKEN_EXPIRY = "30d"
+BASE_CURRENCY = "MYR"
+DEFAULT_TIMEZONE = "Asia/Kuala_Lumpur"
+DEFAULT_LANG = "en"
+DISPLAY_CURRENCIES = "MYR,AUD,KRW,JPY,CNY"

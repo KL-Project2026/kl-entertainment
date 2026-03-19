@@ -2,21 +2,30 @@ openapi: 3.1.0
 info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
-  version: 0.1.0
-  description: API specification
+  version: 0.2.0
+  description: KL Project API — Multi-branch KTV management platform
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication
+  - name: branches
+    description: Branch management
+  - name: rooms
+    description: Room management
+  - name: products
+    description: Product catalog
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
+      description: Returns server health status and DB connectivity
       responses:
         "200":
           description: Healthy
@@ -24,13 +33,1237 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ===== AUTH =====
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Logout
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiSuccess"
+
+  /auth/refresh:
+    post:
+      operationId: refreshToken
+      tags: [auth]
+      summary: Refresh access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+      responses:
+        "200":
+          description: New access token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefreshResponse"
+        "401":
+          description: Invalid refresh token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  # ===== BRANCHES =====
+  /branches:
+    get:
+      operationId: listBranches
+      tags: [branches]
+      summary: List branches
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of branches
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BranchListResponse"
+    post:
+      operationId: createBranch
+      tags: [branches]
+      summary: Create branch
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBranchRequest"
+      responses:
+        "201":
+          description: Branch created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BranchResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /branches/{id}:
+    get:
+      operationId: getBranch
+      tags: [branches]
+      summary: Get branch detail
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Branch detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BranchResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    put:
+      operationId: updateBranch
+      tags: [branches]
+      summary: Update branch
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateBranchRequest"
+      responses:
+        "200":
+          description: Branch updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BranchResponse"
+
+  /branches/{id}/dashboard:
+    get:
+      operationId: getBranchDashboard
+      tags: [branches]
+      summary: Branch dashboard stats
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Dashboard stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BranchDashboard"
+
+  /branches/{id}/room-board:
+    get:
+      operationId: getBranchRoomBoard
+      tags: [branches]
+      summary: Get real-time room grid snapshot
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Room board snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomBoardResponse"
+
+  # ===== ROOMS =====
+  /rooms:
+    get:
+      operationId: listRooms
+      tags: [rooms]
+      summary: List rooms
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: branch_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of rooms
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomListResponse"
+    post:
+      operationId: createRoom
+      tags: [rooms]
+      summary: Create room
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRoomRequest"
+      responses:
+        "201":
+          description: Room created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomResponse"
+
+  /rooms/available:
+    get:
+      operationId: listAvailableRooms
+      tags: [rooms]
+      summary: List available rooms for a time slot
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: branch_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: start_time
+          in: query
+          schema:
+            type: string
+        - name: duration_hours
+          in: query
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Available rooms
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomListResponse"
+
+  /rooms/{id}:
+    put:
+      operationId: updateRoom
+      tags: [rooms]
+      summary: Update room
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRoomRequest"
+      responses:
+        "200":
+          description: Room updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomResponse"
+
+  /rooms/{id}/status:
+    put:
+      operationId: updateRoomStatus
+      tags: [rooms]
+      summary: Quick room status update
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRoomStatusRequest"
+      responses:
+        "200":
+          description: Status updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomResponse"
+
+  # ===== PRODUCTS =====
+  /products/groups:
+    get:
+      operationId: listProductGroups
+      tags: [products]
+      summary: List product groups
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Product groups
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductGroupListResponse"
+    post:
+      operationId: createProductGroup
+      tags: [products]
+      summary: Create product group
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProductGroupRequest"
+      responses:
+        "201":
+          description: Product group created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductGroupResponse"
+
+  /products/types:
+    get:
+      operationId: listProductTypes
+      tags: [products]
+      summary: List product types
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: group_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Product types
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductTypeListResponse"
+    post:
+      operationId: createProductType
+      tags: [products]
+      summary: Create product type
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProductTypeRequest"
+      responses:
+        "201":
+          description: Product type created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductTypeResponse"
+
+  /products:
+    get:
+      operationId: listProducts
+      tags: [products]
+      summary: List products
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: branch_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: type_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Products
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductListResponse"
+    post:
+      operationId: createProduct
+      tags: [products]
+      summary: Create product
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProductRequest"
+      responses:
+        "201":
+          description: Product created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductResponse"
+
+  /products/{id}:
+    put:
+      operationId: updateProduct
+      tags: [products]
+      summary: Update product
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProductRequest"
+      responses:
+        "200":
+          description: Product updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductResponse"
+
+  /products/{id}/toggle:
+    put:
+      operationId: toggleProduct
+      tags: [products]
+      summary: Toggle product active status
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Product toggled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductResponse"
+
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
   schemas:
     HealthStatus:
       type: object
       properties:
         status:
           type: string
+        db:
+          type: string
+        timestamp:
+          type: string
       required:
         - status
 
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      required:
+        - error
+
+    ApiSuccess:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+      required:
+        - success
+
+    # ===== AUTH SCHEMAS =====
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+      required:
+        - email
+        - password
+
+    LoginResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        user:
+          $ref: "#/components/schemas/UserProfile"
+      required:
+        - accessToken
+        - refreshToken
+        - user
+
+    RefreshRequest:
+      type: object
+      properties:
+        refreshToken:
+          type: string
+      required:
+        - refreshToken
+
+    RefreshResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+      required:
+        - accessToken
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+        branchId:
+          type: string
+          format: uuid
+          nullable: true
+        userType:
+          type: string
+      required:
+        - id
+        - name
+        - role
+        - userType
+
+    # ===== BRANCH SCHEMAS =====
+    Branch:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        orgId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        internalCode:
+          type: string
+        address:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
+        country:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        timezone:
+          type: string
+        currency:
+          type: string
+        isActive:
+          type: boolean
+        taxConfig:
+          type: object
+          additionalProperties: true
+        settings:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - orgId
+        - name
+        - internalCode
+        - timezone
+        - currency
+        - isActive
+
+    BranchResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/Branch"
+      required:
+        - data
+
+    BranchListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Branch"
+      required:
+        - data
+
+    CreateBranchRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        internalCode:
+          type: string
+        orgId:
+          type: string
+          format: uuid
+        address:
+          type: string
+        city:
+          type: string
+        country:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        timezone:
+          type: string
+        currency:
+          type: string
+      required:
+        - name
+        - internalCode
+        - orgId
+
+    UpdateBranchRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        isActive:
+          type: boolean
+        taxConfig:
+          type: object
+          additionalProperties: true
+        settings:
+          type: object
+          additionalProperties: true
+
+    BranchDashboard:
+      type: object
+      properties:
+        branchId:
+          type: string
+          format: uuid
+        branchName:
+          type: string
+        localTime:
+          type: string
+        today:
+          type: object
+          properties:
+            revenue:
+              type: number
+            reservationCount:
+              type: integer
+            checkedInCount:
+              type: integer
+            occupancyPct:
+              type: number
+          required:
+            - revenue
+            - reservationCount
+            - checkedInCount
+            - occupancyPct
+        rooms:
+          type: object
+          properties:
+            total:
+              type: integer
+            available:
+              type: integer
+            occupied:
+              type: integer
+            cleaning:
+              type: integer
+            maintenance:
+              type: integer
+          required:
+            - total
+            - available
+            - occupied
+            - cleaning
+            - maintenance
+        arrivals:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        departures:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+      required:
+        - branchId
+        - branchName
+        - localTime
+        - today
+        - rooms
+
+    # ===== ROOM SCHEMAS =====
+    Room:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        branchId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        roomType:
+          type: string
+          enum: [private_room, vip_room, vvip_room, table, open_area]
+        capacityMin:
+          type: integer
+        capacityMax:
+          type: integer
+        hourlyRate:
+          type: number
+          nullable: true
+        minHours:
+          type: number
+        status:
+          type: string
+          enum: [available, occupied, cleaning, maintenance, blocked]
+        sortOrder:
+          type: integer
+        isActive:
+          type: boolean
+        description:
+          type: string
+          nullable: true
+        floorLevel:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - branchId
+        - name
+        - roomType
+        - capacityMin
+        - capacityMax
+        - status
+        - isActive
+
+    RoomWithReservation:
+      allOf:
+        - $ref: "#/components/schemas/Room"
+        - type: object
+          properties:
+            reservationNo:
+              type: string
+              nullable: true
+            guestName:
+              type: string
+              nullable: true
+            guestCount:
+              type: integer
+              nullable: true
+            checkInTime:
+              type: string
+              format: date-time
+              nullable: true
+            expectedCheckOut:
+              type: string
+              format: date-time
+              nullable: true
+
+    RoomResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/Room"
+      required:
+        - data
+
+    RoomListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoomWithReservation"
+      required:
+        - data
+
+    RoomBoardResponse:
+      type: object
+      properties:
+        branchId:
+          type: string
+          format: uuid
+        branchName:
+          type: string
+        rooms:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoomWithReservation"
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - branchId
+        - branchName
+        - rooms
+        - updatedAt
+
+    CreateRoomRequest:
+      type: object
+      properties:
+        branchId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        roomType:
+          type: string
+        capacityMin:
+          type: integer
+        capacityMax:
+          type: integer
+        hourlyRate:
+          type: number
+        minHours:
+          type: number
+        description:
+          type: string
+        floorLevel:
+          type: string
+        sortOrder:
+          type: integer
+      required:
+        - branchId
+        - name
+        - capacityMax
+
+    UpdateRoomRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        roomType:
+          type: string
+        capacityMin:
+          type: integer
+        capacityMax:
+          type: integer
+        hourlyRate:
+          type: number
+        minHours:
+          type: number
+        description:
+          type: string
+        floorLevel:
+          type: string
+        sortOrder:
+          type: integer
+        isActive:
+          type: boolean
+
+    UpdateRoomStatusRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [available, occupied, cleaning, maintenance, blocked]
+      required:
+        - status
+
+    # ===== PRODUCT SCHEMAS =====
+    MultilingualName:
+      type: object
+      properties:
+        en:
+          type: string
+        zh:
+          type: string
+          nullable: true
+        ms:
+          type: string
+          nullable: true
+        ko:
+          type: string
+          nullable: true
+        ja:
+          type: string
+          nullable: true
+        th:
+          type: string
+          nullable: true
+      required:
+        - en
+
+    ProductGroup:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        orgId:
+          type: string
+          format: uuid
+        name:
+          $ref: "#/components/schemas/MultilingualName"
+        sortOrder:
+          type: integer
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - orgId
+        - name
+        - isActive
+
+    ProductGroupResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/ProductGroup"
+      required:
+        - data
+
+    ProductGroupListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductGroup"
+      required:
+        - data
+
+    CreateProductGroupRequest:
+      type: object
+      properties:
+        orgId:
+          type: string
+          format: uuid
+        name:
+          $ref: "#/components/schemas/MultilingualName"
+        sortOrder:
+          type: integer
+      required:
+        - orgId
+        - name
+
+    ProductType:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        groupId:
+          type: string
+          format: uuid
+        name:
+          $ref: "#/components/schemas/MultilingualName"
+        sortOrder:
+          type: integer
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - groupId
+        - name
+        - isActive
+
+    ProductTypeResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/ProductType"
+      required:
+        - data
+
+    ProductTypeListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductType"
+      required:
+        - data
+
+    CreateProductTypeRequest:
+      type: object
+      properties:
+        groupId:
+          type: string
+          format: uuid
+        name:
+          $ref: "#/components/schemas/MultilingualName"
+        sortOrder:
+          type: integer
+      required:
+        - groupId
+        - name
+
+    Product:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        typeId:
+          type: string
+          format: uuid
+        branchId:
+          type: string
+          format: uuid
+          nullable: true
+        sku:
+          type: string
+          nullable: true
+        name:
+          $ref: "#/components/schemas/MultilingualName"
+        description:
+          type: object
+          additionalProperties: true
+          nullable: true
+        unitPrice:
+          type: number
+        unit:
+          type: string
+        taxApplicable:
+          type: boolean
+        sortOrder:
+          type: integer
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - typeId
+        - name
+        - unitPrice
+        - unit
+        - isActive
+
+    ProductResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/Product"
+      required:
+        - data
+
+    ProductListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Product"
+      required:
+        - data
+
+    CreateProductRequest:
+      type: object
+      properties:
+        typeId:
+          type: string
+          format: uuid
+        branchId:
+          type: string
+          format: uuid
+        sku:
+          type: string
+        name:
+          $ref: "#/components/schemas/MultilingualName"
+        unitPrice:
+          type: number
+        unit:
+          type: string
+        taxApplicable:
+          type: boolean
+        sortOrder:
+          type: integer
+      required:
+        - typeId
+        - name
+        - unitPrice
+
+    UpdateProductRequest:
+      type: object
+      properties:
+        name:
+          $ref: "#/components/schemas/MultilingualName"
+        sku:
+          type: string
+        unitPrice:
+          type: number
+        unit:
+          type: string
+        taxApplicable:
+          type: boolean
+        sortOrder:
+          type: integer
+        isActive:
+          type: boolean

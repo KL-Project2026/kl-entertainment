@@ -17,36 +17,55 @@ This is **KL Project** — a multi-branch KTV (Karaoke) business management plat
 - **Validation**: Zod (`zod/v4`), `drizzle-zod`
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (CJS bundle)
+- **Auth**: JWT (bcryptjs + jsonwebtoken), 24h access token, 30d refresh
+- **Real-time**: Socket.io on `artifacts/api-server` (room board updates)
+- **Frontend**: React + Vite, Tailwind, Shadcn, TanStack Query, Zustand, Framer Motion, Recharts, Wouter
 
 ## Structure
 
 ```text
 artifacts-monorepo/
-├── artifacts/              # Deployable applications
-│   └── api-server/         # Express API server
+├── artifacts/
+│   ├── api-server/          # Express 5 API + Socket.io
+│   │   └── src/
+│   │       ├── config/constants.ts
+│   │       ├── middleware/
+│   │       │   ├── auth.ts        # JWT verify middleware
+│   │       │   ├── rbac.ts        # Role-based access control
+│   │       │   └── audit.ts       # Auto audit log
+│   │       └── routes/
+│   │           ├── index.ts       # Router aggregator
+│   │           ├── health.ts      # GET /api/healthz
+│   │           ├── auth.ts        # POST /login, /logout, /refresh, GET /me
+│   │           ├── branches.ts    # CRUD + dashboard + room-board
+│   │           ├── rooms.ts       # CRUD + status + Socket.io emitter
+│   │           └── products.ts    # Groups, Types, Products CRUD
+│   └── web-app/             # React + Vite frontend (previewPath: /)
 │       └── src/
-│           ├── config/
-│           │   └── constants.ts  # ROLES, STATUSES, PAYMENT_METHODS, enums
-│           └── routes/
-│               └── health.ts     # GET /api/healthz — checks DB connectivity
-├── lib/                    # Shared libraries
-│   ├── api-spec/           # OpenAPI spec + Orval codegen config
-│   ├── api-client-react/   # Generated React Query hooks
-│   ├── api-zod/            # Generated Zod schemas from OpenAPI
-│   └── db/                 # Drizzle ORM schema + DB connection
-│       └── src/schema/     # All 13 schema files (23 tables total)
-├── scripts/                # Utility scripts (single workspace package)
-├── pnpm-workspace.yaml
-├── tsconfig.base.json
-├── tsconfig.json
-└── package.json
+│           ├── pages/
+│           │   ├── login.tsx      # Dark luxury login with language selector
+│           │   ├── dashboard.tsx  # Branch stats + revenue chart
+│           │   ├── room-board.tsx # Real-time room grid + Socket.io
+│           │   ├── branches.tsx   # Branch list/CRUD
+│           │   └── products.tsx   # 3-level product catalog
+│           ├── components/
+│           │   ├── ui.tsx         # Shared UI components
+│           │   └── layout.tsx     # Sidebar layout
+│           ├── hooks/
+│           │   └── use-live-timer.ts
+│           ├── lib/
+│           │   ├── auth.ts        # Token storage + axios config
+│           │   └── utils.ts
+│           └── App.tsx
+├── lib/
+│   ├── api-spec/            # openapi.yaml + Orval config
+│   ├── api-client-react/    # Generated React Query hooks
+│   ├── api-zod/             # Generated Zod schemas
+│   └── db/                  # Drizzle ORM schema + DB connection (23 tables)
+└── ...
 ```
 
-## Database Schema (Chunk 01)
-
-All tables use UUID primary keys with `gen_random_uuid()`. Timestamps use `timestamp({ withTimezone: true })`.
-
-### Tables (23 total)
+## Database Schema (23 Tables)
 
 | # | Table | File |
 |---|-------|------|
@@ -80,67 +99,75 @@ All tables use UUID primary keys with `gen_random_uuid()`. Timestamps use `times
 - 2 Branches: `Club Noir KL` (KL01), `Velvet Lounge PJ` (KL02)
 - 3 Product Groups: Beverages, Food, Packages (multilingual JSONB)
 - 4 FX Rates: MYR→AUD, KRW, JPY, CNY
+- 3 Staff users:
+  - `admin@klproject.com` / `Admin@123!` (super_admin)
+  - `kl01@klproject.com` / `Manager@123!` (branch_manager — Club Noir KL)
+  - `kl02@klproject.com` / `Manager@123!` (branch_manager — Velvet Lounge PJ)
+- 6 rooms per branch (Standard ×3, VIP ×2, VVIP ×1)
+
+## Authentication
+
+- JWT via `Authorization: Bearer <token>` header or `accessToken` cookie
+- Access token: 24h (JWT_SECRET)
+- Refresh token: 30d (REFRESH_TOKEN_SECRET)
+- Required env vars: `JWT_SECRET`, `REFRESH_TOKEN_SECRET`, `JWT_EXPIRY`, `REFRESH_TOKEN_EXPIRY`
+- Roles: `super_admin`, `admin`, `branch_manager`, `manager`, `hostess`, `driver`, `kitchen`, `hall`, `general`
+
+## Socket.io (Room Board)
+
+- Server on same HTTP server as Express
+- Client emits `join_branch` `{ branchId }` to subscribe
+- Server emits `room_board_update` with room status changes
+
+## API Endpoints
+
+| Method | Path | Auth |
+|--------|------|------|
+| GET | /api/healthz | — |
+| POST | /api/auth/login | — |
+| POST | /api/auth/logout | Bearer |
+| POST | /api/auth/refresh | — |
+| GET | /api/auth/me | Bearer |
+| GET | /api/branches | Bearer |
+| POST | /api/branches | super_admin |
+| GET | /api/branches/:id | Bearer |
+| PUT | /api/branches/:id | admin+ |
+| GET | /api/branches/:id/dashboard | Bearer |
+| GET | /api/branches/:id/room-board | Bearer |
+| GET | /api/rooms | Bearer |
+| GET | /api/rooms/available | Bearer |
+| POST | /api/rooms | manager+ |
+| PUT | /api/rooms/:id | manager+ |
+| PUT | /api/rooms/:id/status | manager |
+| GET | /api/products/groups | Bearer |
+| POST | /api/products/groups | admin+ |
+| GET | /api/products/types | Bearer |
+| POST | /api/products/types | admin+ |
+| GET | /api/products | Bearer |
+| POST | /api/products | manager+ |
+| PUT | /api/products/:id | manager+ |
+| PUT | /api/products/:id/toggle | manager+ |
 
 ## Constants (`artifacts/api-server/src/config/constants.ts`)
 
 - `ROLES` — super_admin, admin, branch_manager, manager, hostess, driver, kitchen, hall, general
-- `RESERVATION_STATUSES` + `VALID_TRANSITIONS` — state machine for booking flow
+- `RESERVATION_STATUSES` + `VALID_TRANSITIONS` — state machine
 - `PAYMENT_METHODS` — cash, qr_touchngo, qr_grabpay, fpx, card, credit_account, bank_transfer
 - `SUPPORTED_LANGUAGES` — en, zh, ms, ja, ko, th
 - `SUPPORTED_CURRENCIES` — MYR, AUD, KRW, JPY, CNY
-- Room types, statuses, booking channels, payment statuses, agent types, etc.
+
+## Critical Notes
+
+- **Drizzle timestamps**: Use `timestamp({ withTimezone: true })` NOT `timestamptz` (not exported)
+- **staff.branch_id**: NOT NULL — every staff must be attached to a branch
+- **staff.email**: No unique constraint; use `SELECT ... WHERE NOT EXISTS` for upsert
+- **Multilingual fields**: JSONB objects `{ en, zh, ms, ko, ja, th }` — `en` is always required
+- **Currency**: MYR base, SST 6%, service charge 10%
 
 ## TypeScript & Composite Projects
 
-Every package extends `tsconfig.base.json` which sets `composite: true`. The root `tsconfig.json` lists all packages as project references. This means:
+Every package extends `tsconfig.base.json` which sets `composite: true`. Always typecheck from root:
 
-- **Always typecheck from the root** — run `pnpm run typecheck` (which runs `tsc --build --emitDeclarationOnly`). This builds the full dependency graph so that cross-package imports resolve correctly. Running `tsc` inside a single package will fail if its dependencies haven't been built yet.
-- **`emitDeclarationOnly`** — we only emit `.d.ts` files during typecheck; actual JS bundling is handled by esbuild/tsx/vite...etc, not `tsc`.
-- **Project references** — when package A depends on package B, A's `tsconfig.json` must list B in its `references` array. `tsc --build` uses this to determine build order and skip up-to-date packages.
-
-## Root Scripts
-
-- `pnpm run build` — runs `typecheck` first, then recursively runs `build` in all packages that define it
-- `pnpm run typecheck` — runs `tsc --build --emitDeclarationOnly` using project references
-
-## Packages
-
-### `artifacts/api-server` (`@workspace/api-server`)
-
-Express 5 API server. Routes live in `src/routes/` and use `@workspace/api-zod` for request and response validation and `@workspace/db` for persistence.
-
-- Entry: `src/index.ts` — reads `PORT`, starts Express
-- App setup: `src/app.ts` — mounts CORS, JSON/urlencoded parsing, routes at `/api`
-- Routes: `src/routes/index.ts` mounts sub-routers; `src/routes/health.ts` exposes `GET /healthz` (full path: `/api/healthz`) — also checks DB connectivity
-- Constants: `src/config/constants.ts` — all business enums and lookup tables
-- Depends on: `@workspace/db`, `@workspace/api-zod`
-- `pnpm --filter @workspace/api-server run dev` — run the dev server
-- `pnpm --filter @workspace/api-server run build` — production esbuild bundle (`dist/index.cjs`)
-
-### `lib/db` (`@workspace/db`)
-
-Database layer using Drizzle ORM with PostgreSQL. Exports a Drizzle client instance and schema models.
-
-- `src/index.ts` — creates a `Pool` + Drizzle instance, exports schema
-- `src/schema/index.ts` — barrel re-export of all models
-- Drizzle note: use `timestamp({ withTimezone: true })` NOT `timestamptz` (not exported by this version)
-- `drizzle.config.ts` — Drizzle Kit config (requires `DATABASE_URL`)
-- Exports: `.` (pool, db, schema), `./schema` (schema only)
-
-### `lib/api-spec` (`@workspace/api-spec`)
-
-Owns the OpenAPI 3.1 spec (`openapi.yaml`) and the Orval config (`orval.config.ts`).
-
-Run codegen: `pnpm --filter @workspace/api-spec run codegen`
-
-### `lib/api-zod` (`@workspace/api-zod`)
-
-Generated Zod schemas from the OpenAPI spec (e.g. `HealthCheckResponse`).
-
-### `lib/api-client-react` (`@workspace/api-client-react`)
-
-Generated React Query hooks and fetch client from the OpenAPI spec.
-
-### `scripts` (`@workspace/scripts`)
-
-Utility scripts package. Each script is a `.ts` file in `src/` with a corresponding npm script in `package.json`.
+- `pnpm run build` — typecheck + recursive build
+- `pnpm run typecheck` — `tsc --build --emitDeclarationOnly`
+- `pnpm --filter @workspace/api-spec run codegen` — regenerate API client + Zod schemas
