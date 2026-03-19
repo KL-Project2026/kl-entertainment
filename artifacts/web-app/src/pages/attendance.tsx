@@ -13,7 +13,8 @@ import {
 } from "@/components/ui/select";
 import { useAuthStore } from "@/lib/auth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ClockIcon, LogIn, LogOut, AlertTriangle } from "lucide-react";
+import { ClockIcon, LogIn, LogOut, AlertTriangle, Loader2 } from "lucide-react";
+import { formatDate } from "@/lib/utils";
 
 function getAuthHeader(token: string | null) {
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -84,7 +85,7 @@ export default function Attendance() {
   const allStaff: StaffMember[] = staffData?.data ?? [];
 
   // Attendance records for all visible staff over the date range
-  const { data: attendanceMap, refetch } = useQuery({
+  const { data: attendanceMap, refetch, isFetching } = useQuery({
     queryKey: ["attendance-bulk", branchFilter, dateFrom, dateTo],
     queryFn: async () => {
       const results = new Map<string, AttendanceRecord[]>();
@@ -179,7 +180,12 @@ export default function Attendance() {
         </div>
 
         {/* Table */}
-        <div className="overflow-x-auto rounded-xl border border-white/10">
+        <div className="overflow-x-auto rounded-xl border border-white/10" style={{ position: "relative" }}>
+          {isFetching && (
+            <div className="absolute inset-0 bg-black/40 z-10 flex items-center justify-center rounded-xl">
+              <Loader2 className="w-6 h-6 animate-spin text-primary" />
+            </div>
+          )}
           <table className="w-full min-w-[700px]">
             <thead>
               <tr className="border-b border-white/10 bg-white/5 text-left text-xs text-muted-foreground">
@@ -214,7 +220,7 @@ export default function Attendance() {
                           <p className="text-sm font-medium">{s.fullName}</p>
                           <p className="text-xs text-muted-foreground capitalize">{s.role}</p>
                         </td>
-                        <td className="px-4 py-3 text-sm">{today}</td>
+                        <td className="px-4 py-3 text-sm">{formatDate(today)}</td>
                         <td className="px-4 py-3 text-sm text-muted-foreground">
                           {todayRec?.scheduledStart
                             ? `${formatTime(todayRec.scheduledStart)} → ${formatTime(todayRec.scheduledEnd)}`
@@ -276,7 +282,7 @@ export default function Attendance() {
                         <p className="text-sm font-medium">{s.fullName}</p>
                         <p className="text-xs text-muted-foreground capitalize">{s.role}</p>
                       </td>
-                      <td className="px-4 py-3 text-sm">{rec.workDate}</td>
+                      <td className="px-4 py-3 text-sm">{formatDate(rec.workDate)}</td>
                       <td className="px-4 py-3 text-sm text-muted-foreground">
                         {rec.scheduledStart
                           ? `${formatTime(rec.scheduledStart)} → ${formatTime(rec.scheduledEnd)}`

@@ -1,298 +1,62 @@
-# Workspace
+# Overview
 
-## Overview
+KL Project is a multi-branch KTV (Karaoke) business management platform designed for KL Entertainment Group. It aims to streamline operations across various branches, offering comprehensive features for managing rooms, products, reservations, staff, finances, and customer interactions. The platform includes both a staff-facing web application and a customer portal for bookings and profile management.
 
-pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
+The project's vision is to provide a robust, scalable, and user-friendly system that enhances operational efficiency, improves customer experience, and provides valuable business insights through detailed reporting and real-time dashboards.
 
-This is **KL Project** — a multi-branch KTV (Karaoke) business management platform for KL Entertainment Group.
+# User Preferences
 
-## Stack
+I prefer simple language. I want iterative development. Ask before making major changes.
 
-- **Monorepo tool**: pnpm workspaces
-- **Node.js version**: 24
-- **Package manager**: pnpm
-- **TypeScript version**: 5.9
-- **API framework**: Express 5
-- **Database**: PostgreSQL + Drizzle ORM
-- **Validation**: Zod (`zod/v4`), `drizzle-zod`
-- **API codegen**: Orval (from OpenAPI spec `lib/api-spec/openapi.yaml`)
-- **Build**: esbuild (CJS bundle)
-- **Auth**: JWT (bcryptjs + jsonwebtoken), 24h access token, 30d refresh
-- **Real-time**: Socket.io on `artifacts/api-server` (room board updates)
-- **Frontend**: React + Vite, Tailwind, Shadcn, TanStack Query, Zustand, Framer Motion, Recharts, Wouter
-- **i18n**: i18next + react-i18next, 6 locales (en/zh/ms/ja/ko/th), namespace `"t"`
-- **External services**: WhatsApp Cloud API (send booking confirmations), Telegram Bot API (optional), ExchangeRate API (FX rates)
+# System Architecture
 
-## Structure
+The project is structured as a pnpm monorepo using TypeScript, with distinct `api-server` and `web-app` artifacts.
 
-```text
-artifacts-monorepo/
-├── artifacts/
-│   ├── api-server/          # Express 5 API + Socket.io (port 8080)
-│   │   └── src/
-│   │       ├── config/constants.ts
-│   │       ├── middleware/
-│   │       │   ├── auth.ts           # JWT verify middleware
-│   │       │   ├── rbac.ts           # Role-based access control
-│   │       │   └── audit.ts          # Auto audit log
-│   │       └── routes/
-│   │           ├── index.ts          # Router aggregator
-│   │           ├── health.ts         # GET /api/healthz
-│   │           ├── auth.ts           # POST /login, /logout, /refresh, GET /me
-│   │           ├── branches.ts       # CRUD + dashboard + room-board
-│   │           ├── rooms.ts          # CRUD + status + Socket.io emitter
-│   │           ├── products.ts       # Groups, Types, Products CRUD
-│   │           ├── reservations.ts   # CRUD + state machine transitions
-│   │           ├── orders.ts         # Orders + order items + finalize + receipt
-│   │           ├── receipts.ts       # GET receipt HTML + print tracking
-│   │           ├── staff.ts          # Staff CRUD + clock-in/out + earnings
-│   │           ├── schedules.ts      # Weekly shift schedule + copy prev week
-│   │           ├── agents.ts         # Agent CRUD + commission statement + payout
-│   │           ├── staff-availability.ts  # Staff availability legacy
-│           ├── shareholders.ts   # Shareholder CRUD + equity + settlements
-│           ├── investor.ts       # Investor dashboard snapshot + settlements
-│           ├── reports.ts        # Revenue/Occupancy/Commissions/P&L reports
-│           ├── currency.ts       # GET /fx-rates (cached), POST /fx-rates/convert
-│           ├── customer-auth.ts  # POST /customer/auth/register|login, GET /customer/profile
-│           ├── customer-bookings.ts # GET/POST /customer/bookings, PUT /customer/bookings/:id/cancel
-│           └── webhooks.ts       # GET/POST /webhooks/whatsapp, POST /webhooks/telegram
-│   └── web-app/             # React + Vite frontend (previewPath: /)
-│       └── src/
-│           ├── pages/
-│           │   ├── login.tsx         # Dark luxury login with language selector
-│           │   ├── dashboard.tsx     # Branch stats + revenue chart
-│           │   ├── room-board.tsx    # Real-time room grid + Socket.io
-│           │   ├── branches.tsx      # Branch list/CRUD
-│           │   ├── products.tsx      # 3-level product catalog
-│           │   ├── reservations.tsx  # Reservations list + state transitions
-│           │   ├── booking-wizard.tsx # New reservation wizard
-│           │   ├── pos.tsx           # Point of Sale (POS) + payment modal
-│           │   ├── staff.tsx         # Staff list + add/edit + clock modal + earnings modal
-│           │   ├── schedule-builder.tsx # Weekly grid editor + copy-last-week
-│           │   ├── attendance.tsx    # Today clock-in/out table + historical view
-│           │   ├── agents.tsx        # Agent CRUD + commission statement + payout
-│           │   ├── shareholders.tsx  # Shareholder CRUD + equity + settlement generation
-│           │   ├── investor-dashboard.tsx # Recharts + Socket.io live investor dashboard
-│           │   ├── reports.tsx       # Tabbed Revenue/Occupancy/Commissions/PnL with charts
-│           │   └── customer/
-│           │       ├── login.tsx     # Customer portal login+register (light amber theme)
-│           │       ├── dashboard.tsx # Customer dashboard — upcoming bookings + Book a Room CTA
-│           │       ├── booking.tsx   # 3-step booking wizard (branch→room→confirm)
-│           │       └── history.tsx   # Customer booking history list
-│           ├── components/
-│           │   ├── ui.tsx            # Shared UI components
-│           │   └── layout.tsx        # Sidebar layout + language selector dropdown
-│           ├── hooks/
-│           │   └── use-live-timer.ts
-│           ├── i18n/
-│           │   ├── index.ts          # i18next config, defaultNS: "t", 6 locales
-│           │   └── locales/          # en.json zh.json ms.json ja.json ko.json th.json
-│           ├── lib/
-│           │   ├── auth.ts           # Zustand staff auth store (key: 'kl-auth-storage'), token field
-│           │   ├── customer-auth.ts  # Zustand customer auth store (key: 'kl-customer-storage')
-│           │   ├── api.ts            # fetch wrapper with auto auth header injection
-│           │   └── utils.ts
-│           └── App.tsx
-├── lib/
-│   ├── api-spec/            # openapi.yaml + Orval config
-│   ├── api-client-react/    # Generated React Query hooks (lib/api-client-react/src/generated/api.ts)
-│   ├── api-zod/             # Generated Zod schemas
-│   └── db/                  # Drizzle ORM schema + DB connection (23 tables)
-└── ...
-```
+**UI/UX Decisions:**
+- **Staff Web App:** Utilizes React with Vite, Tailwind CSS, Shadcn UI components, and Framer Motion for animations. The design theme is generally dark luxury.
+- **Customer Portal:** Features a distinct light amber theme for its login and dashboard pages.
+- **Internationalization (i18n):** Supports 6 locales (en, zh, ms, ja, ko, th) with `i18next` and `react-i18next`, using a default namespace `"t"`. Language preferences are stored in `localStorage["kl_lang"]`.
 
-## Database Schema (24 Tables)
+**Technical Implementations:**
+- **API Server (`artifacts/api-server`):** Built with Express 5, handling RESTful APIs and real-time communication via Socket.io.
+  - **Authentication:** JWT-based with 24h access tokens and 30d refresh tokens. Implements role-based access control (RBAC).
+  - **Middleware:** Includes authentication, RBAC, and an auto-audit log.
+  - **API Codegen:** Uses Orval to generate API clients and Zod schemas from an OpenAPI specification (`lib/api-spec/openapi.yaml`).
+  - **Real-time:** Socket.io facilitates real-time room board updates. Clients `join_branch` and receive `room_board_update` events.
+  - **Order Service:** Handles product ordering, tax calculation (10% service charge, 6% SST), and finalization. Discount percentages are stored as 0.0-1.0 in the DB.
+- **Web Application (`artifacts/web-app`):** A React application using TanStack Query for data fetching, Zustand for state management, Recharts for data visualization, and Wouter for routing.
+  - **Auth Stores:** Separate Zustand stores for staff (`kl-auth-storage`) and customer (`kl-customer-storage`) authentication tokens.
+  - **Customer Portal:** Located under `/customer/*` paths, with a dedicated authentication flow and fetch interceptor to prevent staff token injection.
+- **Database Interaction:** Drizzle ORM is used for PostgreSQL database interactions. Schemas are defined in `lib/db/schema/`. Timestamps use `timestamp({ withTimezone: true })`.
+- **Multilingual Fields:** JSONB objects `{ en, zh, ms, ko, ja, th }` are used for multilingual data in the database, with `en` always required.
+- **Monorepo Tooling:** pnpm workspaces manage dependencies and build processes. All packages extend a base `tsconfig.base.json` with `composite: true`.
 
-| # | Table | File |
-|---|-------|------|
-| 1 | `organizations` | `schema/organizations.ts` |
-| 2 | `branches` | `schema/branches.ts` |
-| 3 | `rooms` | `schema/rooms.ts` |
-| 4 | `product_groups` | `schema/products.ts` |
-| 5 | `product_types` | `schema/products.ts` |
-| 6 | `products` | `schema/products.ts` |
-| 7 | `agents` | `schema/agents.ts` |
-| 8 | `staff` | `schema/staff.ts` |
-| 9 | `staff_schedules` | `schema/staff.ts` |
-| 10 | `attendance` | `schema/staff.ts` |
-| 11 | `customers` | `schema/customers.ts` |
-| 12 | `reservations` | `schema/reservations.ts` |
-| 13 | `reservation_hostesses` | `schema/reservations.ts` |
-| 14 | `reservation_pickups` | `schema/reservations.ts` |
-| 15 | `orders` | `schema/orders.ts` |
-| 16 | `order_items` | `schema/orders.ts` |
-| 17 | `receipts` | `schema/receipts.ts` |
-| 18 | `expenses` | `schema/finances.ts` |
-| 19 | `shareholders` | `schema/finances.ts` |
-| 20 | `branch_shareholders` | `schema/finances.ts` |
-| 21 | `profit_settlements` | `schema/finances.ts` |
-| 22 | `fx_rates` | `schema/fx_rates.ts` |
-| 23 | `audit_log` | `schema/audit_log.ts` |
-| 24 | `agent_payouts` | `schema/finances.ts` (added via raw SQL) |
+**Feature Specifications:**
+- **Dashboard:** Provides branch statistics and revenue charts.
+- **Room Board:** Real-time display of room statuses.
+- **Product Catalog:** Supports a 3-level hierarchy (Groups, Types, Products).
+- **Reservations:** Includes CRUD operations, state machine transitions, and a booking wizard.
+- **Point of Sale (POS):** Workflow for creating orders, adding items, finalizing, and processing payments.
+- **Staff Management:** CRUD for staff, clock-in/out, attendance tracking, and earnings reports.
+- **Scheduling:** Weekly shift schedule builder with copy functionality.
+- **Agent Management:** CRUD for agents, commission statements, and payout tracking.
+- **Shareholder & Investor Management:** CRUD for shareholders, equity tracking, settlement generation, and an investor dashboard.
+- **Reporting:** Tabbed reports for Revenue, Occupancy, Commissions, and Profit & Loss with charts.
+- **Customer Booking Portal:** Allows customers to register, login, view upcoming bookings, and make new reservations through a 3-step wizard.
 
-### Seed Data
+**Chunk 07 — List Page Audit & UI Polish (COMPLETE):**
+- `utils.ts`: Added `formatDate(iso)` and `formatDateTime(iso)` helpers (use `toLocaleDateString` / `toLocaleString`).
+- `attendance.tsx`: workDate and today columns use `formatDate()`. Added `isFetching` loading overlay (Loader2 spinner) on the attendance table during bulk refetch.
+- `agents.tsx`: Added text search input (Search agents…); filter applies to name, email, and contact. Balance now uses `formatCurrency()` instead of raw `RM X.XX`.
+- `shareholders.tsx`: Added text search input (Search shareholders…); filter applies to name, email, nationality. Settlement `period_start`/`period_end` use `formatDate()`.
+- `products.tsx`: Added text search input (Search products…); filters by `name.en` and `name.zh`.
+- `branches.tsx`: Added empty-state div when `filteredBranches.length === 0` (distinguishes "no data" vs "no match").
+- `reservations.tsx`: Added Cards/Table view toggle in the header. Table view shows Booking #, Status, Customer, Room, Date (formatted), Time, Guests, Deposit. Imported `formatDate` for date column.
 
-- 1 Organization: `KL Entertainment Group` (slug: `kl-entertainment`, id: `00000000-0000-0000-0000-000000000001`)
-- 2 Branches: `Club Noir KL` (KL01, id: `d44ca290-a086-439d-9657-07fc5ebb689c`), `Velvet Lounge PJ` (KL02)
-- 3 Product Groups: Beverages, Food, Packages (multilingual JSONB)
-- 9 Products: beers, whisky, spirits, food combos, KTV packages (unit_price, not sellingPrice)
-- 4 Sample Reservations including `RES-E2E` (id: `420b76ff-8f2c-4208-91fd-63e65606933c`, branch: KL01)
-- 4 FX Rates: MYR→AUD, KRW, JPY, CNY
-- 3 Staff users:
-  - `admin@klproject.com` / `Admin@123!` (super_admin, branchId: KL01)
-  - `kl01@klproject.com` / `Manager@123!` (branch_manager — Club Noir KL)
-  - `kl02@klproject.com` / `Manager@123!` (branch_manager — Velvet Lounge PJ)
-- 6 rooms per branch (Standard ×3, VIP ×2, VVIP ×1)
+# External Dependencies
 
-## Authentication
-
-- JWT via `Authorization: Bearer <token>` header or `accessToken` cookie
-- Access token: 24h (JWT_SECRET)
-- Refresh token: 30d (REFRESH_TOKEN_SECRET)
-- Required env vars: `JWT_SECRET`, `REFRESH_TOKEN_SECRET`, `JWT_EXPIRY`, `REFRESH_TOKEN_EXPIRY`
-- Roles: `super_admin`, `admin`, `branch_manager`, `manager`, `hostess`, `driver`, `kitchen`, `hall`, `general`
-- Zustand auth store key: `kl-auth-storage`, token field: `token` (not `accessToken`)
-
-## Socket.io (Room Board)
-
-- Server on same HTTP server as Express
-- Client emits `join_branch` `{ branchId }` to subscribe
-- Server emits `room_board_update` with room status changes
-
-## API Endpoints
-
-| Method | Path | Auth | Notes |
-|--------|------|------|-------|
-| GET | /api/healthz | — | |
-| POST | /api/auth/login | — | returns `{ accessToken, refreshToken, user }` |
-| POST | /api/auth/logout | Bearer | |
-| POST | /api/auth/refresh | — | |
-| GET | /api/auth/me | Bearer | |
-| GET | /api/branches | Bearer | |
-| POST | /api/branches | super_admin | |
-| GET | /api/branches/:id | Bearer | |
-| PUT | /api/branches/:id | admin+ | |
-| GET | /api/branches/:id/dashboard | Bearer | |
-| GET | /api/branches/:id/room-board | Bearer | |
-| GET | /api/rooms | Bearer | |
-| GET | /api/rooms/available | Bearer | |
-| POST | /api/rooms | manager+ | |
-| PUT | /api/rooms/:id | manager+ | |
-| PUT | /api/rooms/:id/status | manager | |
-| GET | /api/products/groups | Bearer | |
-| POST | /api/products/groups | admin+ | |
-| GET | /api/products/types | Bearer | |
-| POST | /api/products/types | admin+ | |
-| GET | /api/products | Bearer | response: `{ unitPrice }` (not `sellingPrice`) |
-| POST | /api/products | manager+ | |
-| PUT | /api/products/:id | manager+ | |
-| PUT | /api/products/:id/toggle | manager+ | |
-| GET | /api/reservations | Bearer | |
-| POST | /api/reservations | Bearer | |
-| GET | /api/reservations/:id | Bearer | |
-| PUT | /api/reservations/:id | Bearer | |
-| POST | /api/reservations/:id/transition | Bearer | state machine |
-| GET | /api/orders | Bearer | ?reservationId=, ?branchId= |
-| POST | /api/orders | Bearer | body+URL query: branchId, reservationId; falls back to reservation lookup, then JWT branchId |
-| POST | /api/orders/:id/items | Bearer | adds item, recalculates totals |
-| DELETE | /api/orders/:id/items/:itemId | Bearer | |
-| POST | /api/orders/:id/finalize | manager+ | sets finalizedAt only |
-| GET | /api/orders/:id/invoice | Bearer | returns HTML |
-| POST | /api/orders/:id/receipt | Bearer | creates receipt + sets payment_status='paid' |
-| GET | /api/orders/:id/receipt/latest | Bearer | |
-| GET | /api/receipts/:id | Bearer | returns HTML |
-| POST | /api/receipts/:id/printed | Bearer | |
-| GET | /api/staff/availability | Bearer | legacy availability check |
-| GET | /api/staff | Bearer | ?branch_id=, ?role=, ?active= |
-| POST | /api/staff | manager+ | create staff member |
-| GET | /api/staff/:id | Bearer | |
-| PUT | /api/staff/:id | manager+ | |
-| DELETE | /api/staff/:id | admin+ | soft delete |
-| POST | /api/staff/:id/clock-in | Bearer | `{ branchId }` → creates attendance record |
-| POST | /api/staff/:id/clock-out | Bearer | updates attendance clockOut |
-| GET | /api/staff/:id/attendance | Bearer | ?from=, ?to= |
-| GET | /api/staff/:id/earnings | Bearer | ?from=, ?to= → `{ sessions, grossEarnings, agentDeductions, penalties, netEarnings }` |
-| GET | /api/schedules | Bearer | ?branch_id=, ?effective_date= |
-| POST | /api/schedules | manager+ | upsert shift (staffId, dayOfWeek, shiftStart, shiftEnd, isOvernight, effectiveFrom) |
-| DELETE | /api/schedules/:id | manager+ | |
-| POST | /api/schedules/copy | manager+ | `{ branchId, fromDate, toDate }` copies prior week |
-| GET | /api/agents | Bearer | ?org_id= |
-| POST | /api/agents | admin+ | create agent |
-| GET | /api/agents/:id | Bearer | |
-| PUT | /api/agents/:id | admin+ | |
-| GET | /api/agents/:id/statement | Bearer | ?from=, ?to= → commission statement with hostess breakdown |
-| POST | /api/agents/:id/payout | admin+ | records payout, updates agent.credit_balance |
-| GET | /api/shareholders | Bearer | |
-| POST | /api/shareholders | admin+ | |
-| PUT | /api/shareholders/:id | admin+ | |
-| POST | /api/shareholders/:id/settle | admin+ | |
-| GET | /api/investor/dashboard | Bearer | KPIs + charts snapshot |
-| GET | /api/reports/revenue | Bearer | ?branchId=, ?from=, ?to= |
-| GET | /api/reports/occupancy | Bearer | |
-| GET | /api/reports/commissions | Bearer | |
-| GET | /api/reports/pnl | Bearer | P&L |
-| GET | /api/fx-rates | — | Returns cached MYR-based FX rates |
-| POST | /api/fx-rates/convert | — | `{ amount, from, to }` → converted amount |
-| POST | /api/customer/auth/register | — | `{ fullName, email, phone, password, languagePref }` → `{ token }` |
-| POST | /api/customer/auth/login | — | `{ email, password }` → `{ token, fullName, languagePref }` |
-| GET | /api/customer/profile | Customer JWT | Returns customer profile |
-| GET | /api/customer/bookings | Customer JWT | List customer bookings (DESC) |
-| GET | /api/customer/bookings/:id | Customer JWT | Booking detail |
-| POST | /api/customer/bookings | Customer JWT | Create booking (checks overlap) |
-| PUT | /api/customer/bookings/:id/cancel | Customer JWT | Cancel tentative/confirmed booking |
-| GET | /api/webhooks/whatsapp | — | WhatsApp webhook verification |
-| POST | /api/webhooks/whatsapp | — | WhatsApp message handler |
-| POST | /api/webhooks/telegram | — | Telegram update handler |
-
-## POS Flow
-
-1. Navigate to `/pos?branchId=BRANCH_ID&reservationId=RES_ID`
-2. Click "Open New Order" → `POST /api/orders?reservationId=RES_ID` with body `{ branchId, reservationId }`
-3. Add items → `POST /api/orders/:id/items`
-4. Click "Finalize Order" → `POST /api/orders/:id/finalize`
-5. PaymentModal → Click "Pay Now" → `POST /api/orders/:id/receipt` with `{ paymentMethod, receiptMode }`
-6. Opens `/api/receipts/:id?mode=detailed` in new tab
-
-## Order Service (Tax Calculation)
-
-- Subtotal: sum of `lineTotal` for all items
-- Service charge: 10% of subtotal
-- SST: 6% of subtotal
-- Total: subtotal + service + SST
-- `discount_pct`: stored as 0.0-1.0 in DB (numeric(5,4)); frontend/API send 0-100, backend converts
-
-## Constants (`artifacts/api-server/src/config/constants.ts`)
-
-- `ROLES` — super_admin, admin, branch_manager, manager, hostess, driver, kitchen, hall, general
-- `RESERVATION_STATUSES` + `VALID_TRANSITIONS` — state machine
-- `PAYMENT_METHODS` — cash, qr_touchngo, qr_grabpay, fpx, card, credit_account, bank_transfer
-- `SUPPORTED_LANGUAGES` — en, zh, ms, ja, ko, th
-- `SUPPORTED_CURRENCIES` — MYR, AUD, KRW, JPY, CNY
-
-## Critical Notes
-
-- **Drizzle timestamps**: Use `timestamp({ withTimezone: true })` NOT `timestamptz` (not exported)
-- **staff.branch_id**: NOT NULL — every staff must be attached to a branch
-- **staff.email**: No unique constraint; use `SELECT ... WHERE NOT EXISTS` for upsert
-- **Multilingual fields**: JSONB objects `{ en, zh, ms, ko, ja, th }` — `en` is always required
-- **Currency**: MYR base, SST 6%, service charge 10%
-- **Radix Select**: Never use empty string `""` as value — use sentinel like `__all__`
-- **product_groups**: NO `branch_id` column; **products**: NO `updated_at` column (has `deleted_at`)
-- **reservations**: NO `org_id` column
-- **POST /api/orders branchId resolution chain**: body.branchId → URL query branchId → reservation lookup → JWT user.branchId
-- **products.unit_price** maps to API response field `unitPrice` (NOT `sellingPrice`)
-- **i18n namespace**: `"t"` (defaultNS: `"t"`). Language stored in `localStorage["kl_lang"]` (persisted). Locales in `src/i18n/locales/*.json`
-- **Customer JWT**: type claim `"customer"` (not staff). Zustand store: `kl-customer-storage`, field: `token`. Customer routes use `authenticateCustomer` middleware, NOT staff `requireAuth`
-- **Customer portal** at `/customer/*` paths — fetch interceptor skips staff token injection for these paths; WhatsApp trigger excluded from customer routes
-- **reservations** has `cancelled_at` (not `deleted_at`) + `booking_channel` (not `channel`) + `special_requests` (not `notes`)
-- **WhatsApp/Telegram/FX** env vars are optional — services degrade gracefully if missing (EXCHANGERATE_API_KEY, WHATSAPP_TOKEN + WHATSAPP_PHONE_ID, TELEGRAM_BOT_TOKEN)
-- **WhatsApp trigger**: fires on `PUT /api/reservations/:id/confirm` (state transition to confirmed) — sends booking confirmation to customer phone in background (non-blocking)
-- **Webhook verify token**: `kl_whatsapp_verify` (hardcoded in webhooks.ts)
-
-## TypeScript & Composite Projects
-
-Every package extends `tsconfig.base.json` which sets `composite: true`. Always typecheck from root:
-
-- `pnpm run build` — typecheck + recursive build
-- `pnpm run typecheck` — `tsc --build --emitDeclarationOnly`
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API client + Zod schemas
+-   **Database:** PostgreSQL (with Drizzle ORM)
+-   **Messaging:**
+    -   WhatsApp Cloud API (for sending booking confirmations)
+    -   Telegram Bot API (optional)
+-   **Financial Data:** ExchangeRate API (for FX rates)

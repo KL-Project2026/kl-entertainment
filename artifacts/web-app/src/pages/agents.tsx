@@ -21,7 +21,9 @@ import {
   CreditCard,
   ChevronRight,
   Users,
+  Search,
 } from "lucide-react";
+import { formatCurrency } from "@/lib/utils";
 
 const ORG_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -338,6 +340,8 @@ export default function Agents() {
   const [editAgent, setEditAgent] = useState<Agent | undefined>();
   const [stmtAgent, setStmtAgent] = useState<Agent | undefined>();
 
+  const [search, setSearch] = useState("");
+
   const { data: agentsData, isLoading } = useQuery({
     queryKey: ["agents"],
     queryFn: async () => {
@@ -346,7 +350,17 @@ export default function Agents() {
     },
   });
 
-  const agents: Agent[] = agentsData?.data ?? [];
+  const allAgents: Agent[] = agentsData?.data ?? [];
+  const agents = allAgents.filter((a) => {
+    if (!search) return true;
+    const s = search.toLowerCase();
+    return (
+      a.name.toLowerCase().includes(s) ||
+      (a.contactPerson?.toLowerCase().includes(s) ?? false) ||
+      (a.phone?.includes(s) ?? false) ||
+      (a.email?.toLowerCase().includes(s) ?? false)
+    );
+  });
 
   return (
     <DashboardLayout>
@@ -359,6 +373,17 @@ export default function Agents() {
           <Button onClick={() => { setEditAgent(undefined); setShowForm(true); }} className="gap-2">
             <Plus className="w-4 h-4" /> Add Agent
           </Button>
+        </div>
+
+        {/* Search */}
+        <div className="relative max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            className="pl-9"
+            placeholder="Search agents..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
 
         {isLoading ? (
@@ -391,7 +416,7 @@ export default function Agents() {
                   <div className="bg-black/30 rounded-lg p-2.5 text-center">
                     <p className="text-xs text-muted-foreground">Balance Due</p>
                     <p className={`font-bold text-lg ${a.creditBalance > 0 ? "text-amber-400" : ""}`}>
-                      RM {a.creditBalance.toFixed(2)}
+                      {formatCurrency(a.creditBalance)}
                     </p>
                   </div>
                 </div>

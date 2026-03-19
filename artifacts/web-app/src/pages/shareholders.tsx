@@ -24,7 +24,9 @@ import {
   ChevronDown,
   ChevronUp,
   Check,
+  Search,
 } from "lucide-react";
+import { formatDate } from "@/lib/utils";
 
 const ORG_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -369,6 +371,7 @@ export default function Shareholders() {
   const [equityTarget, setEquityTarget] = useState<Shareholder | undefined>();
   const [settlementTarget, setSettlementTarget] = useState<Shareholder | undefined>();
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   const { data: shareholdersData, isLoading } = useQuery({
     queryKey: ["shareholders"],
@@ -386,7 +389,16 @@ export default function Shareholders() {
     },
   });
 
-  const shareholders: Shareholder[] = shareholdersData?.data ?? [];
+  const allShareholders: Shareholder[] = shareholdersData?.data ?? [];
+  const shareholders = allShareholders.filter((s) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      s.name.toLowerCase().includes(q) ||
+      (s.email?.toLowerCase().includes(q) ?? false) ||
+      (s.nationality?.toLowerCase().includes(q) ?? false)
+    );
+  });
   const branches: Branch[] = (branchesData?.data ?? []).map((b: Record<string, unknown>) => ({
     id: b.id as string,
     name: b.name as string,
@@ -404,6 +416,17 @@ export default function Shareholders() {
           <Button onClick={() => { setEditItem(undefined); setShowForm(true); }} className="gap-2">
             <Plus className="w-4 h-4" /> Add Shareholder
           </Button>
+        </div>
+
+        {/* Search */}
+        <div className="relative max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            className="pl-9"
+            placeholder="Search shareholders..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
 
         {isLoading ? (
@@ -540,7 +563,7 @@ function PastSettlements({ shareholderId, token }: { shareholderId: string; toke
               {s.status as string}
             </Badge>
             <span className="text-muted-foreground">
-              {s.period_start as string} → {s.period_end as string}
+              {formatDate(s.period_start as string)} → {formatDate(s.period_end as string)}
             </span>
             <span className="text-xs text-muted-foreground">({s.branch_name as string})</span>
           </div>

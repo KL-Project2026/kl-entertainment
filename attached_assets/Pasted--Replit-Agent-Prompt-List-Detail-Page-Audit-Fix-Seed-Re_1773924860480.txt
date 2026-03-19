@@ -1,0 +1,747 @@
+# 🏨 Replit Agent Prompt — List & Detail Page Audit + Fix + Seed
+> **사용법**: 아래 내용을 Replit AI Agent 채팅창에 그대로 붙여넣으세요.
+
+---
+
+You are working on this hospitality management app. Before making ANY changes, you must follow the strict safety protocol below.
+
+---
+
+## 🔒 SAFETY PROTOCOL — MUST FOLLOW BEFORE EVERY CHANGE
+
+```
+RULE 1: READ BEFORE WRITE
+  → Before editing any file, read its full content first.
+  → Never overwrite a file you haven't read completely.
+
+RULE 2: SYNTAX CHECK BEFORE SAVE
+  → After writing any code change, verify it is syntactically valid.
+  → For JS/TS: check for unclosed brackets, missing commas, invalid JSX.
+  → For SQL: check for missing semicolons, unmatched quotes.
+  → Do NOT save if any syntax error is detected.
+
+RULE 3: IMPORT CHECK
+  → If you add a new function or component, verify the import path exists.
+  → Never import from a file that doesn't exist.
+  → Never remove an existing import that is used elsewhere.
+
+RULE 4: NON-DESTRUCTIVE ONLY
+  → Never delete any existing file.
+  → Never remove existing functions, routes, or components.
+  → Only ADD new code or WRAP/EXTEND existing code.
+  → For SQL seeds: use INSERT ... ON CONFLICT DO NOTHING (or equivalent).
+
+RULE 5: ONE FILE AT A TIME
+  → Complete and verify one file fully before moving to the next.
+  → If a step fails, STOP and report the error. Do not continue.
+
+RULE 6: CONFIRM BEFORE SEEDING
+  → Before running any INSERT statements, first run a SELECT COUNT(*) 
+    on each target table to confirm the table exists and is reachable.
+  → If the table does not exist, SKIP that seed and report it.
+```
+
+---
+
+## 📁 STEP 0 — PROJECT SCAN (Run This First)
+
+Before anything else, scan the project and report:
+
+```
+1. List every file/folder in the project (tree structure, max 3 levels deep)
+2. Identify the tech stack:
+   - Frontend framework? (React / Vue / plain HTML / other)
+   - Backend? (Node.js Express / Python Flask/FastAPI / other)
+   - Database? (PostgreSQL / MySQL / SQLite / Supabase / other)
+   - ORM? (Prisma / Sequelize / SQLAlchemy / raw SQL / other)
+   - Router? (React Router / Next.js / Express routes / other)
+3. Find all list pages — files containing table, list, <tr>, map() over records
+4. Find all detail pages — files with params like :id, /detail, /show
+5. Find the database schema file or migration files
+6. Find the seed file (if any)
+7. Report your findings before proceeding.
+```
+
+**WAIT** — Do not proceed to Step 1 until Step 0 is complete and reported.
+
+---
+
+## 🔍 STEP 1 — AUDIT ALL LIST PAGES
+
+For each list page file found in Step 0, read the file and check:
+
+```
+AUDIT CHECKLIST — run for EVERY list page:
+
+[ ] A1. Does the table/list container have overflow-x: auto (horizontal scroll)?
+[ ] A2. Is there a min-width on the table (prevents column collapse)?
+[ ] A3. Are ALL important columns visible? (see required columns below)
+[ ] A4. Is every row clickable → navigates to detail page?
+[ ] A5. Are dates formatted as "DD MMM YYYY"? (not raw ISO strings)
+[ ] A6. Are currency values formatted with symbol + 2 decimals?
+[ ] A7. Do status fields show colored badges? (not plain text)
+[ ] A8. Is there a loading state while data fetches?
+[ ] A9. Is there an empty state when no records exist?
+[ ] A10. Is there a search/filter input at the top?
+```
+
+Report the audit result for each list page as a table:
+
+```
+| Page | A1 | A2 | A3 | A4 | A5 | A6 | A7 | A8 | A9 | A10 |
+|------|----|----|----|----|----|----|----|----|----|----|
+| /properties | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+...
+```
+
+**WAIT** — Do not proceed to Step 2 until audit is complete.
+
+---
+
+## 🛠️ STEP 2 — FIX LIST PAGES
+
+Fix each issue found in the audit. Apply these fixes in order.
+
+### FIX A1 + A2 — Horizontal Scroll & Min Width
+
+Wrap every list table with a scroll container. Find the table wrapper in each list component and add:
+
+```css
+/* Add to your CSS file or as inline styles */
+.table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 8px;
+}
+.table-wrapper table {
+  min-width: 900px;
+  width: 100%;
+  border-collapse: collapse;
+}
+```
+
+In JSX/HTML, wrap the `<table>` like:
+```jsx
+<div className="table-wrapper">
+  <table>
+    ...
+  </table>
+</div>
+```
+
+**Verify**: After adding, check that the JSX is valid and the className exists in CSS.
+
+---
+
+### FIX A3 — Required Columns Per List Page
+
+Check each list page and add any missing columns. Use only fields that already exist in your data model — do not add columns for fields that don't exist in the database yet.
+
+**Required columns for each entity** (add only what's missing):
+
+**Properties list** — must show: Name, Code, Country/City, Star Rating, Status, [View button]
+
+**Room Types list** — must show: Name, Property, Code, Max Occupancy, Base Rate, Status, [View button]
+
+**Rooms list** — must show: Room Number, Floor, Room Type, Housekeeping Status, Occupancy Status, [View button]
+
+**Reservations list** — must show: Booking Ref, Guest Name, Property, Check-in, Check-out, Nights, Total Amount, Status, [View button]
+
+**Guests list** — must show: Full Name, Email, Phone, Nationality, Total Stays, VIP Status, [View button]
+
+**Rate Plans list** — must show: Name, Property, Room Type, Rate Type, Amount, Valid From, Valid To, Status, [View button]
+
+**Housekeeping Tasks list** — must show: Room Number, Task Type, Priority, Assigned To, Status, Scheduled Time, [View button]
+
+**Staff/Users list** — must show: Full Name, Email, Role, Property, Status, [View button]
+
+**Before adding a column**: Confirm the field name in your schema. Use the exact field name from the database/model.
+
+---
+
+### FIX A4 — Row Click → Detail Navigation
+
+For each list page, make rows clickable. Use your existing router:
+
+```jsx
+// React Router example — adapt to your actual router
+import { useNavigate } from 'react-router-dom';
+const navigate = useNavigate();
+
+// On the <tr> element:
+<tr
+  key={item.id}
+  onClick={() => navigate(`/reservations/${item.id}`)}
+  style={{ cursor: 'pointer' }}
+  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
+  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = ''}
+>
+```
+
+**Before adding**: Verify the detail route (e.g., `/reservations/:id`) exists in your router config. If it does not exist, skip and report it — do not add a navigate to a nonexistent route.
+
+---
+
+### FIX A5 — Date Formatting
+
+Find every place in list pages where a date is rendered. Replace raw date strings with this helper:
+
+```javascript
+// Add this helper function to a shared utils file (e.g., src/utils/format.js)
+// Check if this file already exists before creating it.
+
+export const formatDate = (value) => {
+  if (!value) return '—';
+  try {
+    return new Date(value).toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+    // Output: "15 Mar 2025"
+  } catch {
+    return value; // return original if parsing fails
+  }
+};
+```
+
+In list components, replace:
+```jsx
+// BEFORE (unsafe):
+<td>{reservation.checkin_date}</td>
+
+// AFTER (safe):
+<td>{formatDate(reservation.checkin_date)}</td>
+```
+
+**Before replacing**: Confirm the import path for your utils file is correct.
+
+---
+
+### FIX A6 — Currency Formatting
+
+```javascript
+// Add to the same utils file
+export const formatCurrency = (amount, currencyCode) => {
+  if (amount == null || amount === '') return '—';
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currencyCode || 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `${currencyCode || ''} ${amount}`;
+  }
+};
+```
+
+---
+
+### FIX A7 — Status Badges
+
+```javascript
+// Add to utils file
+export const StatusBadge = ({ status }) => {
+  const styles = {
+    // Reservation
+    confirmed:   { background: '#dcfce7', color: '#166534' },
+    checked_in:  { background: '#dbeafe', color: '#1e40af' },
+    checked_out: { background: '#f3f4f6', color: '#374151' },
+    cancelled:   { background: '#fee2e2', color: '#991b1b' },
+    tentative:   { background: '#fef9c3', color: '#854d0e' },
+    no_show:     { background: '#fde8d8', color: '#9a3412' },
+    // Housekeeping
+    clean:       { background: '#dcfce7', color: '#166534' },
+    dirty:       { background: '#fee2e2', color: '#991b1b' },
+    inspected:   { background: '#dbeafe', color: '#1e40af' },
+    in_progress: { background: '#fef9c3', color: '#854d0e' },
+    pending:     { background: '#fef9c3', color: '#854d0e' },
+    completed:   { background: '#dbeafe', color: '#1e40af' },
+    // General
+    active:      { background: '#dcfce7', color: '#166534' },
+    inactive:    { background: '#f3f4f6', color: '#6b7280' },
+    high:        { background: '#fee2e2', color: '#991b1b' },
+    normal:      { background: '#f3f4f6', color: '#374151' },
+    low:         { background: '#f0fdf4', color: '#15803d' },
+  };
+
+  const key = (status || '').toLowerCase().replace(/\s+/g, '_');
+  const style = styles[key] || { background: '#f3f4f6', color: '#374151' };
+
+  return (
+    <span style={{
+      ...style,
+      padding: '2px 10px',
+      borderRadius: '9999px',
+      fontSize: '12px',
+      fontWeight: 600,
+      textTransform: 'capitalize',
+      whiteSpace: 'nowrap',
+    }}>
+      {(status || '').replace(/_/g, ' ')}
+    </span>
+  );
+};
+```
+
+Replace plain text status cells:
+```jsx
+// BEFORE:
+<td>{reservation.status}</td>
+
+// AFTER:
+<td><StatusBadge status={reservation.status} /></td>
+```
+
+---
+
+### FIX A8 — Loading State
+
+```jsx
+// Add to each list component that fetches data
+if (loading) {
+  return (
+    <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>
+      Loading...
+    </div>
+  );
+}
+```
+
+---
+
+### FIX A9 — Empty State
+
+```jsx
+// Add after loading check
+if (!loading && data.length === 0) {
+  return (
+    <div style={{ padding: '60px', textAlign: 'center' }}>
+      <p style={{ color: '#9ca3af', marginBottom: '16px' }}>No records found.</p>
+      <button onClick={() => navigate('/[entity]/new')}>
+        + Add New
+      </button>
+    </div>
+  );
+}
+```
+
+---
+
+### FIX A10 — Search Filter
+
+```jsx
+// Add state at top of list component
+const [search, setSearch] = useState('');
+
+// Add search input above the table
+<input
+  type="text"
+  placeholder="Search..."
+  value={search}
+  onChange={(e) => setSearch(e.target.value)}
+  style={{
+    padding: '8px 12px',
+    border: '1px solid #e5e7eb',
+    borderRadius: '6px',
+    marginBottom: '16px',
+    width: '300px',
+    fontSize: '14px',
+  }}
+/>
+
+// Filter the data before rendering
+const filtered = data.filter(item =>
+  Object.values(item).some(val =>
+    String(val || '').toLowerCase().includes(search.toLowerCase())
+  )
+);
+// Use `filtered` instead of `data` in the map()
+```
+
+---
+
+## 🖥️ STEP 3 — STANDARDIZE ALL DETAIL PAGES
+
+### 3-A. Read Each Detail Page First
+
+For each detail page, read the file completely before editing.
+
+### 3-B. Standard Detail Page Layout
+
+Every detail page MUST follow this layout. Refactor existing detail pages to match — do not replace, extend:
+
+```jsx
+// Standard Detail Page Structure
+// Apply this layout to EVERY detail page
+
+return (
+  <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '24px' }}>
+
+    {/* ── HEADER ── */}
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+      <button onClick={() => navigate(-1)} style={{ color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px' }}>
+        ← Back
+      </button>
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <button onClick={() => navigate(`/[entity]/${id}/edit`)}>Edit</button>
+        {/* Contextual action button (Cancel, Archive, etc.) */}
+      </div>
+    </div>
+
+    {/* ── TITLE SECTION ── */}
+    <div style={{ marginBottom: '32px' }}>
+      <StatusBadge status={record.status} />
+      <h1 style={{ fontSize: '28px', fontWeight: 700, margin: '8px 0 4px' }}>
+        {record.name || record.booking_ref || record.room_number}
+      </h1>
+      <p style={{ color: '#6b7280', fontSize: '13px' }}>
+        Created: {formatDate(record.created_at)}
+        {record.updated_at && ` · Updated: ${formatDate(record.updated_at)}`}
+      </p>
+    </div>
+
+    {/* ── TWO-COLUMN INFO CARDS ── */}
+    <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: '24px', marginBottom: '32px' }}>
+
+      {/* LEFT CARD — Core Info */}
+      <div style={{ background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '24px' }}>
+        <h2 style={{ fontSize: '14px', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '20px' }}>
+          Details
+        </h2>
+        {/* Render fields as label/value pairs */}
+        <DetailField label="Field Name" value={record.field} />
+      </div>
+
+      {/* RIGHT CARD — Meta & Summary */}
+      <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '24px' }}>
+        <h2 style={{ fontSize: '14px', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '20px' }}>
+          Summary
+        </h2>
+        {/* Status, dates, financial totals, related counts */}
+      </div>
+    </div>
+
+    {/* ── RELATED RECORDS TABS ── */}
+    {/* Only if related data exists for this entity */}
+    <div>
+      {/* Tab headers */}
+      {/* Tab content — mini list of related records */}
+    </div>
+
+  </div>
+);
+```
+
+### 3-C. DetailField Helper Component
+
+Add this reusable component to your utils/shared components:
+
+```jsx
+// Reusable field display component for detail pages
+export const DetailField = ({ label, value, type = 'text' }) => {
+  const displayValue = (() => {
+    if (value == null || value === '') return '—';
+    if (type === 'currency') return value; // already formatted by caller
+    if (type === 'date') return formatDate(value);
+    if (type === 'boolean') return value ? 'Yes' : 'No';
+    return String(value);
+  })();
+
+  return (
+    <div style={{ marginBottom: '16px' }}>
+      <dt style={{
+        fontSize: '11px',
+        fontWeight: 600,
+        color: '#9ca3af',
+        textTransform: 'uppercase',
+        letterSpacing: '0.08em',
+        marginBottom: '3px',
+      }}>
+        {label}
+      </dt>
+      <dd style={{
+        fontSize: '15px',
+        color: '#111827',
+        margin: 0,
+        wordBreak: 'break-word',
+      }}>
+        {displayValue}
+      </dd>
+    </div>
+  );
+};
+```
+
+### 3-D. Mobile Responsive — Two Columns → One Column
+
+Add this CSS for the two-column grid:
+
+```css
+/* In your CSS file */
+@media (max-width: 768px) {
+  .detail-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+```
+
+Or use inline responsive logic if CSS-in-JS:
+```jsx
+const isMobile = window.innerWidth < 768;
+<div style={{
+  display: 'grid',
+  gridTemplateColumns: isMobile ? '1fr' : '3fr 2fr',
+  gap: '24px'
+}}>
+```
+
+---
+
+## 🌱 STEP 4 — SEED DATA
+
+### 4-A. Pre-Seed Safety Check
+
+Before inserting any data, run these checks:
+
+```sql
+-- Run these SELECT statements first.
+-- If any table doesn't exist, SKIP that seed and report it.
+-- Do NOT create tables — only seed into existing ones.
+
+SELECT COUNT(*) FROM properties;
+SELECT COUNT(*) FROM room_types;
+SELECT COUNT(*) FROM rooms;
+SELECT COUNT(*) FROM guests;
+SELECT COUNT(*) FROM reservations;
+SELECT COUNT(*) FROM rate_plans;
+SELECT COUNT(*) FROM housekeeping_tasks;
+SELECT COUNT(*) FROM users;
+```
+
+Report results like:
+```
+properties: 2 existing rows — will add up to 10 new rows
+room_types: 0 existing rows — will add 10 new rows
+rooms: table NOT FOUND — skipping
+...
+```
+
+Only proceed with seeds for tables that EXIST.
+
+### 4-B. Adapt Column Names to Your Schema
+
+**IMPORTANT**: The seed SQL below uses generic column names. Before running, check your actual schema and rename columns to match exactly. For example:
+- If your table uses `hotel_name` instead of `name` → update the SQL
+- If your table uses `check_in` instead of `checkin_date` → update the SQL
+- If your table doesn't have a column → remove it from the INSERT
+
+```sql
+-- ═══════════════════════════════════════
+-- SEED: properties
+-- ═══════════════════════════════════════
+INSERT INTO properties 
+  (name, code, country, city, star_rating, default_currency, timezone, status, checkin_time, checkout_time)
+VALUES
+  ('Grand Palace Bangkok',       'GPB', 'TH', 'Bangkok',       5, 'THB', 'Asia/Bangkok',          'active', '15:00', '12:00'),
+  ('Harbour View Seoul',         'HVS', 'KR', 'Seoul',         4, 'KRW', 'Asia/Seoul',             'active', '14:00', '11:00'),
+  ('The Alpine Lodge Zurich',    'ALZ', 'CH', 'Zurich',        5, 'CHF', 'Europe/Zurich',          'active', '15:00', '12:00'),
+  ('Copacabana Suites Rio',      'CSR', 'BR', 'Rio de Janeiro',4, 'BRL', 'America/Sao_Paulo',      'active', '14:00', '12:00'),
+  ('Desert Rose Dubai',          'DRD', 'AE', 'Dubai',         5, 'AED', 'Asia/Dubai',             'active', '15:00', '12:00'),
+  ('Sakura Inn Kyoto',           'SIK', 'JP', 'Kyoto',         3, 'JPY', 'Asia/Tokyo',             'active', '15:00', '10:00'),
+  ('Manhattan Business Hotel',   'MBH', 'US', 'New York',      4, 'USD', 'America/New_York',       'active', '16:00', '11:00'),
+  ('Villa Toscana Florence',     'VTF', 'IT', 'Florence',      4, 'EUR', 'Europe/Rome',            'active', '14:00', '11:00'),
+  ('Bali Breeze Resort',         'BBR', 'ID', 'Bali',          4, 'IDR', 'Asia/Makassar',          'active', '14:00', '12:00'),
+  ('Cape Point Lodge',           'CPL', 'ZA', 'Cape Town',     4, 'ZAR', 'Africa/Johannesburg',    'active', '15:00', '11:00')
+ON CONFLICT (code) DO NOTHING;
+
+-- ═══════════════════════════════════════
+-- SEED: room_types (adjust property_id references to match your inserted properties)
+-- ═══════════════════════════════════════
+INSERT INTO room_types
+  (name, code, max_adults, max_children, base_rate, currency, status)
+VALUES
+  ('Deluxe King Room',          'DLX-K',  2, 1, 4500.00,     'THB', 'active'),
+  ('Premier Suite',             'PRM-S',  2, 2, 12000.00,    'THB', 'active'),
+  ('Standard Twin',             'STD-T',  2, 0, 150000.00,   'KRW', 'active'),
+  ('Classic Double',            'CLS-D',  2, 1, 320.00,      'CHF', 'active'),
+  ('Sky Villa',                 'SKY-V',  4, 2, 8500.00,     'AED', 'active'),
+  ('Traditional Tatami Room',   'TAT-TR', 2, 1, 35000.00,    'JPY', 'active'),
+  ('Executive King',            'EXC-K',  2, 0, 580.00,      'USD', 'active'),
+  ('Renaissance Suite',         'REN-S',  2, 0, 680.00,      'EUR', 'active'),
+  ('Garden Pool Villa',         'GPV',    3, 2, 4200000.00,  'IDR', 'active'),
+  ('Ocean View Deluxe',         'OVD',    2, 1, 3800.00,     'ZAR', 'active')
+ON CONFLICT (code) DO NOTHING;
+
+-- ═══════════════════════════════════════
+-- SEED: rooms
+-- ═══════════════════════════════════════
+INSERT INTO rooms
+  (room_number, floor, view_type, housekeeping_status, occupancy_status)
+VALUES
+  ('1201', 12, 'City View',      'clean',     'vacant'),
+  ('1202', 12, 'City View',      'dirty',     'vacant'),
+  ('3201', 32, 'Skyline View',   'inspected', 'occupied'),
+  ('0501',  5, 'City View',      'clean',     'vacant'),
+  ('0302',  3, 'Garden View',    'dirty',     'vacant'),
+  ('4001', 40, 'Full Panorama',  'inspected', 'occupied'),
+  ('0201',  2, 'Zen Garden',     'clean',     'vacant'),
+  ('1505', 15, 'City View',      'clean',     'occupied'),
+  ('V-07',  1, 'Pool & Garden',  'inspected', 'vacant'),
+  ('0408',  4, 'Ocean View',     'dirty',     'occupied')
+ON CONFLICT (room_number) DO NOTHING;
+
+-- ═══════════════════════════════════════
+-- SEED: guests
+-- ═══════════════════════════════════════
+INSERT INTO guests
+  (first_name, last_name, email, phone, nationality, vip_status, marketing_consent)
+VALUES
+  ('James',    'Morrison',  'james.morrison@test.com',   '+1-310-555-0101',    'US', false, true),
+  ('김민준',   '김',        'minjun.kim@test.kr',        '+82-10-5555-0102',   'KR', true,  false),
+  ('Sophie',   'Beaumont',  'sophie.beaumont@test.fr',   '+33-6-5555-0103',    'FR', false, true),
+  ('田中 太郎','田中',      'taro.tanaka@test.jp',       '+81-90-5555-0104',   'JP', true,  false),
+  ('Aisha',    'Al-Rashid', 'aisha.alrashid@test.ae',    '+971-50-5555-0105',  'AE', true,  true),
+  ('Carlos',   'Mendes',    'carlos.mendes@test.br',     '+55-11-9-5555-0106', 'BR', false, true),
+  ('Priya',    'Sharma',    'priya.sharma@test.in',      '+91-98-5555-0107',   'IN', false, true),
+  ('Hans',     'Müller',    'hans.mueller@test.de',      '+49-176-5555-0108',  'DE', false, false),
+  ('Liu Wei',  '刘威',      'liu.wei@test.cn',           '+86-138-5555-0109',  'CN', true,  false),
+  ('Amara',    'Osei',      'amara.osei@test.gh',        '+233-24-5555-0110',  'GH', false, true)
+ON CONFLICT (email) DO NOTHING;
+
+-- ═══════════════════════════════════════
+-- SEED: reservations
+-- ═══════════════════════════════════════
+INSERT INTO reservations
+  (booking_ref, checkin_date, checkout_date, nights, adults, children, status, booking_source, total_amount, currency)
+VALUES
+  ('RES-TEST-001', '2025-04-01', '2025-04-05', 4, 2, 0, 'confirmed',   'direct',      19350.00,    'THB'),
+  ('RES-TEST-002', '2025-04-10', '2025-04-12', 2, 2, 0, 'checked_in',  'booking_com', 330000.00,   'KRW'),
+  ('RES-TEST-003', '2025-04-15', '2025-04-20', 5, 2, 1, 'confirmed',   'expedia',     1744.00,     'CHF'),
+  ('RES-TEST-004', '2025-03-28', '2025-04-02', 5, 2, 0, 'checked_in',  'direct',      44625.00,    'AED'),
+  ('RES-TEST-005', '2025-04-20', '2025-04-22', 2, 2, 0, 'confirmed',   'airbnb',      1276.00,     'USD'),
+  ('RES-TEST-006', '2025-03-20', '2025-03-25', 5, 2, 2, 'checked_out', 'direct',      64500.00,    'THB'),
+  ('RES-TEST-007', '2025-05-01', '2025-05-07', 6, 2, 1, 'confirmed',   'direct',      27972000.00, 'IDR'),
+  ('RES-TEST-008', '2025-04-18', '2025-04-21', 3, 1, 0, 'tentative',   'booking_com', 2223.60,     'EUR'),
+  ('RES-TEST-009', '2025-04-25', '2025-04-28', 3, 2, 0, 'cancelled',   'direct',      14512.50,    'THB'),
+  ('RES-TEST-010', '2025-04-05', '2025-04-09', 4, 2, 1, 'checked_in',  'expedia',     16416.00,    'ZAR')
+ON CONFLICT (booking_ref) DO NOTHING;
+
+-- ═══════════════════════════════════════
+-- SEED: rate_plans
+-- ═══════════════════════════════════════
+INSERT INTO rate_plans
+  (name, code, rate_type, amount, currency, meal_plan, min_stay, status, valid_from, valid_to)
+VALUES
+  ('Best Available Rate - Deluxe King',  'BAR-DLX-K', 'BAR',         4500.00,     'THB', 'room_only',    1, 'active', '2025-01-01', '2025-12-31'),
+  ('Premier Suite Package',              'PKG-PRM-S', 'package',     12000.00,    'THB', 'bed_breakfast', 2, 'active', '2025-01-01', '2025-12-31'),
+  ('Advance Purchase Twin',              'ADV-STD-T', 'promotional', 135000.00,   'KRW', 'room_only',    1, 'active', '2025-03-01', '2025-06-30'),
+  ('Corporate Rate Double',              'COR-CLS-D', 'corporate',   290.00,      'CHF', 'room_only',    1, 'active', '2025-01-01', '2025-12-31'),
+  ('Sky Villa Luxury Rate',              'LUX-SKY-V', 'BAR',         8500.00,     'AED', 'full_board',   3, 'active', '2025-01-01', '2025-12-31'),
+  ('Ryokan Experience Package',          'RYO-PKG',   'package',     35000.00,    'JPY', 'full_board',   2, 'active', '2025-01-01', '2025-12-31'),
+  ('Business Rate Executive King',       'BIZ-EXC-K', 'corporate',   520.00,      'USD', 'bed_breakfast', 1, 'active', '2025-01-01', '2025-12-31'),
+  ('Tuscany Escape Package',             'TUS-ESP',   'package',     680.00,      'EUR', 'half_board',   3, 'active', '2025-04-01', '2025-10-31'),
+  ('Honeymoon Villa Rate',               'HNY-VIL',   'package',     4200000.00,  'IDR', 'all_inclusive', 5, 'active', '2025-01-01', '2025-12-31'),
+  ('Cape Seasonal Rate',                 'SEA-OVD',   'BAR',         3800.00,     'ZAR', 'bed_breakfast', 2, 'active', '2025-01-01', '2025-12-31')
+ON CONFLICT (code) DO NOTHING;
+
+-- ═══════════════════════════════════════
+-- SEED: housekeeping_tasks
+-- ═══════════════════════════════════════
+INSERT INTO housekeeping_tasks
+  (task_type, priority, status, scheduled_date, scheduled_time, special_instructions)
+VALUES
+  ('checkout_clean', 'high',   'pending',     CURRENT_DATE,              '10:00', 'Check minibar — late checkout guest'),
+  ('stayover',       'normal', 'in_progress', CURRENT_DATE,              '09:30', NULL),
+  ('turndown',       'normal', 'completed',   CURRENT_DATE,              '18:00', 'Rose petals for anniversary couple'),
+  ('checkout_clean', 'high',   'completed',   CURRENT_DATE,              '11:00', NULL),
+  ('stayover',       'high',   'pending',     CURRENT_DATE,              '12:00', 'VVIP — butler service, premium amenities'),
+  ('deep_clean',     'normal', 'pending',     CURRENT_DATE + INTERVAL '1 day', '09:00', 'Post-departure deep clean'),
+  ('stayover',       'normal', 'in_progress', CURRENT_DATE,              '10:30', NULL),
+  ('inspection',     'normal', 'completed',   CURRENT_DATE,              '14:00', 'Pre-arrival inspection for VIP'),
+  ('checkout_clean', 'high',   'completed',   CURRENT_DATE,              '12:30', 'Pool area also needs servicing'),
+  ('dnd_override',   'low',    'pending',     CURRENT_DATE,              '16:00', 'Guest DND since morning — check at 4pm')
+ON CONFLICT DO NOTHING;
+
+-- ═══════════════════════════════════════
+-- SEED: users / staff
+-- ═══════════════════════════════════════
+INSERT INTO users
+  (first_name, last_name, email, role, status)
+VALUES
+  ('System',   'Admin',     'admin@hospitality-app.com',         'super_admin',            'active'),
+  ('Sarah',    'Tanaka',    'sarah.tanaka@grandpalace.com',      'property_manager',       'active'),
+  ('นารี',     'สุขใจ',    'nari.sukjai@grandpalace.com',       'housekeeping_supervisor','active'),
+  ('Ji-ho',    'Park',      'jiho.park@harbourview.com',         'front_desk',             'active'),
+  ('Anna',     'Weber',     'anna.weber@alpinelodge.com',        'front_desk',             'active'),
+  ('Mohammed', 'Al-Hassan', 'mohammed@desertrose.com',           'revenue_manager',        'active'),
+  ('Yuki',     'Nakamura',  'yuki.nakamura@sakurainn.com',       'front_desk',             'active'),
+  ('Rachel',   'Cohen',     'rachel.cohen@manhattan.com',        'property_manager',       'active'),
+  ('Wayan',    'Suarta',    'wayan.suarta@balibreeze.com',       'housekeeping_supervisor','active'),
+  ('Thabo',    'Dlamini',   'thabo.dlamini@capepoint.com',       'front_desk',             'inactive')
+ON CONFLICT (email) DO NOTHING;
+```
+
+---
+
+## ✅ STEP 5 — VERIFICATION REPORT
+
+After all steps are complete, generate this verification report:
+
+```
+════════════════════════════════════════════
+  AUDIT & FIX VERIFICATION REPORT
+════════════════════════════════════════════
+
+LIST PAGES
+──────────────────────────────────────────
+Page                | Fixed Issues         | Status
+────────────────────|──────────────────────|────────
+Properties List     | A1,A2,A4,A5,A7       | ✅ Done
+Reservations List   | A3,A4,A5,A6,A7       | ✅ Done
+Guests List         | A1,A4,A7,A10         | ✅ Done
+...
+
+DETAIL PAGES
+──────────────────────────────────────────
+Page                  | Layout Applied | Mobile OK | Status
+──────────────────────|────────────────|───────────|────────
+Property Detail       | ✅             | ✅        | ✅ Done
+Reservation Detail    | ✅             | ✅        | ✅ Done
+...
+
+SEED DATA
+──────────────────────────────────────────
+Table               | Before | Inserted | After | Status
+────────────────────|────────|──────────|───────|────────
+properties          | 2      | 8        | 10    | ✅
+room_types          | 0      | 10       | 10    | ✅
+rooms               | 3      | 7        | 10    | ✅
+guests              | 1      | 9        | 10    | ✅
+reservations        | 0      | 10       | 10    | ✅
+rate_plans          | 0      | 10       | 10    | ✅
+housekeeping_tasks  | 0      | 10       | 10    | ✅
+users               | 1      | 9        | 10    | ✅
+
+SKIPPED / ERRORS
+──────────────────────────────────────────
+[List any tables that were skipped and why]
+[List any files that had errors and what they were]
+
+════════════════════════════════════════════
+  ALL DONE. App is ready for manual testing.
+════════════════════════════════════════════
+```
+
+---
+
+## ⚠️ IF ANYTHING GOES WRONG
+
+- **Syntax error in a file** → Revert to the original content you read in Step 0, report the error, and skip that file
+- **Table does not exist** → Skip that seed, report it, continue with other tables
+- **Route does not exist for detail page** → Skip adding navigate(), report which routes are missing
+- **Column name mismatch in seed SQL** → Ask me what the actual column name is before inserting
+
+**Never proceed past a breaking error. Always stop, report, and wait.**

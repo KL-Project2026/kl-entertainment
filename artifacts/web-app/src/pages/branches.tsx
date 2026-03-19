@@ -40,6 +40,13 @@ export default function Branches() {
         <div className="space-y-4">
           {[1,2,3].map(i => <div key={i} className="h-24 bg-card rounded-xl animate-pulse" />)}
         </div>
+      ) : filteredBranches.length === 0 ? (
+        <div className="text-center py-16 border border-dashed border-white/10 rounded-2xl">
+          <MapPin className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
+          <p className="text-muted-foreground">
+            {branches.length === 0 ? "No branches configured yet" : "No branches match your search"}
+          </p>
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredBranches.map((branch) => (

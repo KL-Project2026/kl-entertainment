@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useAuthStore } from "@/lib/auth";
 import { useListProductGroups, useListProductTypes, useListProducts, useListBranches } from "@workspace/api-client-react";
 import { Card, Tabs, Button, Badge } from "@/components/ui";
+import { Input } from "@/components/ui/input";
 import { Plus, Search, Tag, Package as PackageIcon } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 
@@ -10,6 +11,7 @@ export default function Products() {
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(user?.branchId || null);
   const [selectedGroupId, setSelectedGroupId] = useState<string>("");
   const [selectedTypeId, setSelectedTypeId] = useState<string>("");
+  const [search, setSearch] = useState("");
 
   const { data: branchesData } = useListBranches();
   
@@ -46,7 +48,13 @@ export default function Products() {
     query: { enabled: !!selectedTypeId }
   });
 
-  const products = productsData?.data || [];
+  const allProducts = productsData?.data || [];
+  const products = search
+    ? allProducts.filter((p) =>
+        p.name.en?.toLowerCase().includes(search.toLowerCase()) ||
+        (p.name.zh ?? "").toLowerCase().includes(search.toLowerCase())
+      )
+    : allProducts;
 
   return (
     <div className="space-y-8 flex flex-col h-full max-w-7xl mx-auto">
@@ -67,6 +75,17 @@ export default function Products() {
           )}
           <Button className="gap-2"><Plus className="w-4 h-4" /> Add Product</Button>
         </div>
+      </div>
+
+      {/* Text Search */}
+      <div className="relative max-w-sm -mt-2">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <Input
+          className="pl-9"
+          placeholder="Search products..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
       </div>
 
       <div className="bg-card/50 border border-white/5 rounded-2xl p-2 flex flex-wrap gap-2 backdrop-blur-md">
