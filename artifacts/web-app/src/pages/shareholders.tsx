@@ -3,7 +3,6 @@ import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -18,15 +17,14 @@ import {
   Plus,
   X,
   FileText,
-  TrendingUp,
   Percent,
   DollarSign,
   ChevronDown,
   ChevronUp,
-  Check,
-  Search,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+import { ListPageWrapper, type ColumnDef } from "@/components/shared/list-page-wrapper";
+import { StatusBadge } from "@/components/ui/status-badge";
 
 const ORG_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -364,175 +362,6 @@ function SettlementModal({ shareholder, branches, onClose }: {
   );
 }
 
-export default function Shareholders() {
-  const { token } = useAuthStore();
-  const [showForm, setShowForm] = useState(false);
-  const [editItem, setEditItem] = useState<Shareholder | undefined>();
-  const [equityTarget, setEquityTarget] = useState<Shareholder | undefined>();
-  const [settlementTarget, setSettlementTarget] = useState<Shareholder | undefined>();
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-
-  const { data: shareholdersData, isLoading } = useQuery({
-    queryKey: ["shareholders"],
-    queryFn: async () => {
-      const r = await fetch(`/api/shareholders?org_id=${ORG_ID}`, { headers: getAuthHeader(token) });
-      return r.json();
-    },
-  });
-
-  const { data: branchesData } = useQuery({
-    queryKey: ["branches"],
-    queryFn: async () => {
-      const r = await fetch("/api/branches", { headers: getAuthHeader(token) });
-      return r.json();
-    },
-  });
-
-  const allShareholders: Shareholder[] = shareholdersData?.data ?? [];
-  const shareholders = allShareholders.filter((s) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      s.name.toLowerCase().includes(q) ||
-      (s.email?.toLowerCase().includes(q) ?? false) ||
-      (s.nationality?.toLowerCase().includes(q) ?? false)
-    );
-  });
-  const branches: Branch[] = (branchesData?.data ?? []).map((b: Record<string, unknown>) => ({
-    id: b.id as string,
-    name: b.name as string,
-    internalCode: b.internal_code as string,
-  }));
-
-  return (
-    <DashboardLayout>
-      <div className="p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-display font-bold">Shareholders</h1>
-            <p className="text-muted-foreground text-sm mt-1">Equity management & profit settlements</p>
-          </div>
-          <Button onClick={() => { setEditItem(undefined); setShowForm(true); }} className="gap-2">
-            <Plus className="w-4 h-4" /> Add Shareholder
-          </Button>
-        </div>
-
-        {/* Search */}
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            className="pl-9"
-            placeholder="Search shareholders..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-
-        {isLoading ? (
-          <div className="text-center py-12 text-muted-foreground">Loading shareholders...</div>
-        ) : shareholders.length === 0 ? (
-          <div className="text-center py-16">
-            <Users className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
-            <p className="text-muted-foreground">No shareholders yet</p>
-            <Button variant="outline" className="mt-4" onClick={() => setShowForm(true)}>Add First Shareholder</Button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {shareholders.map((s) => (
-              <Card key={s.id} className="overflow-hidden">
-                <div className="p-5">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3">
-                        <p className="font-bold text-lg">{s.name}</p>
-                        <Badge className="text-xs bg-primary/20 text-primary border border-primary/30">
-                          {s.preferredCurrency}
-                        </Badge>
-                      </div>
-                      <div className="flex gap-4 mt-1 text-xs text-muted-foreground">
-                        {s.email && <span>✉ {s.email}</span>}
-                        {s.phone && <span>📞 {s.phone}</span>}
-                        {s.nationality && <span>🌏 {s.nationality}</span>}
-                      </div>
-
-                      {/* Branch equities */}
-                      {s.branch_equities && s.branch_equities.length > 0 && (
-                        <div className="flex gap-2 mt-2 flex-wrap">
-                          {s.branch_equities.map((eq) => (
-                            <div key={eq.branchId} className="flex items-center gap-1.5 bg-black/30 rounded-lg px-3 py-1 text-xs">
-                              <span>{eq.branchName}</span>
-                              <span className="text-primary font-bold">{(parseFloat(eq.equityPct) * 100).toFixed(0)}%</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex gap-2 flex-shrink-0">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-xs gap-1"
-                        onClick={() => setEquityTarget(s)}
-                      >
-                        <Percent className="w-3 h-3" /> Equity
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="text-xs gap-1"
-                        onClick={() => setSettlementTarget(s)}
-                      >
-                        <DollarSign className="w-3 h-3" /> Settle
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-xs"
-                        onClick={() => { setEditItem(s); setShowForm(true); }}
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-xs px-2"
-                        onClick={() => setExpanded(expanded === s.id ? null : s.id)}
-                      >
-                        {expanded === s.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                {expanded === s.id && (
-                  <div className="border-t border-white/10 px-5 py-4 bg-black/20">
-                    <PastSettlements shareholderId={s.id} token={token} />
-                  </div>
-                )}
-              </Card>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {showForm && (
-        <ShareholderForm editItem={editItem} onClose={() => { setShowForm(false); setEditItem(undefined); }} />
-      )}
-      {equityTarget && (
-        <EquityForm shareholder={equityTarget} branches={branches} onClose={() => setEquityTarget(undefined)} />
-      )}
-      {settlementTarget && (
-        <SettlementModal
-          shareholder={settlementTarget}
-          branches={branches}
-          onClose={() => setSettlementTarget(undefined)}
-        />
-      )}
-    </DashboardLayout>
-  );
-}
-
 function PastSettlements({ shareholderId, token }: { shareholderId: string; token: string | null }) {
   const { data } = useQuery({
     queryKey: ["settlements", shareholderId],
@@ -547,21 +376,13 @@ function PastSettlements({ shareholderId, token }: { shareholderId: string; toke
   const settlements = data?.data ?? [];
   if (!settlements.length) return <p className="text-xs text-muted-foreground">No settlements yet.</p>;
 
-  const STATUS_COLORS: Record<string, string> = {
-    draft: "bg-slate-500/20 text-slate-300 border-slate-500/30",
-    approved: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
-    paid: "bg-primary/20 text-primary border-primary/30",
-  };
-
   return (
     <div className="space-y-2">
       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Past Settlements</p>
       {settlements.map((s: Record<string, unknown>) => (
         <div key={s.id as string} className="flex items-center justify-between text-sm">
           <div className="flex items-center gap-3">
-            <Badge className={`text-xs border ${STATUS_COLORS[(s.status as string) ?? "draft"]}`}>
-              {s.status as string}
-            </Badge>
+            <StatusBadge status={s.status as string} />
             <span className="text-muted-foreground">
               {formatDate(s.period_start as string)} → {formatDate(s.period_end as string)}
             </span>
@@ -581,5 +402,208 @@ function PastSettlements({ shareholderId, token }: { shareholderId: string; toke
         </div>
       ))}
     </div>
+  );
+}
+
+type ShareholderRow = Record<string, unknown>;
+
+function ShareholderCard({
+  shareholder,
+  expanded,
+  onToggleExpand,
+  onEquity,
+  onSettle,
+  onEdit,
+  token,
+}: {
+  shareholder: Shareholder;
+  expanded: boolean;
+  onToggleExpand: () => void;
+  onEquity: () => void;
+  onSettle: () => void;
+  onEdit: () => void;
+  token: string | null;
+}) {
+  return (
+    <Card className="overflow-hidden">
+      <div className="p-5">
+        <div className="flex items-start justify-between">
+          <div className="flex-1">
+            <div className="flex items-center gap-3">
+              <p className="font-bold text-lg">{shareholder.name}</p>
+              <StatusBadge
+                status="active"
+                label={shareholder.preferredCurrency}
+                className="bg-primary/20 text-primary border-primary/30"
+              />
+            </div>
+            <div className="flex gap-4 mt-1 text-xs text-muted-foreground">
+              {shareholder.email && <span>✉ {shareholder.email}</span>}
+              {shareholder.phone && <span>📞 {shareholder.phone}</span>}
+              {shareholder.nationality && <span>🌏 {shareholder.nationality}</span>}
+            </div>
+
+            {shareholder.branch_equities && shareholder.branch_equities.length > 0 && (
+              <div className="flex gap-2 mt-2 flex-wrap">
+                {shareholder.branch_equities.map((eq) => (
+                  <div key={eq.branchId} className="flex items-center gap-1.5 bg-black/30 rounded-lg px-3 py-1 text-xs">
+                    <span>{eq.branchName}</span>
+                    <span className="text-primary font-bold">{(parseFloat(eq.equityPct) * 100).toFixed(0)}%</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-2 flex-shrink-0">
+            <Button size="sm" variant="outline" className="text-xs gap-1" onClick={onEquity}>
+              <Percent className="w-3 h-3" /> Equity
+            </Button>
+            <Button size="sm" className="text-xs gap-1" onClick={onSettle}>
+              <DollarSign className="w-3 h-3" /> Settle
+            </Button>
+            <Button size="sm" variant="outline" className="text-xs" onClick={onEdit}>
+              Edit
+            </Button>
+            <Button size="sm" variant="ghost" className="text-xs px-2" onClick={onToggleExpand}>
+              {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="border-t border-white/10 px-5 py-4 bg-black/20">
+          <PastSettlements shareholderId={shareholder.id} token={token} />
+        </div>
+      )}
+    </Card>
+  );
+}
+
+const SHAREHOLDER_COLUMNS: ColumnDef<ShareholderRow>[] = [
+  {
+    key: "name",
+    label: "Name",
+    render: (row) => <p className="font-bold">{row.name as string}</p>,
+  },
+  {
+    key: "email",
+    label: "Email",
+    render: (row) => <span>{(row.email as string) || "—"}</span>,
+  },
+  {
+    key: "phone",
+    label: "Phone",
+    render: (row) => <span>{(row.phone as string) || "—"}</span>,
+  },
+  {
+    key: "nationality",
+    label: "Nationality",
+    render: (row) => <span>{(row.nationality as string) || "—"}</span>,
+  },
+  {
+    key: "preferredCurrency",
+    label: "Currency",
+  },
+  {
+    key: "isActive",
+    label: "Status",
+    render: (row) => (
+      <StatusBadge
+        status={(row.isActive as boolean) ? "active" : "inactive"}
+        label={(row.isActive as boolean) ? "Active" : "Inactive"}
+      />
+    ),
+  },
+];
+
+const SHAREHOLDER_STATUS_OPTIONS = [
+  { value: "true", label: "Active" },
+  { value: "false", label: "Inactive" },
+];
+
+export default function Shareholders() {
+  const { token } = useAuthStore();
+  const [showForm, setShowForm] = useState(false);
+  const [editItem, setEditItem] = useState<Shareholder | undefined>();
+  const [equityTarget, setEquityTarget] = useState<Shareholder | undefined>();
+  const [settlementTarget, setSettlementTarget] = useState<Shareholder | undefined>();
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const { data: shareholdersData, isLoading } = useQuery({
+    queryKey: ["shareholders"],
+    queryFn: async () => {
+      const r = await fetch(`/api/shareholders?org_id=${ORG_ID}`, { headers: getAuthHeader(token) });
+      return r.json();
+    },
+  });
+
+  const { data: branchesData } = useQuery({
+    queryKey: ["branches"],
+    queryFn: async () => {
+      const r = await fetch("/api/branches", { headers: getAuthHeader(token) });
+      return r.json();
+    },
+  });
+
+  const allShareholders: Shareholder[] = shareholdersData?.data ?? [];
+  const shareholderRows = allShareholders as unknown as ShareholderRow[];
+
+  const branches: Branch[] = (branchesData?.data ?? []).map((b: Record<string, unknown>) => ({
+    id: b.id as string,
+    name: b.name as string,
+    internalCode: b.internal_code as string,
+  }));
+
+  return (
+    <DashboardLayout>
+      <div className="p-6">
+        <ListPageWrapper
+          title="Shareholders"
+          subtitle="Equity management & profit settlements"
+          data={shareholderRows}
+          columns={SHAREHOLDER_COLUMNS}
+          cardRenderer={(row) => {
+            const s = row as unknown as Shareholder;
+            return (
+              <ShareholderCard
+                shareholder={s}
+                expanded={expanded === s.id}
+                onToggleExpand={() => setExpanded(expanded === s.id ? null : s.id)}
+                onEquity={() => setEquityTarget(s)}
+                onSettle={() => setSettlementTarget(s)}
+                onEdit={() => { setEditItem(s); setShowForm(true); }}
+                token={token}
+              />
+            );
+          }}
+          filterKey="isActive"
+          filterLabel="Status"
+          filterOptions={SHAREHOLDER_STATUS_OPTIONS}
+          searchKeys={["name", "email", "nationality", "phone"]}
+          searchPlaceholder="Search shareholders..."
+          isLoading={isLoading}
+          onAddNew={() => { setEditItem(undefined); setShowForm(true); }}
+          addNewLabel="Add Shareholder"
+          emptyIcon={<Users className="w-12 h-12" />}
+          emptyMessage="No shareholders found"
+        />
+      </div>
+
+      {showForm && (
+        <ShareholderForm editItem={editItem} onClose={() => { setShowForm(false); setEditItem(undefined); }} />
+      )}
+      {equityTarget && (
+        <EquityForm shareholder={equityTarget} branches={branches} onClose={() => setEquityTarget(undefined)} />
+      )}
+      {settlementTarget && (
+        <SettlementModal
+          shareholder={settlementTarget}
+          branches={branches}
+          onClose={() => setSettlementTarget(undefined)}
+        />
+      )}
+    </DashboardLayout>
   );
 }

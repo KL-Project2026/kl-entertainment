@@ -1,90 +1,101 @@
-import { useState } from "react";
-import { useListBranches, useCreateBranch } from "@workspace/api-client-react";
-import { Card, Button, Input, Badge } from "@/components/ui";
-import { Plus, Search, MapPin, Phone, Globe } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useListBranches } from "@workspace/api-client-react";
+import { Card, Button } from "@/components/ui";
+import { Plus, MapPin, Phone, Globe } from "lucide-react";
+import { ListPageWrapper, type ColumnDef } from "@/components/shared/list-page-wrapper";
+import { StatusBadge } from "@/components/ui/status-badge";
+
+type BranchRow = Record<string, unknown>;
+
+function BranchCard({ branch }: { branch: BranchRow }) {
+  return (
+    <Card className="overflow-hidden flex flex-col group hover:border-primary/30 transition-colors">
+      <div className="p-6 flex-1">
+        <div className="flex justify-between items-start mb-4">
+          <div>
+            <h3 className="font-display text-xl font-bold text-white">{branch.name as string}</h3>
+            <p className="text-primary text-sm font-medium">{branch.internalCode as string}</p>
+          </div>
+          <StatusBadge
+            status={(branch.isActive as boolean) ? "active" : "inactive"}
+            label={(branch.isActive as boolean) ? "Active" : "Inactive"}
+          />
+        </div>
+
+        <div className="space-y-3 mt-6 text-sm text-muted-foreground">
+          <div className="flex items-center gap-3">
+            <MapPin className="w-4 h-4 text-primary/70" />
+            <span>{(branch.city as string) || "No city"}, {branch.country as string}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <Phone className="w-4 h-4 text-primary/70" />
+            <span>{(branch.phone as string) || "No phone"}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <Globe className="w-4 h-4 text-primary/70" />
+            <span>{branch.timezone as string} • {branch.currency as string}</span>
+          </div>
+        </div>
+      </div>
+      <div className="border-t border-white/5 p-4 bg-black/20 flex justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+        <Button variant="ghost" size="sm">Settings</Button>
+        <Button variant="outline" size="sm">Edit</Button>
+      </div>
+    </Card>
+  );
+}
+
+const BRANCH_COLUMNS: ColumnDef<BranchRow>[] = [
+  { key: "name", label: "Name" },
+  { key: "internalCode", label: "Code" },
+  {
+    key: "city",
+    label: "City",
+    render: (row) => <span>{(row.city as string) || "—"}</span>,
+  },
+  { key: "country", label: "Country" },
+  {
+    key: "isActive",
+    label: "Status",
+    render: (row) => (
+      <StatusBadge
+        status={(row.isActive as boolean) ? "active" : "inactive"}
+        label={(row.isActive as boolean) ? "Active" : "Inactive"}
+      />
+    ),
+  },
+  { key: "timezone", label: "Timezone" },
+  { key: "currency", label: "Currency" },
+];
+
+const BRANCH_STATUS_OPTIONS = [
+  { value: "true", label: "Active" },
+  { value: "false", label: "Inactive" },
+];
 
 export default function Branches() {
-  const [search, setSearch] = useState("");
   const { data: branchesData, isLoading } = useListBranches();
-  
-  const branches = branchesData?.data || [];
-  const filteredBranches = branches.filter(b => b.name.toLowerCase().includes(search.toLowerCase()) || b.internalCode.toLowerCase().includes(search.toLowerCase()));
+  const branches = (branchesData?.data || []) as unknown as BranchRow[];
 
-  // We could implement the full create branch dialog here. Stubbing the button for visual completeness.
-  
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-display font-bold">Branch Management</h2>
-          <p className="text-muted-foreground text-sm">Manage physical locations and venue settings</p>
-        </div>
+    <ListPageWrapper
+      title="Branch Management"
+      subtitle="Manage physical locations and venue settings"
+      data={branches}
+      columns={BRANCH_COLUMNS}
+      cardRenderer={(row) => <BranchCard branch={row} />}
+      filterKey="isActive"
+      filterLabel="Status"
+      filterOptions={BRANCH_STATUS_OPTIONS}
+      searchKeys={["name", "internalCode", "city", "country"]}
+      searchPlaceholder="Search branches..."
+      isLoading={isLoading}
+      actions={
         <Button className="gap-2">
           <Plus className="w-4 h-4" /> Add Branch
         </Button>
-      </div>
-
-      <Card className="p-4 flex gap-4 bg-black/40 border-white/5">
-        <div className="flex-1 max-w-md">
-          <Input 
-            placeholder="Search branches..." 
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            icon={<Search className="w-4 h-4" />}
-          />
-        </div>
-      </Card>
-
-      {isLoading ? (
-        <div className="space-y-4">
-          {[1,2,3].map(i => <div key={i} className="h-24 bg-card rounded-xl animate-pulse" />)}
-        </div>
-      ) : filteredBranches.length === 0 ? (
-        <div className="text-center py-16 border border-dashed border-white/10 rounded-2xl">
-          <MapPin className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
-          <p className="text-muted-foreground">
-            {branches.length === 0 ? "No branches configured yet" : "No branches match your search"}
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredBranches.map((branch) => (
-            <Card key={branch.id} className="overflow-hidden flex flex-col group hover:border-primary/30 transition-colors">
-              <div className="p-6 flex-1">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h3 className="font-display text-xl font-bold text-white">{branch.name}</h3>
-                    <p className="text-primary text-sm font-medium">{branch.internalCode}</p>
-                  </div>
-                  <Badge variant={branch.isActive ? "success" : "neutral"}>
-                    {branch.isActive ? "Active" : "Inactive"}
-                  </Badge>
-                </div>
-
-                <div className="space-y-3 mt-6 text-sm text-muted-foreground">
-                  <div className="flex items-center gap-3">
-                    <MapPin className="w-4 h-4 text-primary/70" />
-                    <span>{branch.city || "No city"}, {branch.country}</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Phone className="w-4 h-4 text-primary/70" />
-                    <span>{branch.phone || "No phone"}</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Globe className="w-4 h-4 text-primary/70" />
-                    <span>{branch.timezone} • {branch.currency}</span>
-                  </div>
-                </div>
-              </div>
-              <div className="border-t border-white/5 p-4 bg-black/20 flex justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                <Button variant="ghost" size="sm">Settings</Button>
-                <Button variant="outline" size="sm">Edit</Button>
-              </div>
-            </Card>
-          ))}
-        </div>
-      )}
-    </div>
+      }
+      emptyIcon={<MapPin className="w-10 h-10" />}
+      emptyMessage="No branches found"
+    />
   );
 }

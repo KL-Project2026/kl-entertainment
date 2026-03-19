@@ -35,3 +35,16 @@ export function formatDateTime(value: string | Date | null | undefined): string 
     return String(value);
   }
 }
+
+export function truncate(str: string | null | undefined, max: number): string {
+  if (!str) return "—";
+  return str.length <= max ? str : `${str.slice(0, max)}…`;
+}
+
+export function display(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "number") return String(value);
+  if (typeof value === "string") return value || "—";
+  return String(value);
+}

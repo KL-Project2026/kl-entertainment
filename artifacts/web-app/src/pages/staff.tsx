@@ -3,7 +3,6 @@ import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -22,15 +21,14 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Users,
   Plus,
-  Search,
   Clock,
   LogIn,
   LogOut,
   TrendingUp,
   X,
 } from "lucide-react";
-
-const ORG_ID = "00000000-0000-0000-0000-000000000001";
+import { ListPageWrapper, type ColumnDef } from "@/components/shared/list-page-wrapper";
+import { StatusBadge } from "@/components/ui/status-badge";
 
 function getAuthHeader(token: string | null) {
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -304,7 +302,9 @@ function StaffForm({ branches, onClose, editStaff }: {
               id="penalty"
               className="rounded"
             />
-            <label htmlFor="penalty" className="text-sm text-muted-foreground">Penalty applies for lateness (&gt;30 min)</label>
+            <label htmlFor="penalty" className="text-sm text-muted-foreground">
+              Penalty applies for lateness (&gt;30 min)
+            </label>
           </div>
         </div>
 
@@ -320,10 +320,108 @@ function StaffForm({ branches, onClose, editStaff }: {
   );
 }
 
+type StaffRow = Record<string, unknown>;
+
+function StaffCard({
+  staff,
+  onClock,
+  onEarnings,
+  onEdit,
+}: {
+  staff: StaffMember;
+  onClock: () => void;
+  onEarnings: () => void;
+  onEdit: () => void;
+}) {
+  return (
+    <Card className="p-4 space-y-3 hover:border-white/20 transition-colors">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="font-medium">{staff.fullName}</p>
+          <p className="text-xs text-muted-foreground">{staff.employeeCode ?? "—"}</p>
+        </div>
+        <StatusBadge
+          status={staff.role}
+          className={ROLE_COLORS[staff.role] ?? ROLE_COLORS.general}
+        />
+      </div>
+
+      <div className="text-xs text-muted-foreground space-y-1">
+        {staff.phone && <p>📞 {staff.phone}</p>}
+        <p className="capitalize">{staff.employmentType.replace("_", " ")}</p>
+        {staff.agentName && <p className="text-purple-400">Agent: {staff.agentName}</p>}
+      </div>
+
+      <div className="flex gap-1.5 pt-1">
+        <Button size="sm" variant="outline" className="flex-1 text-xs gap-1" onClick={onClock}>
+          <Clock className="w-3 h-3" /> Attend
+        </Button>
+        <Button size="sm" variant="outline" className="flex-1 text-xs gap-1" onClick={onEarnings}>
+          <TrendingUp className="w-3 h-3" /> Earnings
+        </Button>
+        <Button size="sm" variant="outline" className="text-xs px-2" onClick={onEdit}>
+          Edit
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+const STAFF_COLUMNS: ColumnDef<StaffRow>[] = [
+  {
+    key: "fullName",
+    label: "Name",
+    render: (row) => (
+      <div>
+        <p className="font-medium">{row.fullName as string}</p>
+        <p className="text-xs text-muted-foreground">{(row.employeeCode as string) || "—"}</p>
+      </div>
+    ),
+  },
+  {
+    key: "role",
+    label: "Role",
+    render: (row) => (
+      <StatusBadge
+        status={row.role as string}
+        className={ROLE_COLORS[row.role as string] ?? ROLE_COLORS.general}
+      />
+    ),
+  },
+  {
+    key: "employmentType",
+    label: "Employment",
+    render: (row) => (
+      <span className="capitalize">{(row.employmentType as string).replace("_", " ")}</span>
+    ),
+  },
+  {
+    key: "phone",
+    label: "Phone",
+    render: (row) => <span>{(row.phone as string) || "—"}</span>,
+  },
+  {
+    key: "agentName",
+    label: "Agent",
+    render: (row) => (
+      <span className={row.agentName ? "text-purple-400" : "text-muted-foreground/50"}>
+        {(row.agentName as string) || "—"}
+      </span>
+    ),
+  },
+];
+
+const STAFF_ROLE_OPTIONS = [
+  { value: "hostess", label: "Hostess" },
+  { value: "driver", label: "Driver" },
+  { value: "manager", label: "Manager" },
+  { value: "kitchen", label: "Kitchen" },
+  { value: "hall", label: "Hall" },
+  { value: "general", label: "General" },
+];
+
 export default function Staff() {
   const { token, user } = useAuthStore();
-  const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState("__all__");
   const [branchFilter, setBranchFilter] = useState(user?.branchId ?? "__all__");
   const [showForm, setShowForm] = useState(false);
   const [editStaff, setEditStaff] = useState<StaffMember | undefined>();
@@ -339,11 +437,10 @@ export default function Staff() {
   });
 
   const { data: staffData, isLoading } = useQuery({
-    queryKey: ["staff", branchFilter, roleFilter],
+    queryKey: ["staff", branchFilter],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (branchFilter !== "__all__") params.set("branch_id", branchFilter);
-      if (roleFilter !== "__all__") params.set("role", roleFilter);
       const r = await fetch(`/api/staff?${params}`, { headers: getAuthHeader(token) });
       return r.json();
     },
@@ -356,112 +453,51 @@ export default function Staff() {
   }));
 
   const allStaff: StaffMember[] = staffData?.data ?? [];
-  const filtered = allStaff.filter((s) =>
-    s.fullName.toLowerCase().includes(search.toLowerCase()) ||
-    (s.phone?.includes(search) ?? false)
-  );
+  const staffRows = allStaff as unknown as StaffRow[];
 
   return (
     <DashboardLayout>
-      <div className="p-6 space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-display font-bold">Staff Management</h1>
-            <p className="text-muted-foreground text-sm mt-1">{allStaff.length} staff members</p>
-          </div>
-          <Button onClick={() => { setEditStaff(undefined); setShowForm(true); }} className="gap-2">
-            <Plus className="w-4 h-4" /> Add Staff
-          </Button>
-        </div>
-
-        {/* Filters */}
-        <div className="flex gap-3 flex-wrap">
-          <div className="relative flex-1 min-w-48">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              className="pl-9"
-              placeholder="Search staff..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+      <div className="p-6">
+        {/* Branch filter */}
+        <div className="mb-4 flex justify-end">
           <Select value={branchFilter} onValueChange={setBranchFilter}>
             <SelectTrigger className="w-44"><SelectValue placeholder="All Branches" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">All Branches</SelectItem>
-              {branches.map((b) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={roleFilter} onValueChange={setRoleFilter}>
-            <SelectTrigger className="w-36"><SelectValue placeholder="All Roles" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">All Roles</SelectItem>
-              {["hostess", "driver", "manager", "kitchen", "hall", "general"].map((r) => (
-                <SelectItem key={r} value={r}>{r}</SelectItem>
+              {branches.map((b) => (
+                <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
 
-        {/* Staff Grid */}
-        {isLoading ? (
-          <div className="text-center py-12 text-muted-foreground">Loading staff...</div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-12">
-            <Users className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
-            <p className="text-muted-foreground">No staff members found</p>
-          </div>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {filtered.map((s) => (
-              <Card key={s.id} className="p-4 space-y-3 hover:border-white/20 transition-colors">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="font-medium">{s.fullName}</p>
-                    <p className="text-xs text-muted-foreground">{s.employeeCode ?? "—"}</p>
-                  </div>
-                  <Badge className={`text-xs border ${ROLE_COLORS[s.role] ?? ROLE_COLORS.general}`}>
-                    {s.role}
-                  </Badge>
-                </div>
-
-                <div className="text-xs text-muted-foreground space-y-1">
-                  {s.phone && <p>📞 {s.phone}</p>}
-                  <p className="capitalize">{s.employmentType.replace("_", " ")}</p>
-                  {s.agentName && <p className="text-purple-400">Agent: {s.agentName}</p>}
-                </div>
-
-                <div className="flex gap-1.5 pt-1">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="flex-1 text-xs gap-1"
-                    onClick={() => setClockStaff(s)}
-                  >
-                    <Clock className="w-3 h-3" /> Attend
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="flex-1 text-xs gap-1"
-                    onClick={() => setEarningsStaff(s)}
-                  >
-                    <TrendingUp className="w-3 h-3" /> Earnings
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-xs px-2"
-                    onClick={() => { setEditStaff(s); setShowForm(true); }}
-                  >
-                    Edit
-                  </Button>
-                </div>
-              </Card>
-            ))}
-          </div>
-        )}
+        <ListPageWrapper
+          title="Staff Management"
+          subtitle={`${allStaff.length} staff members`}
+          data={staffRows}
+          columns={STAFF_COLUMNS}
+          cardRenderer={(row) => {
+            const s = row as unknown as StaffMember;
+            return (
+              <StaffCard
+                staff={s}
+                onClock={() => setClockStaff(s)}
+                onEarnings={() => setEarningsStaff(s)}
+                onEdit={() => { setEditStaff(s); setShowForm(true); }}
+              />
+            );
+          }}
+          filterKey="role"
+          filterLabel="Role"
+          filterOptions={STAFF_ROLE_OPTIONS}
+          searchKeys={["fullName", "phone", "employeeCode"]}
+          searchPlaceholder="Search staff..."
+          isLoading={isLoading}
+          onAddNew={() => { setEditStaff(undefined); setShowForm(true); }}
+          addNewLabel="Add Staff"
+          emptyIcon={<Users className="w-12 h-12" />}
+          emptyMessage="No staff members found"
+        />
       </div>
 
       {showForm && (
