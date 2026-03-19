@@ -4,6 +4,7 @@ import { authenticate } from "../middleware/auth";
 import { requireRole, requireBranchAccess } from "../middleware/rbac";
 import { ROLES, VALID_TRANSITIONS } from "../config/constants";
 import { transitionStatus, validateOutcallDriverAssigned, generateReservationNo } from "../services/reservation-service";
+import { sendBookingConfirmation } from "../services/whatsapp-service";
 
 const router: IRouter = Router();
 
@@ -197,6 +198,17 @@ router.put(
 
       const updated = await transitionStatus(req.params.id, "confirmed", req.user!.id);
       res.json({ data: formatReservation(updated) });
+
+      if (updated.customer_phone) {
+        const lang = (updated.customer_language_pref as string | undefined) ?? "en";
+        sendBookingConfirmation({
+          reservation_no: updated.reservation_no as string,
+          start_time: String(updated.start_time),
+          room_name: updated.room_name as string ?? "",
+          guest_count: updated.guest_count as number,
+          customer_phone: updated.customer_phone as string,
+        }, lang).catch((err) => console.error("[whatsapp] confirmation send failed:", err));
+      }
     } catch (err: unknown) {
       const msg = (err as Error).message;
       if (msg.startsWith("INVALID_TRANSITION")) res.status(422).json({ error: msg });

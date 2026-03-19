@@ -20,6 +20,8 @@ This is **KL Project** — a multi-branch KTV (Karaoke) business management plat
 - **Auth**: JWT (bcryptjs + jsonwebtoken), 24h access token, 30d refresh
 - **Real-time**: Socket.io on `artifacts/api-server` (room board updates)
 - **Frontend**: React + Vite, Tailwind, Shadcn, TanStack Query, Zustand, Framer Motion, Recharts, Wouter
+- **i18n**: i18next + react-i18next, 6 locales (en/zh/ms/ja/ko/th), namespace `"t"`
+- **External services**: WhatsApp Cloud API (send booking confirmations), Telegram Bot API (optional), ExchangeRate API (FX rates)
 
 ## Structure
 
@@ -49,7 +51,11 @@ artifacts-monorepo/
 │   │           ├── staff-availability.ts  # Staff availability legacy
 │           ├── shareholders.ts   # Shareholder CRUD + equity + settlements
 │           ├── investor.ts       # Investor dashboard snapshot + settlements
-│           └── reports.ts        # Revenue/Occupancy/Commissions/P&L reports
+│           ├── reports.ts        # Revenue/Occupancy/Commissions/P&L reports
+│           ├── currency.ts       # GET /fx-rates (cached), POST /fx-rates/convert
+│           ├── customer-auth.ts  # POST /customer/auth/register|login, GET /customer/profile
+│           ├── customer-bookings.ts # GET/POST /customer/bookings, PUT /customer/bookings/:id/cancel
+│           └── webhooks.ts       # GET/POST /webhooks/whatsapp, POST /webhooks/telegram
 │   └── web-app/             # React + Vite frontend (previewPath: /)
 │       └── src/
 │           ├── pages/
@@ -67,14 +73,24 @@ artifacts-monorepo/
 │           │   ├── agents.tsx        # Agent CRUD + commission statement + payout
 │           │   ├── shareholders.tsx  # Shareholder CRUD + equity + settlement generation
 │           │   ├── investor-dashboard.tsx # Recharts + Socket.io live investor dashboard
-│           │   └── reports.tsx       # Tabbed Revenue/Occupancy/Commissions/PnL with charts
+│           │   ├── reports.tsx       # Tabbed Revenue/Occupancy/Commissions/PnL with charts
+│           │   └── customer/
+│           │       ├── login.tsx     # Customer portal login+register (light amber theme)
+│           │       ├── dashboard.tsx # Customer dashboard — upcoming bookings + Book a Room CTA
+│           │       ├── booking.tsx   # 3-step booking wizard (branch→room→confirm)
+│           │       └── history.tsx   # Customer booking history list
 │           ├── components/
 │           │   ├── ui.tsx            # Shared UI components
-│           │   └── layout.tsx        # Sidebar layout
+│           │   └── layout.tsx        # Sidebar layout + language selector dropdown
 │           ├── hooks/
 │           │   └── use-live-timer.ts
+│           ├── i18n/
+│           │   ├── index.ts          # i18next config, defaultNS: "t", 6 locales
+│           │   └── locales/          # en.json zh.json ms.json ja.json ko.json th.json
 │           ├── lib/
-│           │   ├── auth.ts           # Zustand auth store (key: 'kl-auth-storage'), token field
+│           │   ├── auth.ts           # Zustand staff auth store (key: 'kl-auth-storage'), token field
+│           │   ├── customer-auth.ts  # Zustand customer auth store (key: 'kl-customer-storage')
+│           │   ├── api.ts            # fetch wrapper with auto auth header injection
 │           │   └── utils.ts
 │           └── App.tsx
 ├── lib/
@@ -206,6 +222,27 @@ artifacts-monorepo/
 | PUT | /api/agents/:id | admin+ | |
 | GET | /api/agents/:id/statement | Bearer | ?from=, ?to= → commission statement with hostess breakdown |
 | POST | /api/agents/:id/payout | admin+ | records payout, updates agent.credit_balance |
+| GET | /api/shareholders | Bearer | |
+| POST | /api/shareholders | admin+ | |
+| PUT | /api/shareholders/:id | admin+ | |
+| POST | /api/shareholders/:id/settle | admin+ | |
+| GET | /api/investor/dashboard | Bearer | KPIs + charts snapshot |
+| GET | /api/reports/revenue | Bearer | ?branchId=, ?from=, ?to= |
+| GET | /api/reports/occupancy | Bearer | |
+| GET | /api/reports/commissions | Bearer | |
+| GET | /api/reports/pnl | Bearer | P&L |
+| GET | /api/fx-rates | — | Returns cached MYR-based FX rates |
+| POST | /api/fx-rates/convert | — | `{ amount, from, to }` → converted amount |
+| POST | /api/customer/auth/register | — | `{ fullName, email, phone, password, languagePref }` → `{ token }` |
+| POST | /api/customer/auth/login | — | `{ email, password }` → `{ token, fullName, languagePref }` |
+| GET | /api/customer/profile | Customer JWT | Returns customer profile |
+| GET | /api/customer/bookings | Customer JWT | List customer bookings (DESC) |
+| GET | /api/customer/bookings/:id | Customer JWT | Booking detail |
+| POST | /api/customer/bookings | Customer JWT | Create booking (checks overlap) |
+| PUT | /api/customer/bookings/:id/cancel | Customer JWT | Cancel tentative/confirmed booking |
+| GET | /api/webhooks/whatsapp | — | WhatsApp webhook verification |
+| POST | /api/webhooks/whatsapp | — | WhatsApp message handler |
+| POST | /api/webhooks/telegram | — | Telegram update handler |
 
 ## POS Flow
 
@@ -244,6 +281,13 @@ artifacts-monorepo/
 - **reservations**: NO `org_id` column
 - **POST /api/orders branchId resolution chain**: body.branchId → URL query branchId → reservation lookup → JWT user.branchId
 - **products.unit_price** maps to API response field `unitPrice` (NOT `sellingPrice`)
+- **i18n namespace**: `"t"` (defaultNS: `"t"`). Language stored in `localStorage["kl_lang"]` (persisted). Locales in `src/i18n/locales/*.json`
+- **Customer JWT**: type claim `"customer"` (not staff). Zustand store: `kl-customer-storage`, field: `token`. Customer routes use `authenticateCustomer` middleware, NOT staff `requireAuth`
+- **Customer portal** at `/customer/*` paths — fetch interceptor skips staff token injection for these paths; WhatsApp trigger excluded from customer routes
+- **reservations** has `cancelled_at` (not `deleted_at`) + `booking_channel` (not `channel`) + `special_requests` (not `notes`)
+- **WhatsApp/Telegram/FX** env vars are optional — services degrade gracefully if missing (EXCHANGERATE_API_KEY, WHATSAPP_TOKEN + WHATSAPP_PHONE_ID, TELEGRAM_BOT_TOKEN)
+- **WhatsApp trigger**: fires on `PUT /api/reservations/:id/confirm` (state transition to confirmed) — sends booking confirmation to customer phone in background (non-blocking)
+- **Webhook verify token**: `kl_whatsapp_verify` (hardcoded in webhooks.ts)
 
 ## TypeScript & Composite Projects
 

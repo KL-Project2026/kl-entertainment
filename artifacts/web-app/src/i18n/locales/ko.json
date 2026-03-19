@@ -1,0 +1,151 @@
+{
+  "nav": {
+    "dashboard": "대시보드",
+    "room_board": "룸 현황판",
+    "reservations": "예약 관리",
+    "pos": "주문/POS",
+    "staff": "직원 관리",
+    "schedules": "스케줄",
+    "attendance": "출퇴근",
+    "agents": "에이전트",
+    "shareholders": "주주 관리",
+    "investor": "투자자 뷰",
+    "reports": "리포트",
+    "branches": "지점 관리",
+    "products": "상품 카탈로그",
+    "customers": "고객 관리",
+    "settings": "설정"
+  },
+  "auth": {
+    "sign_in": "로그인",
+    "sign_out": "로그아웃",
+    "email": "이메일 주소",
+    "password": "비밀번호",
+    "invalid_credentials": "이메일 또는 비밀번호가 잘못되었습니다.",
+    "demo_accounts": "데모 계정",
+    "management_portal": "관리 포털"
+  },
+  "booking": {
+    "new": "새 예약",
+    "status": {
+      "tentative": "임시예약",
+      "confirmed": "확정",
+      "checked_in": "입장",
+      "extended": "연장",
+      "checked_out": "퇴장",
+      "cancelled": "취소",
+      "no_show": "노쇼"
+    },
+    "channel": {
+      "walk_in": "워크인",
+      "customer_app": "고객 앱",
+      "whatsapp": "WhatsApp",
+      "telegram": "Telegram",
+      "phone": "전화",
+      "agent": "에이전트"
+    },
+    "room": "룸",
+    "date": "날짜",
+    "time": "시간",
+    "guests": "인원",
+    "confirm": "예약 확정",
+    "cancel": "예약 취소"
+  },
+  "room": {
+    "status": {
+      "available": "예약가능",
+      "occupied": "이용중",
+      "reserved": "예약됨",
+      "cleaning": "청소중",
+      "maintenance": "점검중"
+    }
+  },
+  "staff": {
+    "role": {
+      "super_admin": "슈퍼 관리자",
+      "admin": "관리자",
+      "branch_manager": "지점장",
+      "manager": "매니저",
+      "hostess": "호스티스",
+      "driver": "드라이버",
+      "kitchen": "주방",
+      "hall": "홀 직원",
+      "general": "일반"
+    },
+    "employment": {
+      "full_time": "정규직",
+      "part_time": "파트타임",
+      "contract": "계약직",
+      "freelance": "프리랜서"
+    },
+    "clock_in": "출근",
+    "clock_out": "퇴근"
+  },
+  "payment": {
+    "method": {
+      "cash": "현금",
+      "qr_touchngo": "Touch 'n Go QR",
+      "qr_grabpay": "GrabPay QR",
+      "fpx": "FPX",
+      "card": "신용/체크카드",
+      "credit_account": "후불계정",
+      "bank_transfer": "계좌이체"
+    },
+    "total": "합계",
+    "subtotal": "소계",
+    "tax": "세금",
+    "service_charge": "서비스 요금",
+    "pay": "결제하기"
+  },
+  "invoice": {
+    "title": "인보이스",
+    "receipt_title": "영수증",
+    "mode_detailed": "상세 모드",
+    "mode_basic": "간략 모드",
+    "print": "인쇄",
+    "send_whatsapp": "WhatsApp으로 전송"
+  },
+  "common": {
+    "save": "저장",
+    "cancel": "취소",
+    "delete": "삭제",
+    "edit": "수정",
+    "add": "추가",
+    "search": "검색",
+    "filter": "필터",
+    "loading": "로딩 중...",
+    "no_data": "데이터 없음",
+    "confirm": "확인",
+    "close": "닫기",
+    "back": "뒤로",
+    "next": "다음",
+    "submit": "제출",
+    "yes": "예",
+    "no": "아니오",
+    "all": "전체",
+    "today": "오늘",
+    "week": "이번 주",
+    "month": "이번 달"
+  },
+  "errors": {
+    "driver_required": "아웃콜 예약에는 드라이버를 지정해야 합니다",
+    "room_not_available": "선택한 시간에 해당 룸을 이용할 수 없습니다",
+    "invalid_credentials": "이메일 또는 비밀번호가 올바르지 않습니다",
+    "generic": "오류가 발생했습니다. 다시 시도해 주세요."
+  },
+  "customer": {
+    "portal": "고객 포털",
+    "my_bookings": "내 예약",
+    "new_booking": "룸 예약",
+    "profile": "내 프로필",
+    "register": "회원가입",
+    "login": "로그인",
+    "name": "이름",
+    "phone": "전화번호"
+  },
+  "fx": {
+    "live_rates": "실시간 환율",
+    "base": "기준: MYR",
+    "last_updated": "마지막 업데이트"
+  }
+}

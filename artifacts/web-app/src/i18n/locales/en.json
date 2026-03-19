@@ -1,0 +1,151 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "room_board": "Room Board",
+    "reservations": "Reservations",
+    "pos": "Point of Sale",
+    "staff": "Staff",
+    "schedules": "Schedules",
+    "attendance": "Attendance",
+    "agents": "Agents",
+    "shareholders": "Shareholders",
+    "investor": "Investor View",
+    "reports": "Reports",
+    "branches": "Branches",
+    "products": "Product Catalog",
+    "customers": "Customers",
+    "settings": "Settings"
+  },
+  "auth": {
+    "sign_in": "Sign In",
+    "sign_out": "Sign Out",
+    "email": "Email Address",
+    "password": "Password",
+    "invalid_credentials": "Invalid credentials. Please try again.",
+    "demo_accounts": "Demo Accounts",
+    "management_portal": "Management Portal"
+  },
+  "booking": {
+    "new": "New Booking",
+    "status": {
+      "tentative": "Tentative",
+      "confirmed": "Confirmed",
+      "checked_in": "Checked In",
+      "extended": "Extended",
+      "checked_out": "Checked Out",
+      "cancelled": "Cancelled",
+      "no_show": "No Show"
+    },
+    "channel": {
+      "walk_in": "Walk-in",
+      "customer_app": "Customer App",
+      "whatsapp": "WhatsApp",
+      "telegram": "Telegram",
+      "phone": "Phone",
+      "agent": "Agent"
+    },
+    "room": "Room",
+    "date": "Date",
+    "time": "Time",
+    "guests": "Guests",
+    "confirm": "Confirm Booking",
+    "cancel": "Cancel Booking"
+  },
+  "room": {
+    "status": {
+      "available": "Available",
+      "occupied": "Occupied",
+      "reserved": "Reserved",
+      "cleaning": "Cleaning",
+      "maintenance": "Maintenance"
+    }
+  },
+  "staff": {
+    "role": {
+      "super_admin": "Super Admin",
+      "admin": "Admin",
+      "branch_manager": "Branch Manager",
+      "manager": "Manager",
+      "hostess": "Hostess",
+      "driver": "Driver",
+      "kitchen": "Kitchen",
+      "hall": "Hall Staff",
+      "general": "General"
+    },
+    "employment": {
+      "full_time": "Full-time",
+      "part_time": "Part-time",
+      "contract": "Contract",
+      "freelance": "Freelance"
+    },
+    "clock_in": "Clock In",
+    "clock_out": "Clock Out"
+  },
+  "payment": {
+    "method": {
+      "cash": "Cash",
+      "qr_touchngo": "Touch 'n Go QR",
+      "qr_grabpay": "GrabPay QR",
+      "fpx": "FPX",
+      "card": "Credit/Debit Card",
+      "credit_account": "Credit Account",
+      "bank_transfer": "Bank Transfer"
+    },
+    "total": "Total",
+    "subtotal": "Subtotal",
+    "tax": "SST",
+    "service_charge": "Service Charge",
+    "pay": "Pay Now"
+  },
+  "invoice": {
+    "title": "Invoice",
+    "receipt_title": "Receipt",
+    "mode_detailed": "Detailed",
+    "mode_basic": "Basic",
+    "print": "Print",
+    "send_whatsapp": "Send via WhatsApp"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "add": "Add",
+    "search": "Search",
+    "filter": "Filter",
+    "loading": "Loading...",
+    "no_data": "No data available",
+    "confirm": "Confirm",
+    "close": "Close",
+    "back": "Back",
+    "next": "Next",
+    "submit": "Submit",
+    "yes": "Yes",
+    "no": "No",
+    "all": "All",
+    "today": "Today",
+    "week": "This Week",
+    "month": "This Month"
+  },
+  "errors": {
+    "driver_required": "A driver must be assigned for outcall bookings",
+    "room_not_available": "This room is not available for the selected time",
+    "invalid_credentials": "Invalid email or password",
+    "generic": "Something went wrong. Please try again."
+  },
+  "customer": {
+    "portal": "Customer Portal",
+    "my_bookings": "My Bookings",
+    "new_booking": "Book a Room",
+    "profile": "My Profile",
+    "register": "Register",
+    "login": "Login",
+    "name": "Full Name",
+    "phone": "Phone Number"
+  },
+  "fx": {
+    "live_rates": "Live FX Rates",
+    "base": "Base: MYR",
+    "last_updated": "Last Updated"
+  }
+}

@@ -1,0 +1,151 @@
+{
+  "nav": {
+    "dashboard": "Papan Pemuka",
+    "room_board": "Papan Bilik",
+    "reservations": "Tempahan",
+    "pos": "Pusat Jualan",
+    "staff": "Kakitangan",
+    "schedules": "Jadual",
+    "attendance": "Kehadiran",
+    "agents": "Ejen",
+    "shareholders": "Pemegang Saham",
+    "investor": "Paparan Pelabur",
+    "reports": "Laporan",
+    "branches": "Cawangan",
+    "products": "Katalog Produk",
+    "customers": "Pelanggan",
+    "settings": "Tetapan"
+  },
+  "auth": {
+    "sign_in": "Log Masuk",
+    "sign_out": "Log Keluar",
+    "email": "Alamat E-mel",
+    "password": "Kata Laluan",
+    "invalid_credentials": "Kelayakan tidak sah. Sila cuba lagi.",
+    "demo_accounts": "Akaun Demo",
+    "management_portal": "Portal Pengurusan"
+  },
+  "booking": {
+    "new": "Tempahan Baru",
+    "status": {
+      "tentative": "Sementara",
+      "confirmed": "Disahkan",
+      "checked_in": "Daftar Masuk",
+      "extended": "Dilanjutkan",
+      "checked_out": "Daftar Keluar",
+      "cancelled": "Dibatalkan",
+      "no_show": "Tidak Hadir"
+    },
+    "channel": {
+      "walk_in": "Datang Terus",
+      "customer_app": "Aplikasi Pelanggan",
+      "whatsapp": "WhatsApp",
+      "telegram": "Telegram",
+      "phone": "Telefon",
+      "agent": "Ejen"
+    },
+    "room": "Bilik",
+    "date": "Tarikh",
+    "time": "Masa",
+    "guests": "Tetamu",
+    "confirm": "Sahkan Tempahan",
+    "cancel": "Batal Tempahan"
+  },
+  "room": {
+    "status": {
+      "available": "Tersedia",
+      "occupied": "Diduduki",
+      "reserved": "Ditempah",
+      "cleaning": "Pembersihan",
+      "maintenance": "Penyelenggaraan"
+    }
+  },
+  "staff": {
+    "role": {
+      "super_admin": "Super Admin",
+      "admin": "Admin",
+      "branch_manager": "Pengurus Cawangan",
+      "manager": "Pengurus",
+      "hostess": "Hostes",
+      "driver": "Pemandu",
+      "kitchen": "Dapur",
+      "hall": "Kakitangan Dewan",
+      "general": "Umum"
+    },
+    "employment": {
+      "full_time": "Sepenuh Masa",
+      "part_time": "Separuh Masa",
+      "contract": "Kontrak",
+      "freelance": "Bebas"
+    },
+    "clock_in": "Daftar Masuk",
+    "clock_out": "Daftar Keluar"
+  },
+  "payment": {
+    "method": {
+      "cash": "Tunai",
+      "qr_touchngo": "Touch 'n Go QR",
+      "qr_grabpay": "GrabPay QR",
+      "fpx": "FPX",
+      "card": "Kad Kredit/Debit",
+      "credit_account": "Akaun Kredit",
+      "bank_transfer": "Pindahan Bank"
+    },
+    "total": "Jumlah",
+    "subtotal": "Subjumlah",
+    "tax": "SST",
+    "service_charge": "Caj Perkhidmatan",
+    "pay": "Bayar Sekarang"
+  },
+  "invoice": {
+    "title": "Invois",
+    "receipt_title": "Resit",
+    "mode_detailed": "Terperinci",
+    "mode_basic": "Ringkas",
+    "print": "Cetak",
+    "send_whatsapp": "Hantar via WhatsApp"
+  },
+  "common": {
+    "save": "Simpan",
+    "cancel": "Batal",
+    "delete": "Padam",
+    "edit": "Edit",
+    "add": "Tambah",
+    "search": "Cari",
+    "filter": "Tapis",
+    "loading": "Memuatkan...",
+    "no_data": "Tiada data",
+    "confirm": "Sahkan",
+    "close": "Tutup",
+    "back": "Kembali",
+    "next": "Seterusnya",
+    "submit": "Hantar",
+    "yes": "Ya",
+    "no": "Tidak",
+    "all": "Semua",
+    "today": "Hari Ini",
+    "week": "Minggu Ini",
+    "month": "Bulan Ini"
+  },
+  "errors": {
+    "driver_required": "Pemandu mesti ditugaskan untuk tempahan luar",
+    "room_not_available": "Bilik ini tidak tersedia pada masa yang dipilih",
+    "invalid_credentials": "E-mel atau kata laluan tidak sah",
+    "generic": "Sesuatu telah berlaku. Sila cuba lagi."
+  },
+  "customer": {
+    "portal": "Portal Pelanggan",
+    "my_bookings": "Tempahan Saya",
+    "new_booking": "Tempah Bilik",
+    "profile": "Profil Saya",
+    "register": "Daftar",
+    "login": "Log Masuk",
+    "name": "Nama Penuh",
+    "phone": "Nombor Telefon"
+  },
+  "fx": {
+    "live_rates": "Kadar Pertukaran Langsung",
+    "base": "Asas: MYR",
+    "last_updated": "Kemaskini Terakhir"
+  }
+}

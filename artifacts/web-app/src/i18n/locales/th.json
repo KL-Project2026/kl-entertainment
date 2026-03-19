@@ -1,0 +1,151 @@
+{
+  "nav": {
+    "dashboard": "แดชบอร์ด",
+    "room_board": "สถานะห้อง",
+    "reservations": "การจอง",
+    "pos": "จุดขาย",
+    "staff": "พนักงาน",
+    "schedules": "ตารางงาน",
+    "attendance": "การเข้างาน",
+    "agents": "ตัวแทน",
+    "shareholders": "ผู้ถือหุ้น",
+    "investor": "มุมมองนักลงทุน",
+    "reports": "รายงาน",
+    "branches": "สาขา",
+    "products": "แคตาล็อกสินค้า",
+    "customers": "ลูกค้า",
+    "settings": "การตั้งค่า"
+  },
+  "auth": {
+    "sign_in": "เข้าสู่ระบบ",
+    "sign_out": "ออกจากระบบ",
+    "email": "อีเมล",
+    "password": "รหัสผ่าน",
+    "invalid_credentials": "อีเมลหรือรหัสผ่านไม่ถูกต้อง",
+    "demo_accounts": "บัญชีสาธิต",
+    "management_portal": "พอร์ทัลจัดการ"
+  },
+  "booking": {
+    "new": "การจองใหม่",
+    "status": {
+      "tentative": "รอยืนยัน",
+      "confirmed": "ยืนยันแล้ว",
+      "checked_in": "เช็คอินแล้ว",
+      "extended": "ต่อเวลา",
+      "checked_out": "เช็คเอาท์แล้ว",
+      "cancelled": "ยกเลิก",
+      "no_show": "ไม่มาตามนัด"
+    },
+    "channel": {
+      "walk_in": "วอล์คอิน",
+      "customer_app": "แอปลูกค้า",
+      "whatsapp": "WhatsApp",
+      "telegram": "Telegram",
+      "phone": "โทรศัพท์",
+      "agent": "ตัวแทน"
+    },
+    "room": "ห้อง",
+    "date": "วันที่",
+    "time": "เวลา",
+    "guests": "จำนวนผู้เข้าพัก",
+    "confirm": "ยืนยันการจอง",
+    "cancel": "ยกเลิกการจอง"
+  },
+  "room": {
+    "status": {
+      "available": "ว่าง",
+      "occupied": "กำลังใช้งาน",
+      "reserved": "จองแล้ว",
+      "cleaning": "กำลังทำความสะอาด",
+      "maintenance": "ซ่อมบำรุง"
+    }
+  },
+  "staff": {
+    "role": {
+      "super_admin": "ซูเปอร์แอดมิน",
+      "admin": "แอดมิน",
+      "branch_manager": "ผู้จัดการสาขา",
+      "manager": "ผู้จัดการ",
+      "hostess": "โฮสเตส",
+      "driver": "คนขับ",
+      "kitchen": "ครัว",
+      "hall": "พนักงานฮอลล์",
+      "general": "ทั่วไป"
+    },
+    "employment": {
+      "full_time": "เต็มเวลา",
+      "part_time": "พาร์ทไทม์",
+      "contract": "สัญญา",
+      "freelance": "ฟรีแลนซ์"
+    },
+    "clock_in": "เข้างาน",
+    "clock_out": "ออกงาน"
+  },
+  "payment": {
+    "method": {
+      "cash": "เงินสด",
+      "qr_touchngo": "Touch 'n Go QR",
+      "qr_grabpay": "GrabPay QR",
+      "fpx": "FPX",
+      "card": "บัตรเครดิต/เดบิต",
+      "credit_account": "บัญชีเครดิต",
+      "bank_transfer": "โอนเงิน"
+    },
+    "total": "ยอดรวม",
+    "subtotal": "ยอดย่อย",
+    "tax": "ภาษี",
+    "service_charge": "ค่าบริการ",
+    "pay": "ชำระเงิน"
+  },
+  "invoice": {
+    "title": "ใบแจ้งหนี้",
+    "receipt_title": "ใบเสร็จ",
+    "mode_detailed": "แบบละเอียด",
+    "mode_basic": "แบบย่อ",
+    "print": "พิมพ์",
+    "send_whatsapp": "ส่งผ่าน WhatsApp"
+  },
+  "common": {
+    "save": "บันทึก",
+    "cancel": "ยกเลิก",
+    "delete": "ลบ",
+    "edit": "แก้ไข",
+    "add": "เพิ่ม",
+    "search": "ค้นหา",
+    "filter": "กรอง",
+    "loading": "กำลังโหลด...",
+    "no_data": "ไม่มีข้อมูล",
+    "confirm": "ยืนยัน",
+    "close": "ปิด",
+    "back": "กลับ",
+    "next": "ถัดไป",
+    "submit": "ส่ง",
+    "yes": "ใช่",
+    "no": "ไม่",
+    "all": "ทั้งหมด",
+    "today": "วันนี้",
+    "week": "สัปดาห์นี้",
+    "month": "เดือนนี้"
+  },
+  "errors": {
+    "driver_required": "ต้องกำหนดคนขับสำหรับการจองนอกสถานที่",
+    "room_not_available": "ห้องนี้ไม่ว่างในช่วงเวลาที่เลือก",
+    "invalid_credentials": "อีเมลหรือรหัสผ่านไม่ถูกต้อง",
+    "generic": "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง"
+  },
+  "customer": {
+    "portal": "พอร์ทัลลูกค้า",
+    "my_bookings": "การจองของฉัน",
+    "new_booking": "จองห้อง",
+    "profile": "โปรไฟล์ของฉัน",
+    "register": "ลงทะเบียน",
+    "login": "เข้าสู่ระบบ",
+    "name": "ชื่อ-นามสกุล",
+    "phone": "หมายเลขโทรศัพท์"
+  },
+  "fx": {
+    "live_rates": "อัตราแลกเปลี่ยนสด",
+    "base": "สกุลหลัก: MYR",
+    "last_updated": "อัปเดตล่าสุด"
+  }
+}

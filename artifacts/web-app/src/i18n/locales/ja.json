@@ -1,0 +1,151 @@
+{
+  "nav": {
+    "dashboard": "ダッシュボード",
+    "room_board": "ルームボード",
+    "reservations": "予約管理",
+    "pos": "POS・注文",
+    "staff": "スタッフ管理",
+    "schedules": "シフト管理",
+    "attendance": "勤怠管理",
+    "agents": "エージェント",
+    "shareholders": "株主管理",
+    "investor": "投資家ビュー",
+    "reports": "レポート",
+    "branches": "店舗管理",
+    "products": "商品カタログ",
+    "customers": "顧客管理",
+    "settings": "設定"
+  },
+  "auth": {
+    "sign_in": "サインイン",
+    "sign_out": "サインアウト",
+    "email": "メールアドレス",
+    "password": "パスワード",
+    "invalid_credentials": "メールアドレスまたはパスワードが間違っています。",
+    "demo_accounts": "デモアカウント",
+    "management_portal": "管理ポータル"
+  },
+  "booking": {
+    "new": "新規予約",
+    "status": {
+      "tentative": "仮予約",
+      "confirmed": "確定",
+      "checked_in": "入室",
+      "extended": "延長",
+      "checked_out": "退室",
+      "cancelled": "キャンセル",
+      "no_show": "未来場"
+    },
+    "channel": {
+      "walk_in": "飛び込み",
+      "customer_app": "アプリ",
+      "whatsapp": "WhatsApp",
+      "telegram": "Telegram",
+      "phone": "電話",
+      "agent": "エージェント"
+    },
+    "room": "ルーム",
+    "date": "日付",
+    "time": "時間",
+    "guests": "人数",
+    "confirm": "予約確定",
+    "cancel": "予約キャンセル"
+  },
+  "room": {
+    "status": {
+      "available": "空室",
+      "occupied": "使用中",
+      "reserved": "予約済",
+      "cleaning": "清掃中",
+      "maintenance": "メンテナンス"
+    }
+  },
+  "staff": {
+    "role": {
+      "super_admin": "スーパー管理者",
+      "admin": "管理者",
+      "branch_manager": "店長",
+      "manager": "マネージャー",
+      "hostess": "ホステス",
+      "driver": "ドライバー",
+      "kitchen": "キッチン",
+      "hall": "ホールスタッフ",
+      "general": "一般"
+    },
+    "employment": {
+      "full_time": "正社員",
+      "part_time": "アルバイト",
+      "contract": "契約社員",
+      "freelance": "フリーランス"
+    },
+    "clock_in": "出勤打刻",
+    "clock_out": "退勤打刻"
+  },
+  "payment": {
+    "method": {
+      "cash": "現金",
+      "qr_touchngo": "Touch 'n Go QR",
+      "qr_grabpay": "GrabPay QR",
+      "fpx": "FPX",
+      "card": "クレジット/デビットカード",
+      "credit_account": "掛け払い",
+      "bank_transfer": "銀行振込"
+    },
+    "total": "合計",
+    "subtotal": "小計",
+    "tax": "税金",
+    "service_charge": "サービス料",
+    "pay": "支払う"
+  },
+  "invoice": {
+    "title": "請求書",
+    "receipt_title": "領収書",
+    "mode_detailed": "詳細表示",
+    "mode_basic": "簡易表示",
+    "print": "印刷",
+    "send_whatsapp": "WhatsAppで送信"
+  },
+  "common": {
+    "save": "保存",
+    "cancel": "キャンセル",
+    "delete": "削除",
+    "edit": "編集",
+    "add": "追加",
+    "search": "検索",
+    "filter": "フィルター",
+    "loading": "読み込み中...",
+    "no_data": "データなし",
+    "confirm": "確認",
+    "close": "閉じる",
+    "back": "戻る",
+    "next": "次へ",
+    "submit": "送信",
+    "yes": "はい",
+    "no": "いいえ",
+    "all": "すべて",
+    "today": "今日",
+    "week": "今週",
+    "month": "今月"
+  },
+  "errors": {
+    "driver_required": "アウトコール予約にはドライバーの割り当てが必要です",
+    "room_not_available": "選択した時間帯はこのルームをご利用いただけません",
+    "invalid_credentials": "メールアドレスまたはパスワードが違います",
+    "generic": "エラーが発生しました。再度お試しください。"
+  },
+  "customer": {
+    "portal": "お客様ポータル",
+    "my_bookings": "予約一覧",
+    "new_booking": "ルーム予約",
+    "profile": "マイプロフィール",
+    "register": "新規登録",
+    "login": "ログイン",
+    "name": "お名前",
+    "phone": "電話番号"
+  },
+  "fx": {
+    "live_rates": "リアルタイム為替レート",
+    "base": "基準通貨: MYR",
+    "last_updated": "最終更新"
+  }
+}

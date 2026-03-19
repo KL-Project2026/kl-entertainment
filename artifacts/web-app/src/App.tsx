@@ -4,7 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuthStore } from "@/lib/auth";
 
-// Pages
+// Staff pages
 import NotFound from "@/pages/not-found";
 import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
@@ -23,6 +23,12 @@ import InvestorDashboard from "@/pages/investor-dashboard";
 import Reports from "@/pages/reports";
 import { DashboardLayout } from "@/components/layout";
 
+// Customer portal pages
+import CustomerLogin from "@/pages/customer/login";
+import CustomerDashboard from "@/pages/customer/dashboard";
+import CustomerBooking from "@/pages/customer/booking";
+import CustomerHistory from "@/pages/customer/history";
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -32,44 +38,46 @@ const queryClient = new QueryClient({
   },
 });
 
-// Setup global fetch interceptor to inject JWT
+// Setup global fetch interceptor to inject staff JWT (only if no explicit Authorization set)
 const originalFetch = window.fetch;
 window.fetch = async (...args) => {
   let [resource, config] = args;
-  
+
   const storageStr = localStorage.getItem("kl-auth-storage");
   let token = null;
   if (storageStr) {
     try {
       const parsed = JSON.parse(storageStr);
       token = parsed.state?.token;
-    } catch (e) {
+    } catch {
       // ignore
     }
   }
 
-  if (token && resource.toString().startsWith("/api")) {
+  const resourceStr = resource.toString();
+  const existingAuth = (config?.headers as Record<string, string> | undefined)?.Authorization;
+  if (token && resourceStr.startsWith("/api") && !existingAuth) {
     config = config || {};
     config.headers = {
       ...config.headers,
       Authorization: `Bearer ${token}`,
     };
   }
-  
+
   const response = await originalFetch(resource, config);
-  
-  if (response.status === 401 && window.location.pathname !== "/login") {
+
+  if (response.status === 401 && window.location.pathname !== "/login" && !window.location.pathname.startsWith("/customer")) {
     useAuthStore.getState().logout();
     window.location.href = "/login";
   }
-  
+
   return response;
 };
 
 // Protected Route — wraps with DashboardLayout
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { token } = useAuthStore();
-  
+
   if (!token) {
     return <Redirect to="/login" />;
   }
@@ -91,6 +99,7 @@ function AuthRoute({ component: Component }: { component: React.ComponentType })
 function Router() {
   return (
     <Switch>
+      {/* Staff portal */}
       <Route path="/login" component={Login} />
       <Route path="/" component={() => <ProtectedRoute component={Dashboard} />} />
       <Route path="/room-board" component={() => <ProtectedRoute component={RoomBoard} />} />
@@ -106,6 +115,13 @@ function Router() {
       <Route path="/shareholders" component={() => <AuthRoute component={Shareholders} />} />
       <Route path="/investor-dashboard" component={() => <AuthRoute component={InvestorDashboard} />} />
       <Route path="/reports" component={() => <AuthRoute component={Reports} />} />
+
+      {/* Customer portal */}
+      <Route path="/customer/login" component={CustomerLogin} />
+      <Route path="/customer/booking" component={CustomerBooking} />
+      <Route path="/customer/history" component={CustomerHistory} />
+      <Route path="/customer" component={CustomerDashboard} />
+
       <Route component={NotFound} />
     </Switch>
   );

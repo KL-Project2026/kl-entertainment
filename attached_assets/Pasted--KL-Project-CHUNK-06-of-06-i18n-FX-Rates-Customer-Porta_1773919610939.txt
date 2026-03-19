@@ -1,0 +1,483 @@
+# KL Project — CHUNK 06 of 06
+# i18n + FX Rates + Customer Portal + WhatsApp/Telegram
+# ⏱️ 예상 작업 시간: 20~25분
+# ✅ 완료 기준: 6개 언어 전환 동작 + 고객 자체 예약 + WhatsApp 확인 메시지 발송
+
+---
+
+## 📌 PREREQUISITE
+
+Chunks 01~05 complete:
+- Full reservation + POS + commission + investor systems working
+- All pages built in English
+
+---
+
+## 🎯 WHAT TO BUILD IN THIS CHUNK
+
+1. i18next integration — 6 languages (EN, ZH, MS, JA, KO, TH)
+2. Live FX rate refresh (ExchangeRate-API, 60-min cache)
+3. Customer-facing booking portal (mobile-optimized)
+4. WhatsApp Business API — booking confirmation + reminders
+5. Telegram bot — booking enquiry + confirmation
+
+---
+
+## 📁 NEW FILES
+
+```
+client/src/
+├── i18n/
+│   ├── index.js
+│   └── locales/
+│       ├── en.json
+│       ├── zh.json    ← Simplified Chinese
+│       ├── ms.json    ← Bahasa Malaysia
+│       ├── ja.json    ← Japanese
+│       ├── ko.json    ← Korean
+│       └── th.json    ← Thai
+
+server/features/
+├── currency/
+│   ├── currency.routes.js
+│   └── currency.service.js    ← ExchangeRate-API + DB cache
+└── chat/
+    ├── whatsapp.service.js    ← Meta Cloud API
+    └── telegram.service.js   ← Bot commands
+
+client/src/pages/customer/
+├── CustomerLoginPage.jsx
+├── CustomerDashboardPage.jsx
+├── CustomerBookingPage.jsx    ← mobile-first booking flow
+└── CustomerHistoryPage.jsx
+```
+
+---
+
+## 🌍 i18n SETUP
+
+```javascript
+// client/src/i18n/index.js
+import i18n from 'i18next';
+import { initReactI18next } from 'react-i18next';
+import en from './locales/en.json';
+import zh from './locales/zh.json';
+import ms from './locales/ms.json';
+import ja from './locales/ja.json';
+import ko from './locales/ko.json';
+import th from './locales/th.json';
+
+i18n.use(initReactI18next).init({
+  resources: { en:{t:en}, zh:{t:zh}, ms:{t:ms}, ja:{t:ja}, ko:{t:ko}, th:{t:th} },
+  ns: ['t'],
+  defaultNS: 't',
+  lng: localStorage.getItem('kl_lang') || 'en',
+  fallbackLng: 'en',
+  interpolation: { escapeValue: false },
+});
+
+export default i18n;
+```
+
+**Language switcher component:**
+```jsx
+// client/src/components/layout/LanguageSelector.jsx
+const LANGS = [
+  { code:'en', label:'EN',    flag:'🇬🇧' },
+  { code:'zh', label:'中文',  flag:'🇨🇳' },
+  { code:'ms', label:'BM',    flag:'🇲🇾' },
+  { code:'ja', label:'日本語', flag:'🇯🇵' },
+  { code:'ko', label:'한국어', flag:'🇰🇷' },
+  { code:'th', label:'ภาษาไทย', flag:'🇹🇭' },
+];
+
+export function LanguageSelector() {
+  const { i18n } = useTranslation();
+  return (
+    <select value={i18n.language}
+      onChange={e => { i18n.changeLanguage(e.target.value); localStorage.setItem('kl_lang', e.target.value); }}
+      className="bg-transparent text-gray-300 text-sm border border-gray-600 rounded px-2 py-1">
+      {LANGS.map(l => <option key={l.code} value={l.code}>{l.flag} {l.label}</option>)}
+    </select>
+  );
+}
+```
+
+**Translation files — key structure:**
+```json
+// client/src/i18n/locales/en.json
+{
+  "nav": {
+    "dashboard": "Dashboard", "room_board": "Room Board",
+    "reservations": "Reservations", "pos": "Orders / POS",
+    "staff": "Staff", "customers": "Customers",
+    "agents": "Agents", "investors": "Investors",
+    "reports": "Reports", "settings": "Settings"
+  },
+  "booking": {
+    "new": "New Booking",
+    "status": {
+      "tentative": "Tentative", "confirmed": "Confirmed",
+      "checked_in": "Checked In", "extended": "Extended",
+      "checked_out": "Checked Out", "cancelled": "Cancelled", "no_show": "No Show"
+    },
+    "channel": {
+      "walk_in": "Walk-in", "customer_app": "Customer App",
+      "whatsapp": "WhatsApp", "telegram": "Telegram",
+      "phone": "Phone", "agent": "Agent"
+    }
+  },
+  "staff": {
+    "role": {
+      "super_admin": "Super Admin", "admin": "Admin",
+      "branch_manager": "Branch Manager", "manager": "Manager",
+      "hostess": "Hostess", "driver": "Driver",
+      "kitchen": "Kitchen", "hall": "Hall Staff", "general": "General"
+    },
+    "employment": {
+      "full_time": "Full-time", "part_time": "Part-time",
+      "contract": "Contract", "freelance": "Freelance"
+    }
+  },
+  "payment": {
+    "method": {
+      "cash": "Cash", "qr_touchngo": "Touch 'n Go QR",
+      "qr_grabpay": "GrabPay QR", "fpx": "FPX",
+      "card": "Credit/Debit Card",
+      "credit_account": "Credit Account", "bank_transfer": "Bank Transfer"
+    }
+  },
+  "invoice": {
+    "title": "Invoice", "receipt_title": "Receipt",
+    "mode_detailed": "Detailed", "mode_basic": "Basic",
+    "print": "Print", "send_whatsapp": "Send via WhatsApp"
+  },
+  "errors": {
+    "driver_required": "A driver must be assigned for outcall bookings",
+    "room_not_available": "This room is not available for the selected time",
+    "invalid_credentials": "Invalid email or password"
+  }
+}
+```
+
+```json
+// client/src/i18n/locales/zh.json
+{
+  "nav": {
+    "dashboard": "仪表板", "room_board": "房间状态",
+    "reservations": "预订管理", "pos": "订单/收银",
+    "staff": "员工管理", "customers": "客户管理",
+    "agents": "代理管理", "investors": "投资者",
+    "reports": "报表", "settings": "设置"
+  },
+  "booking": {
+    "new": "新预订",
+    "status": {
+      "tentative": "待确认", "confirmed": "已确认",
+      "checked_in": "已入场", "extended": "已延时",
+      "checked_out": "已离场", "cancelled": "已取消", "no_show": "未出现"
+    }
+  },
+  "payment": {
+    "method": {
+      "cash": "现金", "qr_touchngo": "Touch 'n Go 二维码",
+      "qr_grabpay": "GrabPay 二维码", "fpx": "网银转账",
+      "card": "信用卡/借记卡",
+      "credit_account": "赊账", "bank_transfer": "银行转账"
+    }
+  },
+  "invoice": {
+    "title": "发票", "receipt_title": "收据",
+    "mode_detailed": "详细模式", "mode_basic": "简洁模式",
+    "print": "打印"
+  }
+}
+```
+
+```json
+// client/src/i18n/locales/ko.json
+{
+  "nav": {
+    "dashboard": "대시보드", "room_board": "룸 현황판",
+    "reservations": "예약 관리", "pos": "주문/POS",
+    "staff": "직원 관리", "customers": "고객 관리",
+    "agents": "에이전트", "investors": "투자자",
+    "reports": "리포트", "settings": "설정"
+  },
+  "booking": {
+    "new": "새 예약",
+    "status": {
+      "tentative": "임시예약", "confirmed": "확정",
+      "checked_in": "입장", "extended": "연장",
+      "checked_out": "퇴장", "cancelled": "취소", "no_show": "노쇼"
+    }
+  },
+  "payment": {
+    "method": {
+      "cash": "현금", "card": "카드",
+      "credit_account": "후불계정", "bank_transfer": "계좌이체"
+    }
+  },
+  "invoice": {
+    "title": "인보이스", "receipt_title": "영수증",
+    "mode_detailed": "상세 모드", "mode_basic": "간략 모드",
+    "print": "인쇄"
+  }
+}
+```
+
+> **Note**: Complete all 6 locale files following the same structure as en.json. Japanese (ja.json) and Thai (th.json) follow the same key structure. Malaysian (ms.json) uses Bahasa Malaysia.
+
+---
+
+## 💱 FX RATES SERVICE
+
+```javascript
+// server/features/currency/currency.service.js
+// MIGRATION: .NET — CurrencyService with IMemoryCache
+
+const FX_CACHE_TTL_MS = 60 * 60 * 1000; // 60 minutes
+let lastFetchTime = 0;
+
+export async function refreshFxRates() {
+  const now = Date.now();
+  if (now - lastFetchTime < FX_CACHE_TTL_MS) return; // Still fresh
+
+  const res = await fetch(
+    `https://v6.exchangerate-api.com/v6/${process.env.EXCHANGERATE_API_KEY}/latest/MYR`
+  );
+  const data = await res.json();
+  if (data.result !== 'success') throw new Error('FX_FETCH_FAILED');
+
+  const supported = ['AUD', 'KRW', 'JPY', 'CNY'];
+  for (const ccy of supported) {
+    const rate = data.conversion_rates[ccy];
+    if (!rate) continue;
+    await pool.query(`
+      INSERT INTO fx_rates (base_ccy, quote_ccy, rate, fetched_at)
+      VALUES ('MYR', $1, $2, NOW())
+      ON CONFLICT (base_ccy, quote_ccy) DO UPDATE SET rate=$2, fetched_at=NOW()
+    `, [ccy, rate]);
+  }
+  lastFetchTime = now;
+}
+
+export async function convertAmount(amountMyr, toCurrency) {
+  if (toCurrency === 'MYR') return { amount: amountMyr, rate: 1.0 };
+  await refreshFxRates(); // Only fetches if cache expired
+  const { rows } = await pool.query(
+    'SELECT rate FROM fx_rates WHERE base_ccy=$1 AND quote_ccy=$2',
+    ['MYR', toCurrency]
+  );
+  const rate = parseFloat(rows[0]?.rate) || 1.0;
+  return {
+    amount: Math.round(amountMyr * rate * 100) / 100,
+    rate,
+    note: `Reference rate: 1 MYR = ${rate} ${toCurrency}`,
+  };
+}
+```
+
+```
+GET  /api/fx-rates               ← { MYR_AUD: 0.32, MYR_KRW: 295, ... }
+POST /api/fx-rates/refresh       ← manual refresh (admin only)
+```
+
+---
+
+## 📱 CUSTOMER PORTAL (mobile-optimized)
+
+```jsx
+// client/src/pages/customer/CustomerBookingPage.jsx
+// Mobile-first design — customers book from phone
+
+// Simplified 3-step flow (vs staff's 5-step):
+// Step 1: Choose Branch + Date + Time + Guest Count
+// Step 2: Choose Room (visual cards with photos)
+// Step 3: Optional hostess selection + confirm
+
+// Design: bright/welcoming (contrast to dark staff UI)
+// Colors: white/cream background, gold accents, large touch targets
+// Language: defaults to customer's language_pref from profile
+```
+
+Customer portal routes:
+```
+POST /api/customer/auth/login
+POST /api/customer/auth/register
+GET  /api/customer/bookings          ← own reservations only
+POST /api/customer/bookings          ← create reservation
+GET  /api/customer/bookings/:id      ← detail + invoice download
+PUT  /api/customer/bookings/:id/cancel
+GET  /api/customer/profile
+PUT  /api/customer/profile
+```
+
+---
+
+## 📲 WHATSAPP BUSINESS API
+
+```javascript
+// server/features/chat/whatsapp.service.js
+// MIGRATION: .NET — WhatsAppService
+
+const WHATSAPP_API = 'https://graph.facebook.com/v18.0';
+
+export async function sendBookingConfirmation(reservation, lang = 'en') {
+  const phone = reservation.customer_phone?.replace(/[^0-9]/g, '');
+  if (!phone) return;
+
+  const messages = {
+    en: `✅ *Booking Confirmed!*\n\n📋 *${reservation.reservation_no}*\n📅 ${formatDate(reservation.start_time, lang)}\n🏠 ${reservation.room_name}\n👥 ${reservation.guest_count} guests\n\nReply CANCEL to cancel.`,
+    zh: `✅ *预订已确认！*\n\n📋 *${reservation.reservation_no}*\n📅 ${formatDate(reservation.start_time, lang)}\n🏠 ${reservation.room_name}\n👥 ${reservation.guest_count} 位客人`,
+    ko: `✅ *예약 확인*\n\n📋 *${reservation.reservation_no}*\n📅 ${formatDate(reservation.start_time, lang)}\n🏠 ${reservation.room_name}\n👥 ${reservation.guest_count}명`,
+    ms: `✅ *Tempahan Disahkan!*\n\n📋 *${reservation.reservation_no}*\n📅 ${formatDate(reservation.start_time, lang)}\n🏠 ${reservation.room_name}\n👥 ${reservation.guest_count} tetamu`,
+    ja: `✅ *予約確認*\n\n📋 *${reservation.reservation_no}*\n📅 ${formatDate(reservation.start_time, lang)}\n🏠 ${reservation.room_name}\n👥 ${reservation.guest_count}名様`,
+    th: `✅ *ยืนยันการจอง*\n\n📋 *${reservation.reservation_no}*\n📅 ${formatDate(reservation.start_time, lang)}\n🏠 ${reservation.room_name}\n👥 ${reservation.guest_count} คน`,
+  };
+
+  await fetch(`${WHATSAPP_API}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${process.env.WHATSAPP_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      to: `60${phone}`,  // Malaysia country code
+      type: 'text',
+      text: { body: messages[lang] || messages['en'] },
+    }),
+  });
+}
+
+export async function sendReceiptWhatsApp(receipt, order, lang = 'en') {
+  // Send receipt summary via WhatsApp after payment
+  const phone = receipt.customer_phone?.replace(/[^0-9]/g, '');
+  if (!phone) return;
+
+  const message = `🧾 *Receipt ${receipt.receipt_no}*\n\n` +
+    `Total: MYR ${order.total_amount.toFixed(2)}\n` +
+    `Payment: ${order.payment_method}\n` +
+    `Date: ${new Date(receipt.payment_at).toLocaleString()}\n\n` +
+    `Thank you for visiting! 🙏`;
+
+  await fetch(`${WHATSAPP_API}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${process.env.WHATSAPP_TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      to: `60${phone}`,
+      type: 'text',
+      text: { body: message },
+    }),
+  });
+}
+```
+
+WhatsApp webhook (for inbound messages):
+```
+POST /api/webhooks/whatsapp    ← Meta webhook callback
+GET  /api/webhooks/whatsapp    ← webhook verification (token check)
+```
+
+---
+
+## 🤖 TELEGRAM BOT
+
+```javascript
+// server/features/chat/telegram.service.js
+import TelegramBot from 'node-telegram-bot-api';
+// MIGRATION: .NET — TelegramBotService
+
+const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
+
+// /start → welcome message with language selection buttons
+bot.onText(/\/start/, (msg) => {
+  bot.sendMessage(msg.chat.id, 'Welcome to KL Entertainment 🎤\nSelect language:', {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '🇬🇧 English', callback_data: 'lang_en' },
+         { text: '🇨🇳 中文', callback_data: 'lang_zh' }],
+        [{ text: '🇲🇾 Bahasa', callback_data: 'lang_ms' },
+         { text: '🇰🇷 한국어', callback_data: 'lang_ko' }],
+        [{ text: '🇯🇵 日本語', callback_data: 'lang_ja' },
+         { text: '🇹🇭 ภาษาไทย', callback_data: 'lang_th' }],
+      ]
+    }
+  });
+});
+
+// /book → start booking flow
+bot.onText(/\/book/, (msg) => {
+  // Reply with branch selection buttons
+  // Then date/time input
+  // Then redirect to customer web portal with pre-filled data
+  // Telegram bot handles initial enquiry; final booking done on web
+});
+
+// /mybookings → show customer's recent reservations
+bot.onText(/\/mybookings/, async (msg) => {
+  // Look up customer by Telegram chat ID (store in customers table)
+  // Return last 3 bookings as formatted message
+});
+```
+
+---
+
+## 🔄 TRIGGER INTEGRATIONS
+
+Connect WhatsApp sending to existing services:
+
+```javascript
+// In reservations.service.js — after status changes:
+// confirmed → send confirmation WhatsApp
+// checked_out → send "Thank you, visit again" message
+
+// In orders.service.js — after order finalized:
+// payment_status = 'paid' → send receipt summary WhatsApp (if customer has phone)
+
+// In server/index.js — startup:
+// Schedule FX rate refresh every 60 minutes:
+setInterval(() => refreshFxRates().catch(logger.error), 60 * 60 * 1000);
+refreshFxRates(); // Initial fetch on startup
+```
+
+---
+
+## ✅ CHUNK 06 DONE WHEN:
+
+1. Language selector switches all UI text instantly (no page reload)
+2. Room status board in Korean: statuses show "예약가능", "입장중" etc.
+3. `GET /api/fx-rates` returns live MYR/AUD, MYR/KRW, MYR/JPY, MYR/CNY rates
+4. Customer portal: register → login → create booking (mobile-optimized)
+5. After reservation confirmed: WhatsApp message sent to customer phone
+6. After payment: WhatsApp receipt summary sent
+7. Telegram `/start` command responds with language selection
+8. Invoice PDF labels rendered in selected language
+
+---
+
+## 🏁 FULL SYSTEM COMPLETION CHECKLIST
+
+After all 6 chunks are complete, verify end-to-end:
+
+- [ ] **Auth**: All 3 user types (staff, customer, shareholder) can log in
+- [ ] **Room Board**: Live update when reservation check-in happens
+- [ ] **Booking**: Walk-in booking in < 3 minutes (5-step wizard)
+- [ ] **Outcall**: Cannot confirm without driver assigned
+- [ ] **POS**: Add items → SST + service charge auto-calculated
+- [ ] **Payment**: All 7 payment methods recordable
+- [ ] **Invoice**: Detailed A4 prints with line items + tax breakdown
+- [ ] **Receipt**: Basic thermal mode prints total-only in 80mm format
+- [ ] **Commission**: Agent balance updates when order paid
+- [ ] **Investor**: Dashboard shows real-time revenue as orders are paid
+- [ ] **P&L**: Monthly settlement generated with correct equity %
+- [ ] **FX**: Settlement PDF shows AUD/KRW amounts for foreign shareholders
+- [ ] **Languages**: All 6 languages switch instantly, no English fallback visible
+- [ ] **WhatsApp**: Confirmation sent on booking confirm + receipt on payment
+
+---
+
+*KL Project Replit Prompts — All 6 Chunks Complete*
+*Version: 2.1 | Last Updated: 2026-03-19*

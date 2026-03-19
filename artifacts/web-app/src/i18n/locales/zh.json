@@ -1,0 +1,151 @@
+{
+  "nav": {
+    "dashboard": "仪表板",
+    "room_board": "房间状态",
+    "reservations": "预订管理",
+    "pos": "收银台",
+    "staff": "员工管理",
+    "schedules": "排班管理",
+    "attendance": "考勤记录",
+    "agents": "代理管理",
+    "shareholders": "股东管理",
+    "investor": "投资者视图",
+    "reports": "报表",
+    "branches": "分店管理",
+    "products": "产品目录",
+    "customers": "客户管理",
+    "settings": "设置"
+  },
+  "auth": {
+    "sign_in": "登录",
+    "sign_out": "退出",
+    "email": "电子邮件",
+    "password": "密码",
+    "invalid_credentials": "邮箱或密码错误，请重试。",
+    "demo_accounts": "演示账号",
+    "management_portal": "管理系统"
+  },
+  "booking": {
+    "new": "新预订",
+    "status": {
+      "tentative": "待确认",
+      "confirmed": "已确认",
+      "checked_in": "已入场",
+      "extended": "已延时",
+      "checked_out": "已离场",
+      "cancelled": "已取消",
+      "no_show": "未出现"
+    },
+    "channel": {
+      "walk_in": "直接到访",
+      "customer_app": "客户应用",
+      "whatsapp": "WhatsApp",
+      "telegram": "Telegram",
+      "phone": "电话",
+      "agent": "代理"
+    },
+    "room": "房间",
+    "date": "日期",
+    "time": "时间",
+    "guests": "人数",
+    "confirm": "确认预订",
+    "cancel": "取消预订"
+  },
+  "room": {
+    "status": {
+      "available": "空闲",
+      "occupied": "使用中",
+      "reserved": "已预订",
+      "cleaning": "清洁中",
+      "maintenance": "维修中"
+    }
+  },
+  "staff": {
+    "role": {
+      "super_admin": "超级管理员",
+      "admin": "管理员",
+      "branch_manager": "分店经理",
+      "manager": "经理",
+      "hostess": "公关",
+      "driver": "司机",
+      "kitchen": "厨房",
+      "hall": "大厅员工",
+      "general": "普通员工"
+    },
+    "employment": {
+      "full_time": "全职",
+      "part_time": "兼职",
+      "contract": "合同工",
+      "freelance": "自由职业"
+    },
+    "clock_in": "打卡上班",
+    "clock_out": "打卡下班"
+  },
+  "payment": {
+    "method": {
+      "cash": "现金",
+      "qr_touchngo": "Touch 'n Go 二维码",
+      "qr_grabpay": "GrabPay 二维码",
+      "fpx": "网银转账",
+      "card": "信用卡/借记卡",
+      "credit_account": "赊账",
+      "bank_transfer": "银行转账"
+    },
+    "total": "合计",
+    "subtotal": "小计",
+    "tax": "消费税",
+    "service_charge": "服务费",
+    "pay": "立即付款"
+  },
+  "invoice": {
+    "title": "发票",
+    "receipt_title": "收据",
+    "mode_detailed": "详细模式",
+    "mode_basic": "简洁模式",
+    "print": "打印",
+    "send_whatsapp": "WhatsApp发送"
+  },
+  "common": {
+    "save": "保存",
+    "cancel": "取消",
+    "delete": "删除",
+    "edit": "编辑",
+    "add": "添加",
+    "search": "搜索",
+    "filter": "筛选",
+    "loading": "加载中...",
+    "no_data": "暂无数据",
+    "confirm": "确认",
+    "close": "关闭",
+    "back": "返回",
+    "next": "下一步",
+    "submit": "提交",
+    "yes": "是",
+    "no": "否",
+    "all": "全部",
+    "today": "今天",
+    "week": "本周",
+    "month": "本月"
+  },
+  "errors": {
+    "driver_required": "外出服务必须指定司机",
+    "room_not_available": "所选时间段该房间不可用",
+    "invalid_credentials": "邮箱或密码错误",
+    "generic": "操作失败，请重试。"
+  },
+  "customer": {
+    "portal": "客户门户",
+    "my_bookings": "我的预订",
+    "new_booking": "预订房间",
+    "profile": "我的资料",
+    "register": "注册",
+    "login": "登录",
+    "name": "姓名",
+    "phone": "手机号码"
+  },
+  "fx": {
+    "live_rates": "实时汇率",
+    "base": "基准: MYR",
+    "last_updated": "最后更新"
+  }
+}

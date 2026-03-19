@@ -14,6 +14,10 @@ import agentsRouter from "./agents";
 import shareholdersRouter from "./shareholders";
 import investorRouter from "./investor";
 import reportsRouter from "./reports";
+import currencyRouter from "./currency";
+import customerAuthRouter from "./customer-auth";
+import customerBookingsRouter from "./customer-bookings";
+import webhooksRouter from "./webhooks";
 
 const router: IRouter = Router();
 
@@ -32,5 +36,9 @@ router.use(agentsRouter);
 router.use(shareholdersRouter);
 router.use(investorRouter);
 router.use(reportsRouter);
+router.use(currencyRouter);
+router.use(customerAuthRouter);
+router.use(customerBookingsRouter);
+router.use(webhooksRouter);
 
 export default router;
