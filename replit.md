@@ -15,7 +15,7 @@ This is **KL Project** — a multi-branch KTV (Karaoke) business management plat
 - **API framework**: Express 5
 - **Database**: PostgreSQL + Drizzle ORM
 - **Validation**: Zod (`zod/v4`), `drizzle-zod`
-- **API codegen**: Orval (from OpenAPI spec)
+- **API codegen**: Orval (from OpenAPI spec `lib/api-spec/openapi.yaml`)
 - **Build**: esbuild (CJS bundle)
 - **Auth**: JWT (bcryptjs + jsonwebtoken), 24h access token, 30d refresh
 - **Real-time**: Socket.io on `artifacts/api-server` (room board updates)
@@ -26,40 +26,47 @@ This is **KL Project** — a multi-branch KTV (Karaoke) business management plat
 ```text
 artifacts-monorepo/
 ├── artifacts/
-│   ├── api-server/          # Express 5 API + Socket.io
+│   ├── api-server/          # Express 5 API + Socket.io (port 8080)
 │   │   └── src/
 │   │       ├── config/constants.ts
 │   │       ├── middleware/
-│   │       │   ├── auth.ts        # JWT verify middleware
-│   │       │   ├── rbac.ts        # Role-based access control
-│   │       │   └── audit.ts       # Auto audit log
+│   │       │   ├── auth.ts           # JWT verify middleware
+│   │       │   ├── rbac.ts           # Role-based access control
+│   │       │   └── audit.ts          # Auto audit log
 │   │       └── routes/
-│   │           ├── index.ts       # Router aggregator
-│   │           ├── health.ts      # GET /api/healthz
-│   │           ├── auth.ts        # POST /login, /logout, /refresh, GET /me
-│   │           ├── branches.ts    # CRUD + dashboard + room-board
-│   │           ├── rooms.ts       # CRUD + status + Socket.io emitter
-│   │           └── products.ts    # Groups, Types, Products CRUD
+│   │           ├── index.ts          # Router aggregator
+│   │           ├── health.ts         # GET /api/healthz
+│   │           ├── auth.ts           # POST /login, /logout, /refresh, GET /me
+│   │           ├── branches.ts       # CRUD + dashboard + room-board
+│   │           ├── rooms.ts          # CRUD + status + Socket.io emitter
+│   │           ├── products.ts       # Groups, Types, Products CRUD
+│   │           ├── reservations.ts   # CRUD + state machine transitions
+│   │           ├── orders.ts         # Orders + order items + finalize + receipt
+│   │           ├── receipts.ts       # GET receipt HTML + print tracking
+│   │           └── staff.ts          # Staff availability
 │   └── web-app/             # React + Vite frontend (previewPath: /)
 │       └── src/
 │           ├── pages/
-│           │   ├── login.tsx      # Dark luxury login with language selector
-│           │   ├── dashboard.tsx  # Branch stats + revenue chart
-│           │   ├── room-board.tsx # Real-time room grid + Socket.io
-│           │   ├── branches.tsx   # Branch list/CRUD
-│           │   └── products.tsx   # 3-level product catalog
+│           │   ├── login.tsx         # Dark luxury login with language selector
+│           │   ├── dashboard.tsx     # Branch stats + revenue chart
+│           │   ├── room-board.tsx    # Real-time room grid + Socket.io
+│           │   ├── branches.tsx      # Branch list/CRUD
+│           │   ├── products.tsx      # 3-level product catalog
+│           │   ├── reservations.tsx  # Reservations list + state transitions
+│           │   ├── booking-wizard.tsx # New reservation wizard
+│           │   └── pos.tsx           # Point of Sale (POS) + payment modal
 │           ├── components/
-│           │   ├── ui.tsx         # Shared UI components
-│           │   └── layout.tsx     # Sidebar layout
+│           │   ├── ui.tsx            # Shared UI components
+│           │   └── layout.tsx        # Sidebar layout
 │           ├── hooks/
 │           │   └── use-live-timer.ts
 │           ├── lib/
-│           │   ├── auth.ts        # Token storage + axios config
+│           │   ├── auth.ts           # Zustand auth store (key: 'kl-auth-storage'), token field
 │           │   └── utils.ts
 │           └── App.tsx
 ├── lib/
 │   ├── api-spec/            # openapi.yaml + Orval config
-│   ├── api-client-react/    # Generated React Query hooks
+│   ├── api-client-react/    # Generated React Query hooks (lib/api-client-react/src/generated/api.ts)
 │   ├── api-zod/             # Generated Zod schemas
 │   └── db/                  # Drizzle ORM schema + DB connection (23 tables)
 └── ...
@@ -95,12 +102,14 @@ artifacts-monorepo/
 
 ### Seed Data
 
-- 1 Organization: `KL Entertainment Group` (slug: `kl-entertainment`)
-- 2 Branches: `Club Noir KL` (KL01), `Velvet Lounge PJ` (KL02)
+- 1 Organization: `KL Entertainment Group` (slug: `kl-entertainment`, id: `00000000-0000-0000-0000-000000000001`)
+- 2 Branches: `Club Noir KL` (KL01, id: `d44ca290-a086-439d-9657-07fc5ebb689c`), `Velvet Lounge PJ` (KL02)
 - 3 Product Groups: Beverages, Food, Packages (multilingual JSONB)
+- 9 Products: beers, whisky, spirits, food combos, KTV packages (unit_price, not sellingPrice)
+- 4 Sample Reservations including `RES-E2E` (id: `420b76ff-8f2c-4208-91fd-63e65606933c`, branch: KL01)
 - 4 FX Rates: MYR→AUD, KRW, JPY, CNY
 - 3 Staff users:
-  - `admin@klproject.com` / `Admin@123!` (super_admin)
+  - `admin@klproject.com` / `Admin@123!` (super_admin, branchId: KL01)
   - `kl01@klproject.com` / `Manager@123!` (branch_manager — Club Noir KL)
   - `kl02@klproject.com` / `Manager@123!` (branch_manager — Velvet Lounge PJ)
 - 6 rooms per branch (Standard ×3, VIP ×2, VVIP ×1)
@@ -112,6 +121,7 @@ artifacts-monorepo/
 - Refresh token: 30d (REFRESH_TOKEN_SECRET)
 - Required env vars: `JWT_SECRET`, `REFRESH_TOKEN_SECRET`, `JWT_EXPIRY`, `REFRESH_TOKEN_EXPIRY`
 - Roles: `super_admin`, `admin`, `branch_manager`, `manager`, `hostess`, `driver`, `kitchen`, `hall`, `general`
+- Zustand auth store key: `kl-auth-storage`, token field: `token` (not `accessToken`)
 
 ## Socket.io (Room Board)
 
@@ -121,32 +131,65 @@ artifacts-monorepo/
 
 ## API Endpoints
 
-| Method | Path | Auth |
-|--------|------|------|
-| GET | /api/healthz | — |
-| POST | /api/auth/login | — |
-| POST | /api/auth/logout | Bearer |
-| POST | /api/auth/refresh | — |
-| GET | /api/auth/me | Bearer |
-| GET | /api/branches | Bearer |
-| POST | /api/branches | super_admin |
-| GET | /api/branches/:id | Bearer |
-| PUT | /api/branches/:id | admin+ |
-| GET | /api/branches/:id/dashboard | Bearer |
-| GET | /api/branches/:id/room-board | Bearer |
-| GET | /api/rooms | Bearer |
-| GET | /api/rooms/available | Bearer |
-| POST | /api/rooms | manager+ |
-| PUT | /api/rooms/:id | manager+ |
-| PUT | /api/rooms/:id/status | manager |
-| GET | /api/products/groups | Bearer |
-| POST | /api/products/groups | admin+ |
-| GET | /api/products/types | Bearer |
-| POST | /api/products/types | admin+ |
-| GET | /api/products | Bearer |
-| POST | /api/products | manager+ |
-| PUT | /api/products/:id | manager+ |
-| PUT | /api/products/:id/toggle | manager+ |
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| GET | /api/healthz | — | |
+| POST | /api/auth/login | — | returns `{ accessToken, refreshToken, user }` |
+| POST | /api/auth/logout | Bearer | |
+| POST | /api/auth/refresh | — | |
+| GET | /api/auth/me | Bearer | |
+| GET | /api/branches | Bearer | |
+| POST | /api/branches | super_admin | |
+| GET | /api/branches/:id | Bearer | |
+| PUT | /api/branches/:id | admin+ | |
+| GET | /api/branches/:id/dashboard | Bearer | |
+| GET | /api/branches/:id/room-board | Bearer | |
+| GET | /api/rooms | Bearer | |
+| GET | /api/rooms/available | Bearer | |
+| POST | /api/rooms | manager+ | |
+| PUT | /api/rooms/:id | manager+ | |
+| PUT | /api/rooms/:id/status | manager | |
+| GET | /api/products/groups | Bearer | |
+| POST | /api/products/groups | admin+ | |
+| GET | /api/products/types | Bearer | |
+| POST | /api/products/types | admin+ | |
+| GET | /api/products | Bearer | response: `{ unitPrice }` (not `sellingPrice`) |
+| POST | /api/products | manager+ | |
+| PUT | /api/products/:id | manager+ | |
+| PUT | /api/products/:id/toggle | manager+ | |
+| GET | /api/reservations | Bearer | |
+| POST | /api/reservations | Bearer | |
+| GET | /api/reservations/:id | Bearer | |
+| PUT | /api/reservations/:id | Bearer | |
+| POST | /api/reservations/:id/transition | Bearer | state machine |
+| GET | /api/orders | Bearer | ?reservationId=, ?branchId= |
+| POST | /api/orders | Bearer | body+URL query: branchId, reservationId; falls back to reservation lookup, then JWT branchId |
+| POST | /api/orders/:id/items | Bearer | adds item, recalculates totals |
+| DELETE | /api/orders/:id/items/:itemId | Bearer | |
+| POST | /api/orders/:id/finalize | manager+ | sets finalizedAt only |
+| GET | /api/orders/:id/invoice | Bearer | returns HTML |
+| POST | /api/orders/:id/receipt | Bearer | creates receipt + sets payment_status='paid' |
+| GET | /api/orders/:id/receipt/latest | Bearer | |
+| GET | /api/receipts/:id | Bearer | returns HTML |
+| POST | /api/receipts/:id/printed | Bearer | |
+| GET | /api/staff/availability | Bearer | |
+
+## POS Flow
+
+1. Navigate to `/pos?branchId=BRANCH_ID&reservationId=RES_ID`
+2. Click "Open New Order" → `POST /api/orders?reservationId=RES_ID` with body `{ branchId, reservationId }`
+3. Add items → `POST /api/orders/:id/items`
+4. Click "Finalize Order" → `POST /api/orders/:id/finalize`
+5. PaymentModal → Click "Pay Now" → `POST /api/orders/:id/receipt` with `{ paymentMethod, receiptMode }`
+6. Opens `/api/receipts/:id?mode=detailed` in new tab
+
+## Order Service (Tax Calculation)
+
+- Subtotal: sum of `lineTotal` for all items
+- Service charge: 10% of subtotal
+- SST: 6% of subtotal
+- Total: subtotal + service + SST
+- `discount_pct`: stored as 0.0-1.0 in DB (numeric(5,4)); frontend/API send 0-100, backend converts
 
 ## Constants (`artifacts/api-server/src/config/constants.ts`)
 
@@ -163,6 +206,11 @@ artifacts-monorepo/
 - **staff.email**: No unique constraint; use `SELECT ... WHERE NOT EXISTS` for upsert
 - **Multilingual fields**: JSONB objects `{ en, zh, ms, ko, ja, th }` — `en` is always required
 - **Currency**: MYR base, SST 6%, service charge 10%
+- **Radix Select**: Never use empty string `""` as value — use sentinel like `__all__`
+- **product_groups**: NO `branch_id` column; **products**: NO `updated_at` column (has `deleted_at`)
+- **reservations**: NO `org_id` column
+- **POST /api/orders branchId resolution chain**: body.branchId → URL query branchId → reservation lookup → JWT user.branchId
+- **products.unit_price** maps to API response field `unitPrice` (NOT `sellingPrice`)
 
 ## TypeScript & Composite Projects
 

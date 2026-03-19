@@ -1,0 +1,419 @@
+# KL Project — CHUNK 03 of 06
+# Reservations + POS + Invoice + Receipt + Print
+# ⏱️ 예상 작업 시간: 25~30분
+# ✅ 완료 기준: 예약 생성→체크인→주문→결제→영수증 프린트 전체 흐름 작동
+
+---
+
+## 📌 PREREQUISITE
+
+Chunks 01 + 02 complete:
+- Auth working (JWT)
+- Branches, rooms, products data in DB
+- Room board live
+
+---
+
+## 🎯 WHAT TO BUILD IN THIS CHUNK
+
+1. Reservation lifecycle (create → confirm → check-in → extend → check-out)
+2. Hostess + Driver availability and assignment
+3. POS (order entry — add items to active reservation)
+4. Invoice generation (Detailed + Basic mode, multi-language)
+5. Receipt generation (auto-issued after payment)
+6. Print functionality (A4 browser print + 80mm thermal)
+
+---
+
+## 📁 NEW FILES
+
+```
+server/features/
+├── reservations/
+│   ├── reservations.routes.js
+│   ├── reservations.service.js   ← state machine logic here
+│   └── reservations.queries.js
+├── orders/
+│   ├── orders.routes.js
+│   ├── orders.service.js         ← tax calculation, totals
+│   └── orders.queries.js
+└── documents/
+    ├── invoice.service.js        ← PDF generation (detailed + basic)
+    ├── receipt.service.js        ← PDF generation (detailed + basic)
+    └── templates/
+        ├── invoice-detailed.js   ← PDFKit template
+        ├── invoice-basic.js      ← thermal layout
+        ├── receipt-detailed.js
+        └── receipt-basic.js
+
+client/src/
+├── pages/reservations/
+│   ├── ReservationListPage.jsx
+│   ├── ReservationDetailPage.jsx
+│   └── BookingWizard.jsx          ← 5-step modal
+├── pages/pos/
+│   ├── POSPage.jsx                ← order entry for active reservation
+│   └── PaymentModal.jsx
+└── components/documents/
+    ├── PrintButton.jsx            ← with mode toggle
+    ├── InvoicePreview.jsx
+    └── ReceiptPreview.jsx
+```
+
+---
+
+## 📅 RESERVATION API
+
+```
+GET  /api/reservations?branch_id=&date=&status=
+POST /api/reservations                      ← create
+GET  /api/reservations/:id
+PUT  /api/reservations/:id/confirm
+PUT  /api/reservations/:id/check-in
+PUT  /api/reservations/:id/extend           body: { extra_hours: 1 }
+PUT  /api/reservations/:id/check-out
+PUT  /api/reservations/:id/cancel           body: { reason: "..." }
+GET  /api/reservations/availability         ?branch_id=&date=&duration_hours=
+GET  /api/staff/hostesses/available         ?branch_id=&date=&start_time=
+GET  /api/staff/drivers/available           ?branch_id=&date=&pickup_time=
+```
+
+### State Machine (server/features/reservations/reservations.service.js)
+
+```javascript
+// MIGRATION: .NET — ReservationService with IReservationStateMachine
+import { VALID_TRANSITIONS } from '../../config/constants.js';
+import { emitRoomUpdate } from '../rooms/rooms.socket.js';
+import { pool } from '../../config/db.js';
+
+export async function transitionStatus(reservationId, newStatus, userId, io, extra = {}) {
+  const { rows } = await pool.query(
+    'SELECT * FROM reservations WHERE id = $1', [reservationId]
+  );
+  const reservation = rows[0];
+  if (!reservation) throw new Error('RESERVATION_NOT_FOUND');
+
+  const allowed = VALID_TRANSITIONS[reservation.status] || [];
+  if (!allowed.includes(newStatus)) {
+    throw new Error(`INVALID_TRANSITION:${reservation.status}→${newStatus}`);
+  }
+
+  // Build update fields based on transition
+  const updates = { status: newStatus, updated_at: new Date() };
+  if (newStatus === 'confirmed')    updates.confirmed_at   = new Date();
+  if (newStatus === 'checked_in')   updates.checked_in_at  = new Date();
+  if (newStatus === 'checked_out')  updates.checked_out_at = new Date();
+  if (newStatus === 'cancelled')  { updates.cancelled_at   = new Date(); updates.cancellation_reason = extra.reason; }
+  if (newStatus === 'no_show')      updates.no_show_at     = new Date();
+  if (newStatus === 'extended') {
+    // Add extra_hours to end_time
+    updates.end_time = new Date(reservation.end_time.getTime() + extra.extra_hours * 3600000);
+    updates.duration_hours = (reservation.duration_hours || 0) + extra.extra_hours;
+  }
+
+  await pool.query(
+    `UPDATE reservations SET status=$1, updated_at=$2, confirmed_at=$3,
+     checked_in_at=$4, checked_out_at=$5, cancelled_at=$6, cancellation_reason=$7,
+     no_show_at=$8, end_time=COALESCE($9, end_time), duration_hours=COALESCE($10, duration_hours)
+     WHERE id=$11`,
+    [updates.status, updates.updated_at, updates.confirmed_at, updates.checked_in_at,
+     updates.checked_out_at, updates.cancelled_at, updates.cancellation_reason,
+     updates.no_show_at, updates.end_time, updates.duration_hours, reservationId]
+  );
+
+  // Update room status
+  const roomStatus = newStatus === 'checked_in' || newStatus === 'extended' ? 'occupied' : 'available';
+  await pool.query('UPDATE rooms SET status=$1 WHERE id=$2', [roomStatus, reservation.room_id]);
+
+  // Emit to room board via Socket.io
+  if (io && reservation.room_id) {
+    emitRoomUpdate(io, reservation.branch_id, {
+      id: reservation.room_id,
+      status: roomStatus,
+      reservationNo: newStatus === 'checked_out' ? null : reservation.reservation_no,
+      guestName: newStatus === 'checked_out' ? null : reservation.customer_name,
+      guestCount: reservation.guest_count,
+      checkInTime: updates.checked_in_at,
+      expectedCheckOut: updates.end_time,
+    });
+  }
+
+  // Write audit log
+  await pool.query(
+    `INSERT INTO audit_log (entity_type,entity_id,action,changed_by,old_values,new_values)
+     VALUES ('reservation',$1,'status_change',$2,$3,$4)`,
+    [reservationId, userId,
+     JSON.stringify({ status: reservation.status }),
+     JSON.stringify({ status: newStatus })]
+  );
+
+  return { ...reservation, ...updates };
+}
+
+// OUTCALL RULE: if is_outcall=true, driver required before confirm
+export async function validateOutcallDriverAssigned(reservationId) {
+  const { rows } = await pool.query(
+    'SELECT COUNT(*) FROM reservation_pickups WHERE reservation_id=$1 AND status != $2',
+    [reservationId, 'cancelled']
+  );
+  if (parseInt(rows[0].count) === 0) {
+    throw new Error('DRIVER_REQUIRED_FOR_OUTCALL');
+  }
+}
+```
+
+### Booking Wizard UI (BookingWizard.jsx — 5-step modal)
+
+```
+Step 1 — Date & Time
+  - Date picker, time picker, duration selector (1h / 2h / 3h / custom)
+  - Shows branch operating hours as guide
+
+Step 2 — Room Selection
+  - Calls GET /api/rooms/available?branch_id=&date=&start_time=&duration_hours=
+  - Shows only available rooms for that slot
+  - Cards: room name, type badge, capacity, hourly rate, photo
+
+Step 3 — Guest Details
+  - Customer search (phone number lookup) OR guest name + phone (walk-in)
+  - Guest count slider
+  - Special requests text area
+  - Toggle: Is Outcall? (shows driver section if true)
+
+Step 4 — Hostess & Driver
+  - Calls GET /api/staff/hostesses/available?branch_id=&date=&start_time=
+  - Grid of available hostesses: photo, name, ★ rating (placeholder)
+  - Multi-select allowed
+  - If is_outcall=true: MANDATORY driver selection shown below
+  - Calls GET /api/staff/drivers/available?...
+
+Step 5 — Confirm
+  - Summary of all selections
+  - Deposit amount input (optional)
+  - Deposit payment method selector
+  - Submit → POST /api/reservations
+  - On success: show reservation number, option to print
+```
+
+---
+
+## 💰 POS / ORDER API
+
+```
+GET  /api/orders?reservation_id=       ← get order for active reservation
+POST /api/orders                        ← create order
+POST /api/orders/:id/items              ← add item
+DELETE /api/orders/:id/items/:itemId    ← remove item
+PUT  /api/orders/:id/discount           ← apply discount %
+POST /api/orders/:id/finalize           ← lock order, calculate taxes, trigger invoice
+GET  /api/orders/:id/invoice            ← ?mode=detailed|basic&lang=en&format=pdf|html
+POST /api/orders/:id/receipt            ← create receipt after payment
+GET  /api/receipts/:id                  ← ?mode=detailed|basic&lang=en&format=pdf|html
+POST /api/receipts/:id/printed          ← record print event
+GET  /api/orders/:id/receipt/latest     ← most recent receipt for order
+```
+
+### Tax Calculation (orders.service.js)
+
+```javascript
+// MIGRATION: .NET — OrderService.CalculateTotals()
+export function calculateOrderTotals(items, branchTaxConfig) {
+  const { sst_rate = 0.06, service_charge = 0.10 } = branchTaxConfig;
+
+  const subtotal = items.reduce((sum, item) => {
+    const discounted = item.unit_price * item.quantity * (1 - (item.discount_pct || 0));
+    return sum + discounted;
+  }, 0);
+
+  // Only apply SST to tax_applicable items
+  const taxableSubtotal = items
+    .filter(i => i.tax_applicable !== false)
+    .reduce((sum, i) => sum + (i.unit_price * i.quantity * (1 - (i.discount_pct || 0))), 0);
+
+  const sstAmount      = Math.round(taxableSubtotal * sst_rate * 100) / 100;
+  const serviceCharge  = Math.round(subtotal * service_charge * 100) / 100;
+  const totalAmount    = Math.round((subtotal + sstAmount + serviceCharge) * 100) / 100;
+
+  return { subtotal, sstAmount, serviceCharge, totalAmount };
+}
+```
+
+### POS Page UI (POSPage.jsx)
+
+```
+Layout: 2-column
+Left (60%): Product grid
+  - Tab bar: product groups (Beverages / Food / Packages / Add-ons)
+  - Product cards with name (in current language), price, + button
+  - Quick-add room charge button (auto-calculated from check-in time)
+  - Quick-add hostess fee button (per assigned hostess)
+
+Right (40%): Order summary
+  - Current items list (qty controls, remove button)
+  - Subtotal / SST 6% / Service Charge 10% / TOTAL
+  - "Extend Stay" button (+1h, +2h)
+  - "Finalize & Pay" button → opens PaymentModal
+
+PaymentModal:
+  - Payment method selector (Cash / QR Touch'n Go / QR GrabPay / FPX / Card / Credit / Bank)
+  - Reference number input (shown for non-cash methods)
+  - Mode toggle: [ Detailed ●——○ Basic ]
+  - "Confirm Payment" button
+  - On success:
+    1. Creates receipt
+    2. Opens PrintPreviewModal
+    3. Shows: [ 🖨️ Print Receipt ] [ 📄 Print Invoice ] [ 📱 Send WhatsApp ]
+```
+
+---
+
+## 🖨️ INVOICE & RECEIPT PDF SERVICE
+
+```javascript
+// server/features/documents/invoice.service.js
+// MIGRATION: .NET — InvoiceService with two template strategies (detailed/basic)
+import PDFKit from 'pdfkit';
+
+export async function generateInvoicePdf(orderId, mode = 'detailed', lang = 'en') {
+  // Fetch order + items + reservation + branch data
+  // mode === 'basic' → generateBasicInvoicePdf()
+  // mode === 'detailed' → generateDetailedInvoicePdf()
+}
+
+// DETAILED PDF CONTENT:
+// ┌─────────────────────────────────┐
+// │  [Branch Logo]  Club Noir KL    │
+// │  Address · Phone · SST Reg No.  │
+// │                       INVOICE   │ ← or RECEIPT watermark
+// │  Reservation: KL01-20260319-042 │
+// │  Date: 19 Mar 2026  Time: 20:00 │
+// │  Room: VIP Room A  Duration: 3h │
+// │  Guests: 6                      │
+// ├─────────────────────────────────┤
+// │ Item          Qty   Price  Total│
+// │ Room Charge    3h  RM280  RM840 │
+// │ [Hostess Name] 1   RM500  RM500 │
+// │ Whisky (btl)   2   RM320  RM640 │
+// │ Pickup Service 1    RM80   RM80 │
+// ├─────────────────────────────────┤
+// │              Subtotal:  RM2,060 │
+// │             SST (6%):   RM123.6 │
+// │  Service Charge (10%):  RM206.0 │
+// │               TOTAL:   RM2,389  │
+// │         Payment: Cash           │
+// └─────────────────────────────────┘
+
+// BASIC (THERMAL) PDF CONTENT:
+// ═══════════════════
+//   CLUB NOIR KL
+//  19 Mar 2026 23:14
+// ───────────────────
+//  RCP-KL01-0019-015
+//  VIP Room A  3hrs
+// ═══════════════════
+//   TOTAL: RM2,389
+//   CASH PAYMENT
+// ───────────────────
+//    Thank You!
+// ═══════════════════
+```
+
+### Print CSS (client/src/styles/print.css)
+
+```css
+/* ── A4 Invoice Print ── */
+@media print {
+  @page { size: A4 portrait; margin: 18mm 14mm; }
+  body  { font-family: Arial, sans-serif; font-size: 10pt; color: #000; background: #fff; }
+  .no-print        { display: none !important; }
+  .invoice-header  { display: flex; justify-content: space-between; border-bottom: 1.5pt solid #000; padding-bottom: 8pt; margin-bottom: 10pt; }
+  .invoice-table   { width: 100%; border-collapse: collapse; margin: 10pt 0; }
+  .invoice-table th { background: #f0f0f0; padding: 4pt 6pt; border: 0.5pt solid #ccc; font-size: 9pt; }
+  .invoice-table td { padding: 4pt 6pt; border: 0.5pt solid #ccc; }
+  .invoice-total-section { text-align: right; margin-top: 8pt; }
+  .invoice-total-row     { font-weight: bold; font-size: 12pt; border-top: 1.5pt solid #000; }
+  .invoice-watermark     { position: fixed; top: 40%; left: 50%; transform: translate(-50%,-50%) rotate(-30deg);
+                           font-size: 60pt; opacity: 0.06; color: #000; pointer-events: none; }
+  .page-break { page-break-after: always; }
+}
+
+/* ── 80mm Thermal Print ── */
+@media print and (max-width: 80mm) {
+  @page { size: 80mm auto; margin: 0 3mm 8mm; }
+  body  { font-family: 'Courier New', monospace; font-size: 9pt; }
+  .thermal-header    { text-align: center; font-size: 13pt; font-weight: bold; margin-bottom: 4pt; }
+  .thermal-divider   { border-top: 1pt dashed #000; margin: 4pt 0; }
+  .thermal-total     { text-align: center; font-size: 18pt; font-weight: bold; margin: 6pt 0; }
+  .thermal-method    { text-align: center; font-size: 10pt; margin-bottom: 4pt; }
+  .thermal-thankyou  { text-align: center; font-size: 9pt; margin-top: 6pt; }
+  .detail-only       { display: none; }   /* hide detail-only sections in thermal */
+}
+```
+
+### PrintButton Component
+
+```jsx
+// client/src/components/documents/PrintButton.jsx
+// Props: documentType ('invoice'|'receipt'), documentId, defaultMode ('detailed'|'basic')
+
+export function PrintButton({ documentType, documentId, defaultMode = 'detailed' }) {
+  const [mode, setMode] = useState(defaultMode);
+
+  const handlePrint = async () => {
+    // 1. Fetch HTML version from API
+    const res = await fetch(`/api/${documentType === 'invoice'
+      ? `orders/${documentId}/invoice`
+      : `receipts/${documentId}`}?mode=${mode}&format=html`);
+    const html = await res.text();
+
+    // 2. Open print window
+    const win = window.open('', '_blank');
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    win.print();
+
+    // 3. Record print event
+    if (documentType === 'receipt') {
+      await fetch(`/api/receipts/${documentId}/printed`, { method: 'POST' });
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-3">
+      {/* Mode toggle */}
+      <div className="flex items-center gap-2 text-sm">
+        <span className="text-gray-400">Detailed</span>
+        <button
+          onClick={() => setMode(m => m === 'detailed' ? 'basic' : 'detailed')}
+          className={`relative w-10 h-5 rounded-full transition-colors ${
+            mode === 'basic' ? 'bg-yellow-500' : 'bg-blue-600'}`}
+        >
+          <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
+            mode === 'basic' ? 'translate-x-5' : 'translate-x-0.5'}`}/>
+        </button>
+        <span className="text-gray-400">Basic</span>
+      </div>
+      <button onClick={handlePrint}
+        className="flex items-center gap-2 px-4 py-2 bg-gold text-black rounded-lg font-medium">
+        🖨️ Print {documentType === 'invoice' ? 'Invoice' : 'Receipt'}
+      </button>
+    </div>
+  );
+}
+```
+
+---
+
+## ✅ CHUNK 03 DONE WHEN:
+
+1. Create reservation via BookingWizard → status: tentative
+2. Confirm → Check-in → room board shows occupied (red)
+3. POS: add products → see running total with SST + service charge
+4. Click "Finalize & Pay" → select Cash → receipt auto-created
+5. Print Invoice (Detailed) → A4 print dialog opens with full line items
+6. Print Receipt (Basic) → thermal layout visible in print preview
+7. Check-out → room board shows available (green)
+8. Outcall reservation without driver → error `DRIVER_REQUIRED_FOR_OUTCALL`
+
+**➡️ Next: CHUNK 04 — Staff Management + Attendance + Commission**

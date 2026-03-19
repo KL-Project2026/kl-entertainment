@@ -1,12 +1,14 @@
 import { Link, useLocation } from "wouter";
 import { useAuthStore } from "@/lib/auth";
 import { motion } from "framer-motion";
-import { LayoutDashboard, Grid, Building2, Package, LogOut } from "lucide-react";
+import { LayoutDashboard, Grid, Building2, Package, LogOut, CalendarDays, ShoppingCart } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { path: "/", label: "Dashboard", icon: LayoutDashboard },
   { path: "/room-board", label: "Room Board", icon: Grid },
+  { path: "/reservations", label: "Reservations", icon: CalendarDays },
+  { path: "/pos", label: "Point of Sale", icon: ShoppingCart },
   { path: "/branches", label: "Branches", icon: Building2 },
   { path: "/products", label: "Product Catalog", icon: Package },
 ];
@@ -14,6 +16,12 @@ const NAV_ITEMS = [
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { user, logout } = useAuthStore();
+
+  // Match active item — support sub-paths like /reservations/new
+  const activeItem = NAV_ITEMS.find(i => {
+    if (i.path === "/") return location === "/";
+    return location === i.path || location.startsWith(i.path + "/");
+  });
 
   return (
     <div className="min-h-screen bg-[#07070A] flex overflow-hidden">
@@ -31,9 +39,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
 
-        <nav className="flex-1 px-4 py-8 space-y-2">
+        <nav className="flex-1 px-4 py-8 space-y-1">
           {NAV_ITEMS.map((item) => {
-            const isActive = location === item.path;
+            const isActive = activeItem?.path === item.path;
             const Icon = item.icon;
             return (
               <Link key={item.path} href={item.path} className="block">
@@ -49,7 +57,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                     />
                   )}
                   <Icon className="w-5 h-5 relative z-10" />
-                  <span className="font-medium relative z-10">{item.label}</span>
+                  <span className="font-medium relative z-10 text-sm">{item.label}</span>
                   
                   {!isActive && (
                     <div className="absolute inset-0 bg-white/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -82,7 +90,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         
         <header className="h-20 border-b border-white/5 bg-card/20 backdrop-blur-md flex items-center px-8 justify-between z-10">
           <h2 className="font-display text-2xl font-semibold text-foreground/90">
-            {NAV_ITEMS.find(i => i.path === location)?.label || "Dashboard"}
+            {activeItem?.label || "Dashboard"}
           </h2>
           <div className="flex items-center gap-4">
             <div className="text-right">

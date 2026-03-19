@@ -2,7 +2,6 @@ import { Switch, Route, Router as WouterRouter, Redirect, useLocation } from "wo
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { useEffect } from "react";
 import { useAuthStore } from "@/lib/auth";
 
 // Pages
@@ -12,6 +11,9 @@ import Dashboard from "@/pages/dashboard";
 import RoomBoard from "@/pages/room-board";
 import Branches from "@/pages/branches";
 import Products from "@/pages/products";
+import Reservations from "@/pages/reservations";
+import BookingWizard from "@/pages/booking-wizard";
+import POS from "@/pages/pos";
 import { DashboardLayout } from "@/components/layout";
 
 const queryClient = new QueryClient({
@@ -28,7 +30,6 @@ const originalFetch = window.fetch;
 window.fetch = async (...args) => {
   let [resource, config] = args;
   
-  // Grab state directly from localStorage since zustand persist stores it there
   const storageStr = localStorage.getItem("kl-auth-storage");
   let token = null;
   if (storageStr) {
@@ -81,6 +82,9 @@ function Router() {
       <Route path="/room-board" component={() => <ProtectedRoute component={RoomBoard} />} />
       <Route path="/branches" component={() => <ProtectedRoute component={Branches} />} />
       <Route path="/products" component={() => <ProtectedRoute component={Products} />} />
+      <Route path="/reservations" component={() => <ProtectedRoute component={Reservations} />} />
+      <Route path="/reservations/new" component={() => <ProtectedRoute component={BookingWizard} />} />
+      <Route path="/pos" component={() => <ProtectedRoute component={POS} />} />
       <Route component={NotFound} />
     </Switch>
   );

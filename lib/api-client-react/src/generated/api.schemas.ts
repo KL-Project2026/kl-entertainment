@@ -338,6 +338,207 @@ export interface UpdateProductRequest {
   isActive?: boolean;
 }
 
+export type ReservationStatus =
+  (typeof ReservationStatus)[keyof typeof ReservationStatus];
+
+export const ReservationStatus = {
+  tentative: "tentative",
+  confirmed: "confirmed",
+  checked_in: "checked_in",
+  extended: "extended",
+  checked_out: "checked_out",
+  cancelled: "cancelled",
+  no_show: "no_show",
+} as const;
+
+export interface Reservation {
+  id: string;
+  reservationNo: string;
+  branchId: string;
+  customerId?: string | null;
+  customerName?: string | null;
+  customerPhone?: string | null;
+  guestCount: number;
+  reservationDate: string;
+  startTime: string;
+  endTime?: string | null;
+  durationHours?: number | null;
+  roomId?: string | null;
+  roomName?: string | null;
+  roomType?: string | null;
+  status: ReservationStatus;
+  bookingChannel: string;
+  isOutcall: boolean;
+  specialRequests?: string | null;
+  depositAmount: number;
+  depositPaid: boolean;
+  depositMethod?: string | null;
+  confirmedAt?: string | null;
+  checkedInAt?: string | null;
+  checkedOutAt?: string | null;
+  cancelledAt?: string | null;
+  cancellationReason?: string | null;
+  createdAt?: string;
+}
+
+export interface ReservationResponse {
+  data: Reservation;
+}
+
+export interface ReservationListResponse {
+  data: Reservation[];
+}
+
+export interface CreateReservationRequest {
+  branchId: string;
+  customerId?: string;
+  customerName?: string;
+  customerPhone?: string;
+  guestCount: number;
+  reservationDate?: string;
+  startTime: string;
+  endTime?: string;
+  durationHours?: number;
+  roomId?: string;
+  bookingChannel?: string;
+  isOutcall?: boolean;
+  specialRequests?: string;
+  depositAmount?: number;
+  depositPaid?: boolean;
+  depositMethod?: string;
+  hostessIds?: string[];
+}
+
+export interface ExtendReservationRequest {
+  extra_hours: number;
+}
+
+export interface CancelReservationRequest {
+  reason?: string;
+}
+
+export interface OrderItem {
+  id: string;
+  orderId: string;
+  itemType?: string;
+  productId?: string | null;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  discountPct?: number;
+  lineTotal: number;
+  staffRefId?: string | null;
+  createdAt?: string;
+}
+
+export type OrderPaymentStatus =
+  (typeof OrderPaymentStatus)[keyof typeof OrderPaymentStatus];
+
+export const OrderPaymentStatus = {
+  pending: "pending",
+  paid: "paid",
+  partially_paid: "partially_paid",
+  refunded: "refunded",
+  voided: "voided",
+} as const;
+
+export interface Order {
+  id: string;
+  orderNo: string;
+  reservationId?: string | null;
+  branchId: string;
+  customerId?: string | null;
+  orderType: string;
+  subtotal: number;
+  discountAmount?: number;
+  sstAmount?: number;
+  serviceCharge?: number;
+  totalAmount: number;
+  paymentStatus: OrderPaymentStatus;
+  paymentMethod?: string | null;
+  paymentRef?: string | null;
+  finalizedAt?: string | null;
+  createdAt?: string;
+  items?: OrderItem[];
+}
+
+export interface OrderResponse {
+  data: Order;
+}
+
+export interface OrderListResponse {
+  data: Order[];
+}
+
+export interface CreateOrderRequest {
+  branchId: string;
+  reservationId?: string;
+  customerId?: string;
+  orderType?: string;
+}
+
+export interface AddOrderItemRequest {
+  itemType?: string;
+  productId?: string;
+  description: string;
+  quantity?: number;
+  unitPrice: number;
+  discountPct?: number;
+  staffRefId?: string;
+}
+
+export interface ApplyDiscountRequest {
+  discount_pct: number;
+}
+
+export type CreateReceiptRequestReceiptMode =
+  (typeof CreateReceiptRequestReceiptMode)[keyof typeof CreateReceiptRequestReceiptMode];
+
+export const CreateReceiptRequestReceiptMode = {
+  detailed: "detailed",
+  basic: "basic",
+} as const;
+
+export interface CreateReceiptRequest {
+  paymentMethod: string;
+  paymentRef?: string;
+  customerName?: string;
+  receiptMode?: CreateReceiptRequestReceiptMode;
+}
+
+export interface Receipt {
+  id: string;
+  receiptNo: string;
+  orderId: string;
+  branchId?: string;
+  customerId?: string | null;
+  customerName?: string | null;
+  amountPaid: number;
+  currency?: string;
+  paymentMethod: string;
+  paymentRef?: string | null;
+  paymentAt: string;
+  receiptMode?: string;
+  printCount?: number;
+  createdAt?: string;
+}
+
+export interface ReceiptResponse {
+  data: Receipt;
+}
+
+export interface StaffAvailabilityItem {
+  id: string;
+  name: string;
+  profilePhoto?: string | null;
+  role: string;
+  rating?: number | null;
+}
+
+export interface StaffAvailabilityResponse {
+  data: StaffAvailabilityItem[];
+}
+
 export type ListRoomsParams = {
   branch_id?: string;
 };
@@ -356,4 +557,57 @@ export type ListProductTypesParams = {
 export type ListProductsParams = {
   branch_id?: string;
   type_id?: string;
+};
+
+export type ListReservationsParams = {
+  branch_id?: string;
+  date?: string;
+  status?: string;
+};
+
+export type GetReservationAvailabilityParams = {
+  branch_id: string;
+  date?: string;
+  duration_hours?: number;
+};
+
+export type ListOrdersParams = {
+  reservation_id?: string;
+  branch_id?: string;
+};
+
+export type GetOrderInvoiceParams = {
+  mode?: GetOrderInvoiceMode;
+};
+
+export type GetOrderInvoiceMode =
+  (typeof GetOrderInvoiceMode)[keyof typeof GetOrderInvoiceMode];
+
+export const GetOrderInvoiceMode = {
+  detailed: "detailed",
+  basic: "basic",
+} as const;
+
+export type GetReceiptParams = {
+  mode?: GetReceiptMode;
+};
+
+export type GetReceiptMode =
+  (typeof GetReceiptMode)[keyof typeof GetReceiptMode];
+
+export const GetReceiptMode = {
+  detailed: "detailed",
+  basic: "basic",
+} as const;
+
+export type ListAvailableHostessesParams = {
+  branch_id: string;
+  date?: string;
+  start_time?: string;
+};
+
+export type ListAvailableDriversParams = {
+  branch_id: string;
+  date?: string;
+  pickup_time?: string;
 };

@@ -691,3 +691,818 @@ export const ToggleProductResponse = zod.object({
     createdAt: zod.date().optional(),
   }),
 });
+
+/**
+ * @summary List reservations
+ */
+export const ListReservationsQueryParams = zod.object({
+  branch_id: zod.coerce.string().uuid().optional(),
+  date: zod.date().optional(),
+  status: zod.coerce.string().optional(),
+});
+
+export const ListReservationsResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      id: zod.string().uuid(),
+      reservationNo: zod.string(),
+      branchId: zod.string().uuid(),
+      customerId: zod.string().uuid().nullish(),
+      customerName: zod.string().nullish(),
+      customerPhone: zod.string().nullish(),
+      guestCount: zod.number(),
+      reservationDate: zod.date(),
+      startTime: zod.date(),
+      endTime: zod.date().nullish(),
+      durationHours: zod.number().nullish(),
+      roomId: zod.string().uuid().nullish(),
+      roomName: zod.string().nullish(),
+      roomType: zod.string().nullish(),
+      status: zod.enum([
+        "tentative",
+        "confirmed",
+        "checked_in",
+        "extended",
+        "checked_out",
+        "cancelled",
+        "no_show",
+      ]),
+      bookingChannel: zod.string(),
+      isOutcall: zod.boolean(),
+      specialRequests: zod.string().nullish(),
+      depositAmount: zod.number(),
+      depositPaid: zod.boolean(),
+      depositMethod: zod.string().nullish(),
+      confirmedAt: zod.date().nullish(),
+      checkedInAt: zod.date().nullish(),
+      checkedOutAt: zod.date().nullish(),
+      cancelledAt: zod.date().nullish(),
+      cancellationReason: zod.string().nullish(),
+      createdAt: zod.date().optional(),
+    }),
+  ),
+});
+
+/**
+ * @summary Create reservation
+ */
+export const CreateReservationBody = zod.object({
+  branchId: zod.string().uuid(),
+  customerId: zod.string().uuid().optional(),
+  customerName: zod.string().optional(),
+  customerPhone: zod.string().optional(),
+  guestCount: zod.number(),
+  reservationDate: zod.date().optional(),
+  startTime: zod.date(),
+  endTime: zod.date().optional(),
+  durationHours: zod.number().optional(),
+  roomId: zod.string().uuid().optional(),
+  bookingChannel: zod.string().optional(),
+  isOutcall: zod.boolean().optional(),
+  specialRequests: zod.string().optional(),
+  depositAmount: zod.number().optional(),
+  depositPaid: zod.boolean().optional(),
+  depositMethod: zod.string().optional(),
+  hostessIds: zod.array(zod.string().uuid()).optional(),
+});
+
+/**
+ * @summary Check room availability for a date
+ */
+export const GetReservationAvailabilityQueryParams = zod.object({
+  branch_id: zod.coerce.string().uuid(),
+  date: zod.date().optional(),
+  duration_hours: zod.coerce.number().optional(),
+});
+
+export const GetReservationAvailabilityResponse = zod.object({
+  data: zod.array(
+    zod
+      .object({
+        id: zod.string().uuid(),
+        branchId: zod.string().uuid(),
+        name: zod.string(),
+        roomType: zod.enum([
+          "private_room",
+          "vip_room",
+          "vvip_room",
+          "table",
+          "open_area",
+        ]),
+        capacityMin: zod.number(),
+        capacityMax: zod.number(),
+        hourlyRate: zod.number().nullish(),
+        minHours: zod.number().optional(),
+        status: zod.enum([
+          "available",
+          "occupied",
+          "cleaning",
+          "maintenance",
+          "blocked",
+        ]),
+        sortOrder: zod.number().optional(),
+        isActive: zod.boolean(),
+        description: zod.string().nullish(),
+        floorLevel: zod.string().nullish(),
+        createdAt: zod.date().optional(),
+      })
+      .and(
+        zod.object({
+          reservationNo: zod.string().nullish(),
+          guestName: zod.string().nullish(),
+          guestCount: zod.number().nullish(),
+          checkInTime: zod.date().nullish(),
+          expectedCheckOut: zod.date().nullish(),
+        }),
+      ),
+  ),
+});
+
+/**
+ * @summary Get reservation detail
+ */
+export const GetReservationParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const GetReservationResponse = zod.object({
+  data: zod.object({
+    id: zod.string().uuid(),
+    reservationNo: zod.string(),
+    branchId: zod.string().uuid(),
+    customerId: zod.string().uuid().nullish(),
+    customerName: zod.string().nullish(),
+    customerPhone: zod.string().nullish(),
+    guestCount: zod.number(),
+    reservationDate: zod.date(),
+    startTime: zod.date(),
+    endTime: zod.date().nullish(),
+    durationHours: zod.number().nullish(),
+    roomId: zod.string().uuid().nullish(),
+    roomName: zod.string().nullish(),
+    roomType: zod.string().nullish(),
+    status: zod.enum([
+      "tentative",
+      "confirmed",
+      "checked_in",
+      "extended",
+      "checked_out",
+      "cancelled",
+      "no_show",
+    ]),
+    bookingChannel: zod.string(),
+    isOutcall: zod.boolean(),
+    specialRequests: zod.string().nullish(),
+    depositAmount: zod.number(),
+    depositPaid: zod.boolean(),
+    depositMethod: zod.string().nullish(),
+    confirmedAt: zod.date().nullish(),
+    checkedInAt: zod.date().nullish(),
+    checkedOutAt: zod.date().nullish(),
+    cancelledAt: zod.date().nullish(),
+    cancellationReason: zod.string().nullish(),
+    createdAt: zod.date().optional(),
+  }),
+});
+
+/**
+ * @summary Confirm reservation
+ */
+export const ConfirmReservationParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const ConfirmReservationResponse = zod.object({
+  data: zod.object({
+    id: zod.string().uuid(),
+    reservationNo: zod.string(),
+    branchId: zod.string().uuid(),
+    customerId: zod.string().uuid().nullish(),
+    customerName: zod.string().nullish(),
+    customerPhone: zod.string().nullish(),
+    guestCount: zod.number(),
+    reservationDate: zod.date(),
+    startTime: zod.date(),
+    endTime: zod.date().nullish(),
+    durationHours: zod.number().nullish(),
+    roomId: zod.string().uuid().nullish(),
+    roomName: zod.string().nullish(),
+    roomType: zod.string().nullish(),
+    status: zod.enum([
+      "tentative",
+      "confirmed",
+      "checked_in",
+      "extended",
+      "checked_out",
+      "cancelled",
+      "no_show",
+    ]),
+    bookingChannel: zod.string(),
+    isOutcall: zod.boolean(),
+    specialRequests: zod.string().nullish(),
+    depositAmount: zod.number(),
+    depositPaid: zod.boolean(),
+    depositMethod: zod.string().nullish(),
+    confirmedAt: zod.date().nullish(),
+    checkedInAt: zod.date().nullish(),
+    checkedOutAt: zod.date().nullish(),
+    cancelledAt: zod.date().nullish(),
+    cancellationReason: zod.string().nullish(),
+    createdAt: zod.date().optional(),
+  }),
+});
+
+/**
+ * @summary Check-in reservation
+ */
+export const CheckInReservationParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const CheckInReservationResponse = zod.object({
+  data: zod.object({
+    id: zod.string().uuid(),
+    reservationNo: zod.string(),
+    branchId: zod.string().uuid(),
+    customerId: zod.string().uuid().nullish(),
+    customerName: zod.string().nullish(),
+    customerPhone: zod.string().nullish(),
+    guestCount: zod.number(),
+    reservationDate: zod.date(),
+    startTime: zod.date(),
+    endTime: zod.date().nullish(),
+    durationHours: zod.number().nullish(),
+    roomId: zod.string().uuid().nullish(),
+    roomName: zod.string().nullish(),
+    roomType: zod.string().nullish(),
+    status: zod.enum([
+      "tentative",
+      "confirmed",
+      "checked_in",
+      "extended",
+      "checked_out",
+      "cancelled",
+      "no_show",
+    ]),
+    bookingChannel: zod.string(),
+    isOutcall: zod.boolean(),
+    specialRequests: zod.string().nullish(),
+    depositAmount: zod.number(),
+    depositPaid: zod.boolean(),
+    depositMethod: zod.string().nullish(),
+    confirmedAt: zod.date().nullish(),
+    checkedInAt: zod.date().nullish(),
+    checkedOutAt: zod.date().nullish(),
+    cancelledAt: zod.date().nullish(),
+    cancellationReason: zod.string().nullish(),
+    createdAt: zod.date().optional(),
+  }),
+});
+
+/**
+ * @summary Extend reservation stay
+ */
+export const ExtendReservationParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const ExtendReservationBody = zod.object({
+  extra_hours: zod.number(),
+});
+
+export const ExtendReservationResponse = zod.object({
+  data: zod.object({
+    id: zod.string().uuid(),
+    reservationNo: zod.string(),
+    branchId: zod.string().uuid(),
+    customerId: zod.string().uuid().nullish(),
+    customerName: zod.string().nullish(),
+    customerPhone: zod.string().nullish(),
+    guestCount: zod.number(),
+    reservationDate: zod.date(),
+    startTime: zod.date(),
+    endTime: zod.date().nullish(),
+    durationHours: zod.number().nullish(),
+    roomId: zod.string().uuid().nullish(),
+    roomName: zod.string().nullish(),
+    roomType: zod.string().nullish(),
+    status: zod.enum([
+      "tentative",
+      "confirmed",
+      "checked_in",
+      "extended",
+      "checked_out",
+      "cancelled",
+      "no_show",
+    ]),
+    bookingChannel: zod.string(),
+    isOutcall: zod.boolean(),
+    specialRequests: zod.string().nullish(),
+    depositAmount: zod.number(),
+    depositPaid: zod.boolean(),
+    depositMethod: zod.string().nullish(),
+    confirmedAt: zod.date().nullish(),
+    checkedInAt: zod.date().nullish(),
+    checkedOutAt: zod.date().nullish(),
+    cancelledAt: zod.date().nullish(),
+    cancellationReason: zod.string().nullish(),
+    createdAt: zod.date().optional(),
+  }),
+});
+
+/**
+ * @summary Check-out reservation
+ */
+export const CheckOutReservationParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const CheckOutReservationResponse = zod.object({
+  data: zod.object({
+    id: zod.string().uuid(),
+    reservationNo: zod.string(),
+    branchId: zod.string().uuid(),
+    customerId: zod.string().uuid().nullish(),
+    customerName: zod.string().nullish(),
+    customerPhone: zod.string().nullish(),
+    guestCount: zod.number(),
+    reservationDate: zod.date(),
+    startTime: zod.date(),
+    endTime: zod.date().nullish(),
+    durationHours: zod.number().nullish(),
+    roomId: zod.string().uuid().nullish(),
+    roomName: zod.string().nullish(),
+    roomType: zod.string().nullish(),
+    status: zod.enum([
+      "tentative",
+      "confirmed",
+      "checked_in",
+      "extended",
+      "checked_out",
+      "cancelled",
+      "no_show",
+    ]),
+    bookingChannel: zod.string(),
+    isOutcall: zod.boolean(),
+    specialRequests: zod.string().nullish(),
+    depositAmount: zod.number(),
+    depositPaid: zod.boolean(),
+    depositMethod: zod.string().nullish(),
+    confirmedAt: zod.date().nullish(),
+    checkedInAt: zod.date().nullish(),
+    checkedOutAt: zod.date().nullish(),
+    cancelledAt: zod.date().nullish(),
+    cancellationReason: zod.string().nullish(),
+    createdAt: zod.date().optional(),
+  }),
+});
+
+/**
+ * @summary Cancel reservation
+ */
+export const CancelReservationParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const CancelReservationBody = zod.object({
+  reason: zod.string().optional(),
+});
+
+export const CancelReservationResponse = zod.object({
+  data: zod.object({
+    id: zod.string().uuid(),
+    reservationNo: zod.string(),
+    branchId: zod.string().uuid(),
+    customerId: zod.string().uuid().nullish(),
+    customerName: zod.string().nullish(),
+    customerPhone: zod.string().nullish(),
+    guestCount: zod.number(),
+    reservationDate: zod.date(),
+    startTime: zod.date(),
+    endTime: zod.date().nullish(),
+    durationHours: zod.number().nullish(),
+    roomId: zod.string().uuid().nullish(),
+    roomName: zod.string().nullish(),
+    roomType: zod.string().nullish(),
+    status: zod.enum([
+      "tentative",
+      "confirmed",
+      "checked_in",
+      "extended",
+      "checked_out",
+      "cancelled",
+      "no_show",
+    ]),
+    bookingChannel: zod.string(),
+    isOutcall: zod.boolean(),
+    specialRequests: zod.string().nullish(),
+    depositAmount: zod.number(),
+    depositPaid: zod.boolean(),
+    depositMethod: zod.string().nullish(),
+    confirmedAt: zod.date().nullish(),
+    checkedInAt: zod.date().nullish(),
+    checkedOutAt: zod.date().nullish(),
+    cancelledAt: zod.date().nullish(),
+    cancellationReason: zod.string().nullish(),
+    createdAt: zod.date().optional(),
+  }),
+});
+
+/**
+ * @summary List orders
+ */
+export const ListOrdersQueryParams = zod.object({
+  reservation_id: zod.coerce.string().uuid().optional(),
+  branch_id: zod.coerce.string().uuid().optional(),
+});
+
+export const ListOrdersResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      id: zod.string().uuid(),
+      orderNo: zod.string(),
+      reservationId: zod.string().uuid().nullish(),
+      branchId: zod.string().uuid(),
+      customerId: zod.string().uuid().nullish(),
+      orderType: zod.string(),
+      subtotal: zod.number(),
+      discountAmount: zod.number().optional(),
+      sstAmount: zod.number().optional(),
+      serviceCharge: zod.number().optional(),
+      totalAmount: zod.number(),
+      paymentStatus: zod.enum([
+        "pending",
+        "paid",
+        "partially_paid",
+        "refunded",
+        "voided",
+      ]),
+      paymentMethod: zod.string().nullish(),
+      paymentRef: zod.string().nullish(),
+      finalizedAt: zod.date().nullish(),
+      createdAt: zod.date().optional(),
+      items: zod
+        .array(
+          zod.object({
+            id: zod.string().uuid(),
+            orderId: zod.string().uuid(),
+            itemType: zod.string().optional(),
+            productId: zod.string().uuid().nullish(),
+            description: zod.string(),
+            quantity: zod.number(),
+            unitPrice: zod.number(),
+            discountPct: zod.number().optional(),
+            lineTotal: zod.number(),
+            staffRefId: zod.string().uuid().nullish(),
+            createdAt: zod.date().optional(),
+          }),
+        )
+        .optional(),
+    }),
+  ),
+});
+
+/**
+ * @summary Create order
+ */
+export const CreateOrderBody = zod.object({
+  branchId: zod.string().uuid(),
+  reservationId: zod.string().uuid().optional(),
+  customerId: zod.string().uuid().optional(),
+  orderType: zod.string().optional(),
+});
+
+/**
+ * @summary Add item to order
+ */
+export const AddOrderItemParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const AddOrderItemBody = zod.object({
+  itemType: zod.string().optional(),
+  productId: zod.string().uuid().optional(),
+  description: zod.string(),
+  quantity: zod.number().optional(),
+  unitPrice: zod.number(),
+  discountPct: zod.number().optional(),
+  staffRefId: zod.string().uuid().optional(),
+});
+
+export const AddOrderItemResponse = zod.object({
+  data: zod.object({
+    id: zod.string().uuid(),
+    orderNo: zod.string(),
+    reservationId: zod.string().uuid().nullish(),
+    branchId: zod.string().uuid(),
+    customerId: zod.string().uuid().nullish(),
+    orderType: zod.string(),
+    subtotal: zod.number(),
+    discountAmount: zod.number().optional(),
+    sstAmount: zod.number().optional(),
+    serviceCharge: zod.number().optional(),
+    totalAmount: zod.number(),
+    paymentStatus: zod.enum([
+      "pending",
+      "paid",
+      "partially_paid",
+      "refunded",
+      "voided",
+    ]),
+    paymentMethod: zod.string().nullish(),
+    paymentRef: zod.string().nullish(),
+    finalizedAt: zod.date().nullish(),
+    createdAt: zod.date().optional(),
+    items: zod
+      .array(
+        zod.object({
+          id: zod.string().uuid(),
+          orderId: zod.string().uuid(),
+          itemType: zod.string().optional(),
+          productId: zod.string().uuid().nullish(),
+          description: zod.string(),
+          quantity: zod.number(),
+          unitPrice: zod.number(),
+          discountPct: zod.number().optional(),
+          lineTotal: zod.number(),
+          staffRefId: zod.string().uuid().nullish(),
+          createdAt: zod.date().optional(),
+        }),
+      )
+      .optional(),
+  }),
+});
+
+/**
+ * @summary Remove item from order
+ */
+export const RemoveOrderItemParams = zod.object({
+  id: zod.coerce.string().uuid(),
+  itemId: zod.coerce.string().uuid(),
+});
+
+export const RemoveOrderItemResponse = zod.object({
+  data: zod.object({
+    id: zod.string().uuid(),
+    orderNo: zod.string(),
+    reservationId: zod.string().uuid().nullish(),
+    branchId: zod.string().uuid(),
+    customerId: zod.string().uuid().nullish(),
+    orderType: zod.string(),
+    subtotal: zod.number(),
+    discountAmount: zod.number().optional(),
+    sstAmount: zod.number().optional(),
+    serviceCharge: zod.number().optional(),
+    totalAmount: zod.number(),
+    paymentStatus: zod.enum([
+      "pending",
+      "paid",
+      "partially_paid",
+      "refunded",
+      "voided",
+    ]),
+    paymentMethod: zod.string().nullish(),
+    paymentRef: zod.string().nullish(),
+    finalizedAt: zod.date().nullish(),
+    createdAt: zod.date().optional(),
+    items: zod
+      .array(
+        zod.object({
+          id: zod.string().uuid(),
+          orderId: zod.string().uuid(),
+          itemType: zod.string().optional(),
+          productId: zod.string().uuid().nullish(),
+          description: zod.string(),
+          quantity: zod.number(),
+          unitPrice: zod.number(),
+          discountPct: zod.number().optional(),
+          lineTotal: zod.number(),
+          staffRefId: zod.string().uuid().nullish(),
+          createdAt: zod.date().optional(),
+        }),
+      )
+      .optional(),
+  }),
+});
+
+/**
+ * @summary Apply discount to order
+ */
+export const ApplyOrderDiscountParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const ApplyOrderDiscountBody = zod.object({
+  discount_pct: zod.number(),
+});
+
+export const ApplyOrderDiscountResponse = zod.object({
+  data: zod.object({
+    id: zod.string().uuid(),
+    orderNo: zod.string(),
+    reservationId: zod.string().uuid().nullish(),
+    branchId: zod.string().uuid(),
+    customerId: zod.string().uuid().nullish(),
+    orderType: zod.string(),
+    subtotal: zod.number(),
+    discountAmount: zod.number().optional(),
+    sstAmount: zod.number().optional(),
+    serviceCharge: zod.number().optional(),
+    totalAmount: zod.number(),
+    paymentStatus: zod.enum([
+      "pending",
+      "paid",
+      "partially_paid",
+      "refunded",
+      "voided",
+    ]),
+    paymentMethod: zod.string().nullish(),
+    paymentRef: zod.string().nullish(),
+    finalizedAt: zod.date().nullish(),
+    createdAt: zod.date().optional(),
+    items: zod
+      .array(
+        zod.object({
+          id: zod.string().uuid(),
+          orderId: zod.string().uuid(),
+          itemType: zod.string().optional(),
+          productId: zod.string().uuid().nullish(),
+          description: zod.string(),
+          quantity: zod.number(),
+          unitPrice: zod.number(),
+          discountPct: zod.number().optional(),
+          lineTotal: zod.number(),
+          staffRefId: zod.string().uuid().nullish(),
+          createdAt: zod.date().optional(),
+        }),
+      )
+      .optional(),
+  }),
+});
+
+/**
+ * @summary Finalize order (lock and calculate totals)
+ */
+export const FinalizeOrderParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const FinalizeOrderResponse = zod.object({
+  data: zod.object({
+    id: zod.string().uuid(),
+    orderNo: zod.string(),
+    reservationId: zod.string().uuid().nullish(),
+    branchId: zod.string().uuid(),
+    customerId: zod.string().uuid().nullish(),
+    orderType: zod.string(),
+    subtotal: zod.number(),
+    discountAmount: zod.number().optional(),
+    sstAmount: zod.number().optional(),
+    serviceCharge: zod.number().optional(),
+    totalAmount: zod.number(),
+    paymentStatus: zod.enum([
+      "pending",
+      "paid",
+      "partially_paid",
+      "refunded",
+      "voided",
+    ]),
+    paymentMethod: zod.string().nullish(),
+    paymentRef: zod.string().nullish(),
+    finalizedAt: zod.date().nullish(),
+    createdAt: zod.date().optional(),
+    items: zod
+      .array(
+        zod.object({
+          id: zod.string().uuid(),
+          orderId: zod.string().uuid(),
+          itemType: zod.string().optional(),
+          productId: zod.string().uuid().nullish(),
+          description: zod.string(),
+          quantity: zod.number(),
+          unitPrice: zod.number(),
+          discountPct: zod.number().optional(),
+          lineTotal: zod.number(),
+          staffRefId: zod.string().uuid().nullish(),
+          createdAt: zod.date().optional(),
+        }),
+      )
+      .optional(),
+  }),
+});
+
+/**
+ * @summary Get invoice HTML for order
+ */
+export const GetOrderInvoiceParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const GetOrderInvoiceQueryParams = zod.object({
+  mode: zod.enum(["detailed", "basic"]).optional(),
+});
+
+/**
+ * @summary Create receipt after payment
+ */
+export const CreateReceiptParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const CreateReceiptBody = zod.object({
+  paymentMethod: zod.string(),
+  paymentRef: zod.string().optional(),
+  customerName: zod.string().optional(),
+  receiptMode: zod.enum(["detailed", "basic"]).optional(),
+});
+
+/**
+ * @summary Get latest receipt for order
+ */
+export const GetLatestReceiptParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const GetLatestReceiptResponse = zod.object({
+  data: zod.object({
+    id: zod.string().uuid(),
+    receiptNo: zod.string(),
+    orderId: zod.string().uuid(),
+    branchId: zod.string().uuid().optional(),
+    customerId: zod.string().uuid().nullish(),
+    customerName: zod.string().nullish(),
+    amountPaid: zod.number(),
+    currency: zod.string().optional(),
+    paymentMethod: zod.string(),
+    paymentRef: zod.string().nullish(),
+    paymentAt: zod.date(),
+    receiptMode: zod.string().optional(),
+    printCount: zod.number().optional(),
+    createdAt: zod.date().optional(),
+  }),
+});
+
+/**
+ * @summary Get receipt HTML
+ */
+export const GetReceiptParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const GetReceiptQueryParams = zod.object({
+  mode: zod.enum(["detailed", "basic"]).optional(),
+});
+
+/**
+ * @summary Record receipt print event
+ */
+export const RecordReceiptPrintParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const RecordReceiptPrintResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * @summary List available hostesses for a time slot
+ */
+export const ListAvailableHostessesQueryParams = zod.object({
+  branch_id: zod.coerce.string().uuid(),
+  date: zod.date().optional(),
+  start_time: zod.coerce.string().optional(),
+});
+
+export const ListAvailableHostessesResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      id: zod.string().uuid(),
+      name: zod.string(),
+      profilePhoto: zod.string().nullish(),
+      role: zod.string(),
+      rating: zod.number().nullish(),
+    }),
+  ),
+});
+
+/**
+ * @summary List available drivers for a time slot
+ */
+export const ListAvailableDriversQueryParams = zod.object({
+  branch_id: zod.coerce.string().uuid(),
+  date: zod.date().optional(),
+  pickup_time: zod.coerce.string().optional(),
+});
+
+export const ListAvailableDriversResponse = zod.object({
+  data: zod.array(
+    zod.object({
+      id: zod.string().uuid(),
+      name: zod.string(),
+      profilePhoto: zod.string().nullish(),
+      role: zod.string(),
+      rating: zod.number().nullish(),
+    }),
+  ),
+});

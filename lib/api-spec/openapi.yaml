@@ -18,6 +18,14 @@ tags:
     description: Room management
   - name: products
     description: Product catalog
+  - name: reservations
+    description: Reservation lifecycle management
+  - name: orders
+    description: POS and order management
+  - name: receipts
+    description: Receipt management
+  - name: staff
+    description: Staff availability
 
 paths:
   /healthz:
@@ -561,6 +569,578 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProductResponse"
+
+  # ===== RESERVATIONS =====
+  /reservations:
+    get:
+      operationId: listReservations
+      tags: [reservations]
+      summary: List reservations
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: branch_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: status
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Reservations list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReservationListResponse"
+    post:
+      operationId: createReservation
+      tags: [reservations]
+      summary: Create reservation
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReservationRequest"
+      responses:
+        "201":
+          description: Reservation created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReservationResponse"
+
+  /reservations/availability:
+    get:
+      operationId: getReservationAvailability
+      tags: [reservations]
+      summary: Check room availability for a date
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: branch_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: duration_hours
+          in: query
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Available rooms
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomListResponse"
+
+  /reservations/{id}:
+    get:
+      operationId: getReservation
+      tags: [reservations]
+      summary: Get reservation detail
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Reservation detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReservationResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /reservations/{id}/confirm:
+    put:
+      operationId: confirmReservation
+      tags: [reservations]
+      summary: Confirm reservation
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Confirmed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReservationResponse"
+
+  /reservations/{id}/check-in:
+    put:
+      operationId: checkInReservation
+      tags: [reservations]
+      summary: Check-in reservation
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Checked in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReservationResponse"
+
+  /reservations/{id}/extend:
+    put:
+      operationId: extendReservation
+      tags: [reservations]
+      summary: Extend reservation stay
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExtendReservationRequest"
+      responses:
+        "200":
+          description: Extended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReservationResponse"
+
+  /reservations/{id}/check-out:
+    put:
+      operationId: checkOutReservation
+      tags: [reservations]
+      summary: Check-out reservation
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Checked out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReservationResponse"
+
+  /reservations/{id}/cancel:
+    put:
+      operationId: cancelReservation
+      tags: [reservations]
+      summary: Cancel reservation
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CancelReservationRequest"
+      responses:
+        "200":
+          description: Cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReservationResponse"
+
+  # ===== ORDERS =====
+  /orders:
+    get:
+      operationId: listOrders
+      tags: [orders]
+      summary: List orders
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: reservation_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: branch_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Orders
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderListResponse"
+    post:
+      operationId: createOrder
+      tags: [orders]
+      summary: Create order
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrderRequest"
+      responses:
+        "201":
+          description: Order created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderResponse"
+
+  /orders/{id}/items:
+    post:
+      operationId: addOrderItem
+      tags: [orders]
+      summary: Add item to order
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddOrderItemRequest"
+      responses:
+        "200":
+          description: Item added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderResponse"
+
+  /orders/{id}/items/{itemId}:
+    delete:
+      operationId: removeOrderItem
+      tags: [orders]
+      summary: Remove item from order
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Item removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderResponse"
+
+  /orders/{id}/discount:
+    put:
+      operationId: applyOrderDiscount
+      tags: [orders]
+      summary: Apply discount to order
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplyDiscountRequest"
+      responses:
+        "200":
+          description: Discount applied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderResponse"
+
+  /orders/{id}/finalize:
+    post:
+      operationId: finalizeOrder
+      tags: [orders]
+      summary: Finalize order (lock and calculate totals)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Order finalized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderResponse"
+
+  /orders/{id}/invoice:
+    get:
+      operationId: getOrderInvoice
+      tags: [orders]
+      summary: Get invoice HTML for order
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: mode
+          in: query
+          schema:
+            type: string
+            enum: [detailed, basic]
+      responses:
+        "200":
+          description: Invoice HTML
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /orders/{id}/receipt:
+    post:
+      operationId: createReceipt
+      tags: [orders]
+      summary: Create receipt after payment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReceiptRequest"
+      responses:
+        "201":
+          description: Receipt created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReceiptResponse"
+
+  /orders/{id}/receipt/latest:
+    get:
+      operationId: getLatestReceipt
+      tags: [orders]
+      summary: Get latest receipt for order
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Latest receipt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReceiptResponse"
+
+  # ===== RECEIPTS =====
+  /receipts/{id}:
+    get:
+      operationId: getReceipt
+      tags: [receipts]
+      summary: Get receipt HTML
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: mode
+          in: query
+          schema:
+            type: string
+            enum: [detailed, basic]
+      responses:
+        "200":
+          description: Receipt HTML
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /receipts/{id}/printed:
+    post:
+      operationId: recordReceiptPrint
+      tags: [receipts]
+      summary: Record receipt print event
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Print recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiSuccess"
+
+  # ===== STAFF AVAILABILITY =====
+  /staff/hostesses/available:
+    get:
+      operationId: listAvailableHostesses
+      tags: [staff]
+      summary: List available hostesses for a time slot
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: branch_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: start_time
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Available hostesses
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffAvailabilityResponse"
+
+  /staff/drivers/available:
+    get:
+      operationId: listAvailableDrivers
+      tags: [staff]
+      summary: List available drivers for a time slot
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: branch_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: pickup_time
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Available drivers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffAvailabilityResponse"
 
 components:
   securitySchemes:
@@ -1267,3 +1847,456 @@ components:
           type: integer
         isActive:
           type: boolean
+
+    # ===== RESERVATION SCHEMAS =====
+    Reservation:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        reservationNo:
+          type: string
+        branchId:
+          type: string
+          format: uuid
+        customerId:
+          type: string
+          format: uuid
+          nullable: true
+        customerName:
+          type: string
+          nullable: true
+        customerPhone:
+          type: string
+          nullable: true
+        guestCount:
+          type: integer
+        reservationDate:
+          type: string
+          format: date
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+          nullable: true
+        durationHours:
+          type: number
+          nullable: true
+        roomId:
+          type: string
+          format: uuid
+          nullable: true
+        roomName:
+          type: string
+          nullable: true
+        roomType:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [tentative, confirmed, checked_in, extended, checked_out, cancelled, no_show]
+        bookingChannel:
+          type: string
+        isOutcall:
+          type: boolean
+        specialRequests:
+          type: string
+          nullable: true
+        depositAmount:
+          type: number
+        depositPaid:
+          type: boolean
+        depositMethod:
+          type: string
+          nullable: true
+        confirmedAt:
+          type: string
+          format: date-time
+          nullable: true
+        checkedInAt:
+          type: string
+          format: date-time
+          nullable: true
+        checkedOutAt:
+          type: string
+          format: date-time
+          nullable: true
+        cancelledAt:
+          type: string
+          format: date-time
+          nullable: true
+        cancellationReason:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - reservationNo
+        - branchId
+        - guestCount
+        - reservationDate
+        - startTime
+        - status
+        - bookingChannel
+        - isOutcall
+        - depositAmount
+        - depositPaid
+
+    ReservationResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/Reservation"
+      required:
+        - data
+
+    ReservationListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Reservation"
+      required:
+        - data
+
+    CreateReservationRequest:
+      type: object
+      properties:
+        branchId:
+          type: string
+          format: uuid
+        customerId:
+          type: string
+          format: uuid
+        customerName:
+          type: string
+        customerPhone:
+          type: string
+        guestCount:
+          type: integer
+        reservationDate:
+          type: string
+          format: date
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+        durationHours:
+          type: number
+        roomId:
+          type: string
+          format: uuid
+        bookingChannel:
+          type: string
+        isOutcall:
+          type: boolean
+        specialRequests:
+          type: string
+        depositAmount:
+          type: number
+        depositPaid:
+          type: boolean
+        depositMethod:
+          type: string
+        hostessIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+      required:
+        - branchId
+        - guestCount
+        - startTime
+
+    ExtendReservationRequest:
+      type: object
+      properties:
+        extra_hours:
+          type: number
+      required:
+        - extra_hours
+
+    CancelReservationRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+
+    # ===== ORDER SCHEMAS =====
+    OrderItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        orderId:
+          type: string
+          format: uuid
+        itemType:
+          type: string
+        productId:
+          type: string
+          format: uuid
+          nullable: true
+        description:
+          type: string
+        quantity:
+          type: number
+        unitPrice:
+          type: number
+        discountPct:
+          type: number
+        lineTotal:
+          type: number
+        staffRefId:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - orderId
+        - description
+        - quantity
+        - unitPrice
+        - lineTotal
+
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        orderNo:
+          type: string
+        reservationId:
+          type: string
+          format: uuid
+          nullable: true
+        branchId:
+          type: string
+          format: uuid
+        customerId:
+          type: string
+          format: uuid
+          nullable: true
+        orderType:
+          type: string
+        subtotal:
+          type: number
+        discountAmount:
+          type: number
+        sstAmount:
+          type: number
+        serviceCharge:
+          type: number
+        totalAmount:
+          type: number
+        paymentStatus:
+          type: string
+          enum: [pending, paid, partially_paid, refunded, voided]
+        paymentMethod:
+          type: string
+          nullable: true
+        paymentRef:
+          type: string
+          nullable: true
+        finalizedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+      required:
+        - id
+        - orderNo
+        - branchId
+        - orderType
+        - subtotal
+        - totalAmount
+        - paymentStatus
+
+    OrderResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/Order"
+      required:
+        - data
+
+    OrderListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Order"
+      required:
+        - data
+
+    CreateOrderRequest:
+      type: object
+      properties:
+        branchId:
+          type: string
+          format: uuid
+        reservationId:
+          type: string
+          format: uuid
+        customerId:
+          type: string
+          format: uuid
+        orderType:
+          type: string
+      required:
+        - branchId
+
+    AddOrderItemRequest:
+      type: object
+      properties:
+        itemType:
+          type: string
+        productId:
+          type: string
+          format: uuid
+        description:
+          type: string
+        quantity:
+          type: number
+        unitPrice:
+          type: number
+        discountPct:
+          type: number
+        staffRefId:
+          type: string
+          format: uuid
+      required:
+        - description
+        - unitPrice
+
+    ApplyDiscountRequest:
+      type: object
+      properties:
+        discount_pct:
+          type: number
+      required:
+        - discount_pct
+
+    CreateReceiptRequest:
+      type: object
+      properties:
+        paymentMethod:
+          type: string
+        paymentRef:
+          type: string
+        customerName:
+          type: string
+        receiptMode:
+          type: string
+          enum: [detailed, basic]
+      required:
+        - paymentMethod
+
+    # ===== RECEIPT SCHEMA =====
+    Receipt:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        receiptNo:
+          type: string
+        orderId:
+          type: string
+          format: uuid
+        branchId:
+          type: string
+          format: uuid
+        customerId:
+          type: string
+          format: uuid
+          nullable: true
+        customerName:
+          type: string
+          nullable: true
+        amountPaid:
+          type: number
+        currency:
+          type: string
+        paymentMethod:
+          type: string
+        paymentRef:
+          type: string
+          nullable: true
+        paymentAt:
+          type: string
+          format: date-time
+        receiptMode:
+          type: string
+        printCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - receiptNo
+        - orderId
+        - amountPaid
+        - paymentMethod
+        - paymentAt
+
+    ReceiptResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/Receipt"
+      required:
+        - data
+
+    # ===== STAFF AVAILABILITY SCHEMAS =====
+    StaffAvailabilityItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        profilePhoto:
+          type: string
+          nullable: true
+        role:
+          type: string
+        rating:
+          type: number
+          nullable: true
+      required:
+        - id
+        - name
+        - role
+
+    StaffAvailabilityResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/StaffAvailabilityItem"
+      required:
+        - data
