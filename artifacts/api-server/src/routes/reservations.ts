@@ -180,6 +180,51 @@ router.get(
   }
 );
 
+// Update reservation (editable fields)
+router.put(
+  "/reservations/:id",
+  authenticate,
+  requireRole(ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.BRANCH_MANAGER, ROLES.MANAGER),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const { rows } = await pool.query(
+        `UPDATE reservations SET
+           guest_count       = COALESCE($1, guest_count),
+           special_requests  = COALESCE($2, special_requests),
+           booking_channel   = COALESCE($3, booking_channel),
+           deposit_amount    = COALESCE($4, deposit_amount),
+           deposit_paid      = COALESCE($5, deposit_paid),
+           deposit_method    = COALESCE($6, deposit_method),
+           customer_name     = COALESCE($7, customer_name),
+           customer_phone    = COALESCE($8, customer_phone)
+         WHERE id = $9
+         RETURNING *`,
+        [
+          body.guestCount    !== undefined ? Number(body.guestCount)   : null,
+          body.specialRequests !== undefined ? body.specialRequests     : null,
+          body.bookingChannel !== undefined  ? body.bookingChannel      : null,
+          body.depositAmount  !== undefined ? Number(body.depositAmount): null,
+          body.depositPaid    !== undefined ? Boolean(body.depositPaid) : null,
+          body.depositMethod  !== undefined ? body.depositMethod        : null,
+          body.customerName   !== undefined ? body.customerName         : null,
+          body.customerPhone  !== undefined ? body.customerPhone        : null,
+          req.params.id,
+        ]
+      );
+      if (!rows.length) { res.status(404).json({ error: "NOT_FOUND" }); return; }
+      const rr = await pool.query(
+        `SELECT r.*, rm.name AS room_name, rm.room_type FROM reservations r LEFT JOIN rooms rm ON rm.id = r.room_id WHERE r.id = $1`,
+        [req.params.id]
+      );
+      res.json({ data: formatReservation(rr.rows[0]) });
+    } catch (err) {
+      console.error("Update reservation error:", err);
+      res.status(500).json({ error: "INTERNAL_ERROR" });
+    }
+  }
+);
+
 // Confirm reservation
 router.put(
   "/reservations/:id/confirm",
