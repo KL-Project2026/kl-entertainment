@@ -1,0 +1,417 @@
+# KL Project — CHUNK 05 of 06
+# Shareholder P&L + Investor Real-Time Dashboard + Reports
+# ⏱️ 예상 작업 시간: 20~25분
+# ✅ 완료 기준: 월별 P&L 계산 + 투자자 실시간 대시보드 작동
+
+---
+
+## 📌 PREREQUISITE
+
+Chunks 01~04 complete:
+- Orders being finalized with payment
+- Commissions being written to expenses table
+- Staff attendance + penalty amounts recorded
+
+---
+
+## 🎯 WHAT TO BUILD IN THIS CHUNK
+
+1. Branch P&L calculation (revenue - all expenses = net profit)
+2. Shareholder setup + equity per branch
+3. Profit settlement generation (with FX for foreign shareholders)
+4. Investor real-time dashboard (Socket.io live feed)
+5. Management reports (revenue, occupancy, commissions)
+
+---
+
+## 📁 NEW FILES
+
+```
+server/features/
+├── shareholders/
+│   ├── shareholders.routes.js
+│   ├── shareholders.service.js    ← P&L + settlement logic
+│   └── investor.socket.js         ← real-time investor channel
+└── reports/
+    ├── reports.routes.js
+    └── reports.service.js         ← aggregation queries
+
+client/src/pages/
+├── shareholders/
+│   ├── ShareholderListPage.jsx
+│   ├── SettlementPage.jsx
+│   └── InvestorDashboardPage.jsx  ← real-time live view
+└── reports/
+    ├── RevenuePage.jsx
+    ├── OccupancyPage.jsx
+    ├── CommissionReportPage.jsx
+    └── ProfitLossPage.jsx
+```
+
+---
+
+## 📊 P&L CALCULATION ENGINE
+
+```javascript
+// server/features/shareholders/shareholders.service.js
+// MIGRATION: .NET — SettlementService with full approval workflow
+
+/**
+ * Calculate branch P&L for a given period.
+ *
+ * REVENUE (from orders table, payment_status = 'paid'):
+ *   - room_charge items
+ *   - hostess_fee items
+ *   - product items
+ *   - pickup_fee items
+ *   - extension_charge items
+ *
+ * EXPENSES (from expenses table):
+ *   - rent, utilities
+ *   - salary (all staff, all employment types)
+ *   - hostess_commission (written by commission engine)
+ *   - agent_commission (written by commission engine)
+ *   - referral_credit (credit redeemed as cash)
+ *   - marketing, supplies, repair, other
+ *
+ * NET PROFIT = TOTAL REVENUE - TOTAL EXPENSES
+ */
+export async function calculateBranchPnL(branchId, periodStart, periodEnd) {
+  // --- REVENUE ---
+  const { rows: revRows } = await pool.query(`
+    SELECT
+      SUM(CASE WHEN oi.item_type = 'room_charge'      THEN oi.line_total ELSE 0 END) AS room_revenue,
+      SUM(CASE WHEN oi.item_type = 'hostess_fee'      THEN oi.line_total ELSE 0 END) AS hostess_revenue,
+      SUM(CASE WHEN oi.item_type = 'product'          THEN oi.line_total ELSE 0 END) AS product_revenue,
+      SUM(CASE WHEN oi.item_type = 'pickup_fee'       THEN oi.line_total ELSE 0 END) AS pickup_revenue,
+      SUM(CASE WHEN oi.item_type = 'extension_charge' THEN oi.line_total ELSE 0 END) AS extension_revenue,
+      SUM(o.total_amount) AS gross_revenue
+    FROM orders o
+    JOIN order_items oi ON oi.order_id = o.id
+    WHERE o.branch_id = $1
+      AND o.payment_status = 'paid'
+      AND o.finalized_at BETWEEN $2 AND $3
+      AND oi.item_type NOT IN ('discount')
+  `, [branchId, periodStart, periodEnd]);
+
+  // --- EXPENSES ---
+  const { rows: expRows } = await pool.query(`
+    SELECT category, SUM(amount) AS total
+    FROM expenses
+    WHERE branch_id = $1
+      AND expense_date BETWEEN $2 AND $3
+    GROUP BY category
+  `, [branchId, periodStart, periodEnd]);
+
+  const revenueBreakdown = revRows[0];
+  const grossRevenue = parseFloat(revenueBreakdown.gross_revenue) || 0;
+
+  const expenseBreakdown = {};
+  let totalExpenses = 0;
+  for (const row of expRows) {
+    expenseBreakdown[row.category] = parseFloat(row.total);
+    totalExpenses += parseFloat(row.total);
+  }
+
+  return {
+    branchId,
+    period: { start: periodStart, end: periodEnd },
+    revenue: {
+      room:      parseFloat(revenueBreakdown.room_revenue)      || 0,
+      hostess:   parseFloat(revenueBreakdown.hostess_revenue)   || 0,
+      product:   parseFloat(revenueBreakdown.product_revenue)   || 0,
+      pickup:    parseFloat(revenueBreakdown.pickup_revenue)     || 0,
+      extension: parseFloat(revenueBreakdown.extension_revenue) || 0,
+      gross:     grossRevenue,
+    },
+    expenses: {
+      breakdown: expenseBreakdown,
+      total:     Math.round(totalExpenses * 100) / 100,
+    },
+    netProfit: Math.round((grossRevenue - totalExpenses) * 100) / 100,
+  };
+}
+
+/**
+ * Generate settlement for one shareholder.
+ * Does NOT write to DB — caller decides to save after approval.
+ */
+export async function calculateShareholderSettlement(branchId, shareholderId, periodStart, periodEnd) {
+  const pnl = await calculateBranchPnL(branchId, periodStart, periodEnd);
+
+  // Get equity % (effective for this period)
+  const { rows } = await pool.query(`
+    SELECT equity_pct, agreed_rate FROM branch_shareholders
+    WHERE branch_id = $1 AND shareholder_id = $2
+      AND effective_from <= $3
+      AND (effective_to IS NULL OR effective_to >= $4)
+    ORDER BY effective_from DESC LIMIT 1
+  `, [branchId, shareholderId, periodEnd, periodStart]);
+
+  if (!rows.length) throw new Error('SHAREHOLDER_NOT_FOUND_FOR_BRANCH');
+
+  const equityPct = parseFloat(rows[0].agreed_rate || rows[0].equity_pct);
+  const settlementMyr = Math.round(pnl.netProfit * equityPct * 100) / 100;
+
+  // Get shareholder's preferred currency and latest FX rate
+  const { rows: shRows } = await pool.query(
+    'SELECT preferred_currency FROM shareholders WHERE id = $1', [shareholderId]
+  );
+  const preferredCcy = shRows[0]?.preferred_currency || 'MYR';
+
+  let fxRate = 1.0;
+  if (preferredCcy !== 'MYR') {
+    const { rows: fxRows } = await pool.query(
+      'SELECT rate FROM fx_rates WHERE base_ccy = $1 AND quote_ccy = $2',
+      ['MYR', preferredCcy]
+    );
+    fxRate = parseFloat(fxRows[0]?.rate) || 1.0;
+  }
+
+  return {
+    branchId, shareholderId,
+    periodStart, periodEnd,
+    grossRevenue:         pnl.revenue.gross,
+    totalExpenses:        pnl.expenses.total,
+    netProfit:            pnl.netProfit,
+    equityPctSnapshot:    equityPct,
+    settlementAmountMyr:  settlementMyr,
+    payoutCurrency:       preferredCcy,
+    fxRate,
+    settlementAmountFx:   Math.round(settlementMyr * fxRate * 100) / 100,
+    status: 'draft',
+  };
+}
+```
+
+---
+
+## 📡 INVESTOR REAL-TIME SOCKET
+
+```javascript
+// server/features/shareholders/investor.socket.js
+// MIGRATION: .NET SignalR — InvestorHub
+
+export function initInvestorSocket(io) {
+  io.on('connection', (socket) => {
+    socket.on('join_investor', async ({ shareholderId }) => {
+      // Verify this socket's user is this shareholder
+      socket.join(`investor:${shareholderId}`);
+      // Send immediate snapshot
+      const snapshot = await getInvestorDashboardSnapshot(shareholderId);
+      socket.emit('dashboard_summary', snapshot);
+    });
+  });
+
+  // Scheduled 5-minute summary pings for all connected investors
+  setInterval(async () => {
+    const sockets = await io.fetchSockets();
+    const investorRooms = new Set(
+      sockets.flatMap(s => [...s.rooms]).filter(r => r.startsWith('investor:'))
+    );
+    for (const room of investorRooms) {
+      const shareholderId = room.replace('investor:', '');
+      const snapshot = await getInvestorDashboardSnapshot(shareholderId);
+      io.to(room).emit('dashboard_summary', snapshot);
+    }
+  }, 5 * 60 * 1000);
+}
+
+// Called by order.service.js after order finalized
+export async function emitInvestorRevenueUpdate(io, branchId, orderData) {
+  // Get all shareholders with equity in this branch
+  const { rows } = await pool.query(
+    `SELECT shareholder_id FROM branch_shareholders
+     WHERE branch_id = $1 AND (effective_to IS NULL OR effective_to >= NOW())`,
+    [branchId]
+  );
+  for (const row of rows) {
+    io.to(`investor:${row.shareholder_id}`).emit('revenue_update', {
+      branchId,
+      orderNo:           orderData.order_no,
+      totalAmount:       orderData.total_amount,
+      paymentMethod:     orderData.payment_method,
+      // Do NOT send customer name or hostess name
+      updatedAt:         new Date().toISOString(),
+    });
+  }
+}
+
+// Called by reservations.service.js on status change
+export async function emitInvestorReservationUpdate(io, branchId, reservationData) {
+  const { rows } = await pool.query(
+    `SELECT shareholder_id FROM branch_shareholders
+     WHERE branch_id = $1 AND (effective_to IS NULL OR effective_to >= NOW())`,
+    [branchId]
+  );
+  for (const row of rows) {
+    io.to(`investor:${row.shareholder_id}`).emit('reservation_update', {
+      branchId,
+      reservationNo: reservationData.reservation_no,
+      status:        reservationData.status,
+      roomName:      reservationData.room_name,
+      guestCount:    reservationData.guest_count,
+      // NO customer name
+      updatedAt:     new Date().toISOString(),
+    });
+  }
+}
+
+async function getInvestorDashboardSnapshot(shareholderId) {
+  const today = new Date().toISOString().split('T')[0];
+  const monthStart = today.substring(0, 8) + '01';
+
+  const { rows: branches } = await pool.query(`
+    SELECT b.id, b.name, b.internal_code,
+           bs.equity_pct
+    FROM branches b
+    JOIN branch_shareholders bs ON bs.branch_id = b.id
+    WHERE bs.shareholder_id = $1
+      AND (bs.effective_to IS NULL OR bs.effective_to >= NOW())
+  `, [shareholderId]);
+
+  const branchData = await Promise.all(branches.map(async (b) => {
+    const [todayRev, monthRev, rooms] = await Promise.all([
+      pool.query(
+        `SELECT COALESCE(SUM(total_amount),0) AS revenue, COUNT(*) AS orders
+         FROM orders WHERE branch_id=$1 AND payment_status='paid'
+         AND finalized_at::date = $2`, [b.id, today]
+      ),
+      pool.query(
+        `SELECT COALESCE(SUM(total_amount),0) AS revenue, COUNT(*) AS orders
+         FROM orders WHERE branch_id=$1 AND payment_status='paid'
+         AND finalized_at >= $2`, [b.id, monthStart]
+      ),
+      pool.query(
+        `SELECT status, COUNT(*) AS count FROM rooms WHERE branch_id=$1 GROUP BY status`,
+        [b.id]
+      ),
+    ]);
+
+    const roomCounts = rooms.rows.reduce((acc, r) => ({ ...acc, [r.status]: parseInt(r.count) }), {});
+    const totalRooms = Object.values(roomCounts).reduce((a, b) => a + b, 0);
+
+    return {
+      branchId:      b.id,
+      branchName:    b.name,
+      equityPct:     parseFloat(b.equity_pct),
+      today: {
+        revenue:          parseFloat(todayRev.rows[0].revenue),
+        reservationCount: parseInt(todayRev.rows[0].orders),
+      },
+      thisMonth: {
+        revenue:          parseFloat(monthRev.rows[0].revenue),
+        reservationCount: parseInt(monthRev.rows[0].orders),
+        estimatedPayout:  Math.round(parseFloat(monthRev.rows[0].revenue) * parseFloat(b.equity_pct) * 100) / 100,
+      },
+      rooms: {
+        total:       totalRooms,
+        available:   roomCounts.available || 0,
+        occupied:    roomCounts.occupied  || 0,
+        occupancyPct: totalRooms > 0 ? Math.round((roomCounts.occupied || 0) / totalRooms * 100) : 0,
+      },
+    };
+  }));
+
+  return { branches: branchData, updatedAt: new Date().toISOString() };
+}
+```
+
+---
+
+## 🌐 INVESTOR API ENDPOINTS
+
+```
+GET  /api/investor/dashboard               ← real-time snapshot (REST fallback)
+GET  /api/investor/branches                ← branches with my equity
+GET  /api/investor/revenue?branch_id=&from=&to=&granularity=daily|monthly
+GET  /api/investor/reservations?branch_id=&date=&status=
+GET  /api/investor/profit-loss?branch_id=&month=    ← YYYY-MM
+GET  /api/investor/settlements              ← all past + pending
+GET  /api/investor/settlements/:id/pdf      ← download PDF
+```
+
+Security middleware for all `/api/investor/*` routes:
+```javascript
+// Only shareholders can access investor routes
+export function requireShareholder(req, res, next) {
+  if (req.user.role !== 'shareholder') {
+    return res.status(403).json({ error: 'SHAREHOLDER_ONLY' });
+  }
+  next();
+}
+```
+
+---
+
+## 🎨 INVESTOR DASHBOARD UI (InvestorDashboardPage.jsx)
+
+```
+Layout: dark luxury (#0D0D14), sidebar hidden for shareholder role
+
+Top bar:
+  - "🟢 LIVE" pulsing green dot
+  - Organization name
+  - Branch selector tabs (if multiple branches)
+  - Currency toggle (preferred_currency of this investor)
+
+Main content grid (2×2 stat cards):
+  ┌──────────────────┐  ┌──────────────────┐
+  │ TODAY REVENUE    │  │ THIS MONTH NET   │
+  │ MYR 8,420        │  │ MYR 42,100       │
+  │ ↑12% vs yesterday│  │ ↑8% vs last month│
+  └──────────────────┘  └──────────────────┘
+  ┌──────────────────┐  ┌──────────────────┐
+  │ OCCUPANCY        │  │ MY EST. PAYOUT   │
+  │ ████████░░ 80%   │  │ MYR 12,630       │
+  │ 8/10 rooms       │  │ based on 30% eq. │
+  └──────────────────┘  └──────────────────┘
+
+Live Activity Feed (Socket.io 'reservation_update' + 'revenue_update'):
+  ● 21:34  VIP Room B  Check-in   4 guests   —
+  ● 21:22  Order paid  RM 2,389  Cash        —
+  ● 21:15  Std Room 2  Check-out  2 guests   —
+  (max 50 items, newest at top)
+  NO customer names, NO hostess names shown
+
+Revenue Chart:
+  - Line chart: today's hourly revenue
+  - Toggle: Daily / Weekly / Monthly
+  - Compare: vs previous period (lighter dashed line)
+  Use recharts library
+
+Bottom action row:
+  [ 📊 View P&L Report ] [ 📄 Download Settlement PDF ] [ 💬 Contact Manager ]
+```
+
+---
+
+## 📈 MANAGEMENT REPORTS API
+
+```
+GET /api/reports/revenue?branch_id=&from=&to=
+  → { daily: [{date, amount}], total, byCategory: {...} }
+
+GET /api/reports/occupancy?branch_id=&month=
+  → { byRoom: [{roomName, occupancyPct, totalHours, revenue}], overall: 0.78 }
+
+GET /api/reports/commissions?branch_id=&month=
+  → { hostesses: [...], agents: [...], totalPaid }
+
+GET /api/reports/profit-loss?branch_id=&month=
+  → full P&L breakdown (reuse calculateBranchPnL)
+```
+
+---
+
+## ✅ CHUNK 05 DONE WHEN:
+
+1. `GET /api/investor/dashboard` returns branch stats for logged-in shareholder
+2. Socket.io: order finalized in POS → investor dashboard activity feed updates in real-time
+3. Socket.io: room check-in → investor dashboard occupancy % updates live
+4. `POST /api/shareholders/:id/settlements` generates correct settlement amount using equity %
+5. Settlement PDF downloadable from `/api/investor/settlements/:id/pdf`
+6. Shareholder cannot see data for branches where they have no equity
+7. Revenue chart on investor dashboard shows hourly data for today
+
+**➡️ Next: CHUNK 06 — i18n + Customer Portal + WhatsApp/Telegram**

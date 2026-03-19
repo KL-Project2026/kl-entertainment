@@ -46,7 +46,10 @@ artifacts-monorepo/
 │   │           ├── staff.ts          # Staff CRUD + clock-in/out + earnings
 │   │           ├── schedules.ts      # Weekly shift schedule + copy prev week
 │   │           ├── agents.ts         # Agent CRUD + commission statement + payout
-│   │           └── staff-availability.ts  # Staff availability legacy
+│   │           ├── staff-availability.ts  # Staff availability legacy
+│           ├── shareholders.ts   # Shareholder CRUD + equity + settlements
+│           ├── investor.ts       # Investor dashboard snapshot + settlements
+│           └── reports.ts        # Revenue/Occupancy/Commissions/P&L reports
 │   └── web-app/             # React + Vite frontend (previewPath: /)
 │       └── src/
 │           ├── pages/
@@ -61,7 +64,10 @@ artifacts-monorepo/
 │           │   ├── staff.tsx         # Staff list + add/edit + clock modal + earnings modal
 │           │   ├── schedule-builder.tsx # Weekly grid editor + copy-last-week
 │           │   ├── attendance.tsx    # Today clock-in/out table + historical view
-│           │   └── agents.tsx        # Agent CRUD + commission statement + payout
+│           │   ├── agents.tsx        # Agent CRUD + commission statement + payout
+│           │   ├── shareholders.tsx  # Shareholder CRUD + equity + settlement generation
+│           │   ├── investor-dashboard.tsx # Recharts + Socket.io live investor dashboard
+│           │   └── reports.tsx       # Tabbed Revenue/Occupancy/Commissions/PnL with charts
 │           ├── components/
 │           │   ├── ui.tsx            # Shared UI components
 │           │   └── layout.tsx        # Sidebar layout

@@ -2,6 +2,7 @@ import { createServer } from "http";
 import { Server as SocketServer } from "socket.io";
 import app from "./app";
 import { initRoomSocket } from "./routes/rooms";
+import { initInvestorSocket } from "./services/investor-socket";
 
 const rawPort = process.env["PORT"];
 
@@ -25,6 +26,7 @@ const io = new SocketServer(httpServer, {
 });
 
 initRoomSocket(io);
+initInvestorSocket(io);
 
 httpServer.listen(port, () => {
   console.log(`KL Project API server listening on port ${port}`);

@@ -18,6 +18,9 @@ import Staff from "@/pages/staff";
 import ScheduleBuilder from "@/pages/schedule-builder";
 import Attendance from "@/pages/attendance";
 import Agents from "@/pages/agents";
+import Shareholders from "@/pages/shareholders";
+import InvestorDashboard from "@/pages/investor-dashboard";
+import Reports from "@/pages/reports";
 import { DashboardLayout } from "@/components/layout";
 
 const queryClient = new QueryClient({
@@ -100,6 +103,9 @@ function Router() {
       <Route path="/schedule-builder" component={() => <AuthRoute component={ScheduleBuilder} />} />
       <Route path="/attendance" component={() => <AuthRoute component={Attendance} />} />
       <Route path="/agents" component={() => <AuthRoute component={Agents} />} />
+      <Route path="/shareholders" component={() => <AuthRoute component={Shareholders} />} />
+      <Route path="/investor-dashboard" component={() => <AuthRoute component={InvestorDashboard} />} />
+      <Route path="/reports" component={() => <AuthRoute component={Reports} />} />
       <Route component={NotFound} />
     </Switch>
   );

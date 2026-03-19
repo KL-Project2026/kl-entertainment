@@ -11,6 +11,9 @@ import staffAvailabilityRouter from "./staff-availability";
 import staffRouter from "./staff";
 import schedulesRouter from "./schedules";
 import agentsRouter from "./agents";
+import shareholdersRouter from "./shareholders";
+import investorRouter from "./investor";
+import reportsRouter from "./reports";
 
 const router: IRouter = Router();
 
@@ -26,5 +29,8 @@ router.use(staffAvailabilityRouter);
 router.use(staffRouter);
 router.use(schedulesRouter);
 router.use(agentsRouter);
+router.use(shareholdersRouter);
+router.use(investorRouter);
+router.use(reportsRouter);
 
 export default router;
