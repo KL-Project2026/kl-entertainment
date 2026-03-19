@@ -14,6 +14,10 @@ import Products from "@/pages/products";
 import Reservations from "@/pages/reservations";
 import BookingWizard from "@/pages/booking-wizard";
 import POS from "@/pages/pos";
+import Staff from "@/pages/staff";
+import ScheduleBuilder from "@/pages/schedule-builder";
+import Attendance from "@/pages/attendance";
+import Agents from "@/pages/agents";
 import { DashboardLayout } from "@/components/layout";
 
 const queryClient = new QueryClient({
@@ -59,7 +63,7 @@ window.fetch = async (...args) => {
   return response;
 };
 
-// Protected Route Component
+// Protected Route — wraps with DashboardLayout
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { token } = useAuthStore();
   
@@ -74,6 +78,13 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   );
 }
 
+// Auth Route — auth check only, component manages its own layout
+function AuthRoute({ component: Component }: { component: React.ComponentType }) {
+  const { token } = useAuthStore();
+  if (!token) return <Redirect to="/login" />;
+  return <Component />;
+}
+
 function Router() {
   return (
     <Switch>
@@ -85,6 +96,10 @@ function Router() {
       <Route path="/reservations" component={() => <ProtectedRoute component={Reservations} />} />
       <Route path="/reservations/new" component={() => <ProtectedRoute component={BookingWizard} />} />
       <Route path="/pos" component={() => <ProtectedRoute component={POS} />} />
+      <Route path="/staff" component={() => <AuthRoute component={Staff} />} />
+      <Route path="/schedule-builder" component={() => <AuthRoute component={ScheduleBuilder} />} />
+      <Route path="/attendance" component={() => <AuthRoute component={Attendance} />} />
+      <Route path="/agents" component={() => <AuthRoute component={Agents} />} />
       <Route component={NotFound} />
     </Switch>
   );

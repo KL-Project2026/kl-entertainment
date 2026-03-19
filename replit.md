@@ -43,7 +43,10 @@ artifacts-monorepo/
 │   │           ├── reservations.ts   # CRUD + state machine transitions
 │   │           ├── orders.ts         # Orders + order items + finalize + receipt
 │   │           ├── receipts.ts       # GET receipt HTML + print tracking
-│   │           └── staff.ts          # Staff availability
+│   │           ├── staff.ts          # Staff CRUD + clock-in/out + earnings
+│   │           ├── schedules.ts      # Weekly shift schedule + copy prev week
+│   │           ├── agents.ts         # Agent CRUD + commission statement + payout
+│   │           └── staff-availability.ts  # Staff availability legacy
 │   └── web-app/             # React + Vite frontend (previewPath: /)
 │       └── src/
 │           ├── pages/
@@ -54,7 +57,11 @@ artifacts-monorepo/
 │           │   ├── products.tsx      # 3-level product catalog
 │           │   ├── reservations.tsx  # Reservations list + state transitions
 │           │   ├── booking-wizard.tsx # New reservation wizard
-│           │   └── pos.tsx           # Point of Sale (POS) + payment modal
+│           │   ├── pos.tsx           # Point of Sale (POS) + payment modal
+│           │   ├── staff.tsx         # Staff list + add/edit + clock modal + earnings modal
+│           │   ├── schedule-builder.tsx # Weekly grid editor + copy-last-week
+│           │   ├── attendance.tsx    # Today clock-in/out table + historical view
+│           │   └── agents.tsx        # Agent CRUD + commission statement + payout
 │           ├── components/
 │           │   ├── ui.tsx            # Shared UI components
 │           │   └── layout.tsx        # Sidebar layout
@@ -72,7 +79,7 @@ artifacts-monorepo/
 └── ...
 ```
 
-## Database Schema (23 Tables)
+## Database Schema (24 Tables)
 
 | # | Table | File |
 |---|-------|------|
@@ -99,6 +106,7 @@ artifacts-monorepo/
 | 21 | `profit_settlements` | `schema/finances.ts` |
 | 22 | `fx_rates` | `schema/fx_rates.ts` |
 | 23 | `audit_log` | `schema/audit_log.ts` |
+| 24 | `agent_payouts` | `schema/finances.ts` (added via raw SQL) |
 
 ### Seed Data
 
@@ -172,7 +180,26 @@ artifacts-monorepo/
 | GET | /api/orders/:id/receipt/latest | Bearer | |
 | GET | /api/receipts/:id | Bearer | returns HTML |
 | POST | /api/receipts/:id/printed | Bearer | |
-| GET | /api/staff/availability | Bearer | |
+| GET | /api/staff/availability | Bearer | legacy availability check |
+| GET | /api/staff | Bearer | ?branch_id=, ?role=, ?active= |
+| POST | /api/staff | manager+ | create staff member |
+| GET | /api/staff/:id | Bearer | |
+| PUT | /api/staff/:id | manager+ | |
+| DELETE | /api/staff/:id | admin+ | soft delete |
+| POST | /api/staff/:id/clock-in | Bearer | `{ branchId }` → creates attendance record |
+| POST | /api/staff/:id/clock-out | Bearer | updates attendance clockOut |
+| GET | /api/staff/:id/attendance | Bearer | ?from=, ?to= |
+| GET | /api/staff/:id/earnings | Bearer | ?from=, ?to= → `{ sessions, grossEarnings, agentDeductions, penalties, netEarnings }` |
+| GET | /api/schedules | Bearer | ?branch_id=, ?effective_date= |
+| POST | /api/schedules | manager+ | upsert shift (staffId, dayOfWeek, shiftStart, shiftEnd, isOvernight, effectiveFrom) |
+| DELETE | /api/schedules/:id | manager+ | |
+| POST | /api/schedules/copy | manager+ | `{ branchId, fromDate, toDate }` copies prior week |
+| GET | /api/agents | Bearer | ?org_id= |
+| POST | /api/agents | admin+ | create agent |
+| GET | /api/agents/:id | Bearer | |
+| PUT | /api/agents/:id | admin+ | |
+| GET | /api/agents/:id/statement | Bearer | ?from=, ?to= → commission statement with hostess breakdown |
+| POST | /api/agents/:id/payout | admin+ | records payout, updates agent.credit_balance |
 
 ## POS Flow
 

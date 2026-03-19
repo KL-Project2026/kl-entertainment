@@ -1,0 +1,395 @@
+# KL Project — CHUNK 04 of 06
+# Staff Management + Attendance + Commission + Agents
+# ⏱️ 예상 작업 시간: 20~25분
+# ✅ 완료 기준: 직원 출퇴근 + 커미션 자동 계산 + 에이전트 정산 동작
+
+---
+
+## 📌 PREREQUISITE
+
+Chunks 01~03 complete:
+- Reservations and orders working
+- Order finalization (payment_status = 'paid') triggers commission calculation
+
+---
+
+## 🎯 WHAT TO BUILD IN THIS CHUNK
+
+1. Staff CRUD + employment type management
+2. Weekly schedule builder + schedule templates
+3. Attendance: clock-in/out + late detection + penalty
+4. Commission calculation engine (hostess / manager / driver)
+5. Agent management + per-period commission statements
+6. Agent payout records
+
+---
+
+## 📁 NEW FILES
+
+```
+server/features/
+├── staff/
+│   ├── staff.routes.js
+│   └── staff.queries.js
+├── attendance/
+│   ├── attendance.routes.js
+│   └── attendance.service.js    ← late detection, penalty calc
+├── schedule/
+│   ├── schedule.routes.js
+│   └── schedule.queries.js
+├── agents/
+│   ├── agents.routes.js
+│   └── agents.service.js        ← commission statement generation
+└── commission/
+    └── commission.service.js    ← CORE engine — fully testable pure functions
+
+client/src/pages/
+├── staff/
+│   ├── StaffListPage.jsx
+│   ├── StaffProfilePage.jsx
+│   └── StaffFormModal.jsx
+├── schedule/
+│   └── ScheduleBuilderPage.jsx  ← weekly grid
+├── attendance/
+│   └── AttendancePage.jsx       ← clock-in/out + log
+└── agents/
+    ├── AgentListPage.jsx
+    └── AgentStatementPage.jsx
+```
+
+---
+
+## 👥 STAFF API
+
+```
+GET  /api/staff?branch_id=&role=&employment_type=
+POST /api/staff
+GET  /api/staff/:id
+PUT  /api/staff/:id
+PUT  /api/staff/:id/deactivate
+GET  /api/staff/hostesses/available     ?branch_id=&date=&start_time=&duration_hours=
+GET  /api/staff/drivers/available       ?branch_id=&date=&pickup_time=
+GET  /api/staff/:id/earnings?from=&to=  ← commission summary
+POST /api/staff/:id/clock-in
+POST /api/staff/:id/clock-out
+```
+
+**Hostess availability query logic:**
+```javascript
+// A hostess is available if:
+// 1. She is scheduled to work on that day (staff_schedules)
+// 2. She has no confirmed/checked_in reservation overlapping the requested time slot
+// 3. Her employment type is 'contract' or 'freelance' or 'part_time' (hostess role)
+
+export async function getAvailableHostesses(branchId, date, startTime, durationHours) {
+  const endTime = new Date(new Date(startTime).getTime() + durationHours * 3600000);
+  const dayOfWeek = new Date(date).getDay();
+
+  const { rows } = await pool.query(`
+    SELECT s.id, s.full_name, s.profile_photo, s.commission_config, s.agent_id
+    FROM staff s
+    WHERE s.branch_id = $1
+      AND s.role = 'hostess'
+      AND s.is_active = true
+      AND s.deleted_at IS NULL
+      -- Scheduled to work that day
+      AND EXISTS (
+        SELECT 1 FROM staff_schedules ss
+        WHERE ss.staff_id = s.id AND ss.day_of_week = $2
+          AND ss.effective_from <= $3::date
+          AND (ss.effective_to IS NULL OR ss.effective_to >= $3::date)
+      )
+      -- Not already booked for overlapping time
+      AND s.id NOT IN (
+        SELECT rh.hostess_id FROM reservation_hostesses rh
+        JOIN reservations r ON r.id = rh.reservation_id
+        WHERE r.branch_id = $1
+          AND r.status IN ('confirmed','checked_in','extended')
+          AND r.start_time < $5 AND r.end_time > $4
+          AND rh.status NOT IN ('cancelled')
+      )
+  `, [branchId, dayOfWeek, date, startTime, endTime]);
+
+  return rows;
+}
+```
+
+---
+
+## ⏰ ATTENDANCE SERVICE
+
+```javascript
+// server/features/attendance/attendance.service.js
+// MIGRATION: .NET — AttendanceService
+
+export async function clockIn(staffId, branchId, userId) {
+  const today = new Date().toISOString().split('T')[0];
+  const now = new Date();
+
+  // Get scheduled shift for today
+  const dayOfWeek = now.getDay();
+  const { rows: schedRows } = await pool.query(`
+    SELECT * FROM staff_schedules
+    WHERE staff_id = $1 AND day_of_week = $2
+      AND effective_from <= $3 AND (effective_to IS NULL OR effective_to >= $3)
+    LIMIT 1
+  `, [staffId, dayOfWeek, today]);
+
+  const schedule = schedRows[0];
+
+  // Calculate lateness
+  let lateMinutes = 0;
+  let penaltyAmount = 0;
+  let status = 'present';
+
+  if (schedule) {
+    const scheduledStart = new Date(`${today}T${schedule.shift_start}`);
+    const diffMs = now - scheduledStart;
+    lateMinutes = Math.max(0, Math.floor(diffMs / 60000));
+
+    if (lateMinutes > 10) {
+      status = 'late';
+      // Check if staff has penalty_applies = true
+      const { rows: staffRows } = await pool.query(
+        'SELECT penalty_applies FROM staff WHERE id = $1', [staffId]
+      );
+      if (staffRows[0]?.penalty_applies && lateMinutes > 30) {
+        penaltyAmount = 50.00; // Configurable — base penalty per late event
+      }
+    }
+  }
+
+  // Upsert attendance record
+  await pool.query(`
+    INSERT INTO attendance (staff_id, branch_id, work_date, scheduled_start, scheduled_end,
+                            clock_in, status, late_minutes, penalty_amount)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    ON CONFLICT (staff_id, work_date) DO UPDATE
+      SET clock_in = $6, status = $7, late_minutes = $8, penalty_amount = $9
+  `, [staffId, branchId, today,
+      schedule ? `${today}T${schedule.shift_start}` : null,
+      schedule ? `${today}T${schedule.shift_end}` : null,
+      now, status, lateMinutes, penaltyAmount]);
+
+  return { clockedInAt: now, status, lateMinutes, penaltyAmount };
+}
+
+export async function clockOut(staffId) {
+  const today = new Date().toISOString().split('T')[0];
+  await pool.query(
+    `UPDATE attendance SET clock_out = NOW() WHERE staff_id = $1 AND work_date = $2`,
+    [staffId, today]
+  );
+}
+```
+
+---
+
+## 💵 COMMISSION CALCULATION ENGINE
+
+This is the most business-critical code. Write as pure functions — fully testable.
+
+```javascript
+// server/features/commission/commission.service.js
+// MIGRATION: .NET — CommissionEngine (must have unit tests in production)
+
+/**
+ * Calculate all commissions for a finalized order.
+ *
+ * Commission hierarchy:
+ *   1. hostess_gross  = session_fee (from reservation_hostesses.session_fee)
+ *                       OR hostess_fee line item from order_items
+ *   2. agent_cut      = hostess_gross × agent.commission_rate
+ *                       (only if hostess.agent_id is set)
+ *   3. hostess_net    = hostess_gross - agent_cut
+ *   4. driver_fee     = pickup_fee line item from order_items (goes to driver)
+ *   5. manager_incentive = calculated monthly, not per-order (see calculateMonthlyManagerIncentive)
+ */
+export async function calculateOrderCommissions(orderId) {
+  const { rows: items } = await pool.query(`
+    SELECT oi.*, oi.staff_ref_id,
+           s.commission_config, s.agent_id, s.role,
+           a.commission_rate AS agent_rate, a.commission_type AS agent_type
+    FROM order_items oi
+    LEFT JOIN staff s ON s.id = oi.staff_ref_id
+    LEFT JOIN agents a ON a.id = s.agent_id
+    WHERE oi.order_id = $1
+      AND oi.item_type IN ('hostess_fee', 'pickup_fee')
+  `, [orderId]);
+
+  const commissions = [];
+
+  for (const item of items) {
+    if (item.item_type === 'hostess_fee' && item.staff_ref_id) {
+      const hostessGross = parseFloat(item.line_total);
+
+      // Agent commission
+      let agentCut = 0;
+      if (item.agent_id && item.agent_rate) {
+        agentCut = Math.round(hostessGross * parseFloat(item.agent_rate) * 100) / 100;
+      }
+
+      const hostessNet = Math.round((hostessGross - agentCut) * 100) / 100;
+
+      commissions.push({
+        staffId:     item.staff_ref_id,
+        role:        'hostess',
+        orderId,
+        grossAmount: hostessGross,
+        agentId:     item.agent_id || null,
+        agentCut,
+        netAmount:   hostessNet,
+        type:        'hostess_session',
+      });
+
+      // Record agent commission as expense
+      if (agentCut > 0) {
+        commissions.push({
+          agentId:  item.agent_id,
+          orderId,
+          amount:   agentCut,
+          type:     'agent_commission',
+        });
+      }
+    }
+
+    if (item.item_type === 'pickup_fee' && item.staff_ref_id) {
+      commissions.push({
+        staffId:  item.staff_ref_id,
+        role:     'driver',
+        orderId,
+        amount:   parseFloat(item.line_total),
+        type:     'pickup_fee',
+      });
+    }
+  }
+
+  // Write commissions to expenses table
+  for (const c of commissions) {
+    if (c.type === 'agent_commission') {
+      await pool.query(`
+        INSERT INTO expenses (branch_id, category, description, amount, expense_date,
+                              reference_type, reference_id, period_month)
+        SELECT o.branch_id, 'agent_commission', 'Agent commission - Order ' || o.order_no,
+               $1, CURRENT_DATE, 'order', $2,
+               TO_CHAR(CURRENT_DATE, 'YYYY-MM')
+        FROM orders o WHERE o.id = $2
+      `, [c.amount, orderId]);
+
+      // Increment agent credit_balance
+      await pool.query(
+        'UPDATE agents SET credit_balance = credit_balance + $1 WHERE id = $2',
+        [c.amount, c.agentId]
+      );
+    }
+  }
+
+  return commissions;
+}
+
+/**
+ * Get staff earnings summary for a period.
+ * Returns: { sessions, grossEarnings, agentDeductions, netEarnings, penalties }
+ */
+export async function getStaffEarningsSummary(staffId, fromDate, toDate) {
+  const { rows } = await pool.query(`
+    SELECT
+      COUNT(DISTINCT oi.order_id) AS sessions,
+      SUM(oi.line_total) AS gross_earnings,
+      SUM(COALESCE(
+        (SELECT SUM(e.amount) FROM expenses e
+         WHERE e.reference_type = 'order' AND e.reference_id = oi.order_id
+           AND e.category = 'agent_commission'), 0
+      )) AS agent_deductions,
+      SUM(COALESCE(
+        (SELECT SUM(a.penalty_amount) FROM attendance a
+         WHERE a.staff_id = $1 AND a.work_date BETWEEN $2 AND $3), 0
+      )) AS penalties
+    FROM order_items oi
+    JOIN orders o ON o.id = oi.order_id
+    WHERE oi.staff_ref_id = $1
+      AND oi.item_type = 'hostess_fee'
+      AND o.payment_status = 'paid'
+      AND o.finalized_at BETWEEN $2 AND $3
+  `, [staffId, fromDate, toDate]);
+
+  const r = rows[0];
+  return {
+    sessions:       parseInt(r.sessions) || 0,
+    grossEarnings:  parseFloat(r.gross_earnings) || 0,
+    agentDeductions: parseFloat(r.agent_deductions) || 0,
+    penalties:      parseFloat(r.penalties) || 0,
+    netEarnings:    (parseFloat(r.gross_earnings) || 0)
+                    - (parseFloat(r.agent_deductions) || 0)
+                    - (parseFloat(r.penalties) || 0),
+  };
+}
+```
+
+---
+
+## 🤝 AGENTS API
+
+```
+GET  /api/agents?org_id=
+POST /api/agents
+GET  /api/agents/:id
+PUT  /api/agents/:id
+GET  /api/agents/:id/statement?from=&to=     ← commission earned in period
+GET  /api/agents/:id/hostesses               ← staff members under this agent
+POST /api/agents/:id/payout                  ← record payout, reset credit balance
+GET  /api/agents/:id/payouts                 ← payout history
+```
+
+**Agent Statement response:**
+```json
+{
+  "agentId": "uuid",
+  "agentName": "Elite Agency",
+  "period": { "from": "2026-03-01", "to": "2026-03-31" },
+  "hostesses": [
+    {
+      "name": "Lisa",
+      "sessions": 18,
+      "hostessGross": 9000.00,
+      "agentCommissionRate": 0.30,
+      "agentEarned": 2700.00
+    }
+  ],
+  "totalEarned": 2700.00,
+  "previousBalance": 0,
+  "totalDue": 2700.00,
+  "preferredCurrency": "MYR",
+  "fxRate": 1.0,
+  "amountInPreferredCurrency": 2700.00
+}
+```
+
+---
+
+## 🎨 SCHEDULE BUILDER UI
+
+```
+ScheduleBuilderPage.jsx:
+- Weekly grid: rows = staff names, columns = Mon–Sun
+- Each cell: empty (day off) or shift time range (e.g. "18:00–03:00")
+- Click cell → time picker popup to set/clear shift
+- "Copy from last week" button
+- "Apply template to all hostesses" bulk action
+- Color code: hostess=purple, driver=teal, manager=gold, general=gray
+- Shows conflicts: if hostess already has confirmed booking outside their schedule
+```
+
+---
+
+## ✅ CHUNK 04 DONE WHEN:
+
+1. Staff profile created with commission_config JSONB
+2. Clock-in records late_minutes when staff arrives 30+ mins late
+3. Penalty auto-calculated if penalty_applies = true
+4. Order finalized → `calculateOrderCommissions()` runs → agent credit_balance updated
+5. `GET /api/staff/:id/earnings?from=&to=` returns correct gross/net breakdown
+6. Agent statement shows correct commission amounts per hostess
+7. Schedule builder shows 7-day grid with shift times per staff
+
+**➡️ Next: CHUNK 05 — Shareholder P&L + Investor Real-Time Dashboard**

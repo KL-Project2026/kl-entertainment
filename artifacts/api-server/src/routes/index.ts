@@ -8,6 +8,9 @@ import reservationsRouter from "./reservations";
 import ordersRouter from "./orders";
 import receiptsRouter from "./receipts";
 import staffAvailabilityRouter from "./staff-availability";
+import staffRouter from "./staff";
+import schedulesRouter from "./schedules";
+import agentsRouter from "./agents";
 
 const router: IRouter = Router();
 
@@ -20,5 +23,8 @@ router.use(reservationsRouter);
 router.use(ordersRouter);
 router.use(receiptsRouter);
 router.use(staffAvailabilityRouter);
+router.use(staffRouter);
+router.use(schedulesRouter);
+router.use(agentsRouter);
 
 export default router;

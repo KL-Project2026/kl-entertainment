@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useAuthStore } from "@/lib/auth";
 import { motion } from "framer-motion";
-import { LayoutDashboard, Grid, Building2, Package, LogOut, CalendarDays, ShoppingCart } from "lucide-react";
+import { LayoutDashboard, Grid, Building2, Package, LogOut, CalendarDays, ShoppingCart, Users, CalendarCheck, Clock, Handshake } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -9,6 +9,10 @@ const NAV_ITEMS = [
   { path: "/room-board", label: "Room Board", icon: Grid },
   { path: "/reservations", label: "Reservations", icon: CalendarDays },
   { path: "/pos", label: "Point of Sale", icon: ShoppingCart },
+  { path: "/staff", label: "Staff", icon: Users },
+  { path: "/schedule-builder", label: "Schedules", icon: CalendarCheck },
+  { path: "/attendance", label: "Attendance", icon: Clock },
+  { path: "/agents", label: "Agents", icon: Handshake },
   { path: "/branches", label: "Branches", icon: Building2 },
   { path: "/products", label: "Product Catalog", icon: Package },
 ];

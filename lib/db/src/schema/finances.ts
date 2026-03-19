@@ -1,10 +1,11 @@
-import { pgTable, uuid, varchar, char, decimal, text, boolean, date, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, char, decimal, text, boolean, date, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { sql } from "drizzle-orm";
 import { branches } from "./branches";
 import { organizations } from "./organizations";
 import { staff } from "./staff";
+import { agents } from "./agents";
 
 export const expenses = pgTable("expenses", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -91,3 +92,27 @@ export type BranchShareholder = typeof branchShareholders.$inferSelect;
 export const insertProfitSettlementSchema = createInsertSchema(profitSettlements).omit({ id: true, created_at: true });
 export type InsertProfitSettlement = z.infer<typeof insertProfitSettlementSchema>;
 export type ProfitSettlement = typeof profitSettlements.$inferSelect;
+
+export const agentPayouts = pgTable("agent_payouts", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  agent_id: uuid("agent_id").notNull().references(() => agents.id),
+  period_from: date("period_from").notNull(),
+  period_to: date("period_to").notNull(),
+  amount_myr: decimal("amount_myr", { precision: 15, scale: 4 }).notNull(),
+  payout_currency: char("payout_currency", { length: 3 }).notNull().default("MYR"),
+  fx_rate: decimal("fx_rate", { precision: 15, scale: 6 }).notNull().default("1"),
+  amount_fx: decimal("amount_fx", { precision: 15, scale: 4 }).notNull(),
+  payment_method: varchar("payment_method", { length: 50 }),
+  payment_ref: varchar("payment_ref", { length: 255 }),
+  balance_before: decimal("balance_before", { precision: 15, scale: 4 }).notNull(),
+  notes: text("notes"),
+  paid_by: uuid("paid_by").references(() => staff.id),
+  paid_at: timestamp("paid_at", { withTimezone: true }).notNull().default(sql`NOW()`),
+  created_at: timestamp("created_at", { withTimezone: true }).notNull().default(sql`NOW()`),
+}, (table) => [
+  uniqueIndex("idx_agent_payouts_agent").on(table.agent_id, table.paid_at),
+]);
+
+export const insertAgentPayoutSchema = createInsertSchema(agentPayouts).omit({ id: true, created_at: true });
+export type InsertAgentPayout = z.infer<typeof insertAgentPayoutSchema>;
+export type AgentPayout = typeof agentPayouts.$inferSelect;
