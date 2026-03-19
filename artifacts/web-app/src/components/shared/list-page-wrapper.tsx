@@ -4,14 +4,6 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -73,7 +65,6 @@ export function ListPageWrapper<T extends Record<string, unknown>>({
   emptyIcon,
   emptyMessage = "No records found",
 }: ListPageWrapperProps<T>) {
-  const [, navigate] = useLocation();
   const [viewMode, setViewMode] = useState<"card" | "table">("card");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterValue, setFilterValue] = useState(ALL_VALUE);
@@ -225,41 +216,41 @@ export function ListPageWrapper<T extends Record<string, unknown>>({
           ))}
         </div>
       ) : (
-        <div className="rounded-xl border border-white/10 overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-white/5 hover:bg-white/5 border-white/10">
+        <div className="rounded-xl border border-white/10 overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="bg-white/5 border-b border-white/10 text-left text-xs text-muted-foreground">
                 {columns.map((col) => (
-                  <TableHead key={col.key} className={cn("text-muted-foreground", col.className)}>
+                  <th key={col.key} className={cn("px-4 py-3 font-medium", col.className)}>
                     {col.label}
-                  </TableHead>
+                  </th>
                 ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+              </tr>
+            </thead>
+            <tbody>
               {filtered.map((row, idx) => (
-                <TableRow
+                <tr
                   key={(row.id as string) ?? idx}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                   className={cn(
-                    "border-white/5 transition-colors hover:bg-white/5",
+                    "border-b border-white/5 transition-colors hover:bg-white/5 text-sm",
                     onRowClick && "cursor-pointer"
                   )}
                 >
                   {columns.map((col) => (
-                    <TableCell key={col.key} className={col.className}>
+                    <td key={col.key} className={cn("px-4 py-3", col.className)}>
                       {col.render
                         ? col.render(row)
                         : (() => {
                             const val = row[col.key];
                             return val !== null && val !== undefined ? String(val) : "—";
                           })()}
-                    </TableCell>
+                    </td>
                   ))}
-                </TableRow>
+                </tr>
               ))}
-            </TableBody>
-          </Table>
+            </tbody>
+          </table>
         </div>
       )}
     </div>
