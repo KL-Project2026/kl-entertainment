@@ -1,0 +1,1511 @@
+# 🏨 Replit Agent Prompt — Universal List Page Enhancement
+# 리스트 페이지 전체 공통 개선 프롬프트
+> Replit AI Agent 채팅창에 전체 내용을 붙여넣으세요.
+
+---
+
+## 🔒 CRITICAL SAFETY RULES — 반드시 먼저 읽고 따를 것
+
+```
+SAFETY RULE 1 — READ FIRST, WRITE SECOND
+  모든 파일을 수정하기 전에 반드시 전체 내용을 먼저 읽어라.
+  읽지 않은 파일은 절대 덮어쓰지 마라.
+
+SAFETY RULE 2 — SYNTAX VALIDATION BEFORE SAVE
+  코드 작성 후 저장 전에 반드시 문법 오류를 검증하라.
+  - JSX: 닫히지 않은 태그, 빠진 쉼표, 잘못된 props 확인
+  - JS/TS: 선언되지 않은 변수, 잘못된 import 확인
+  - CSS: 닫히지 않은 중괄호 확인
+  오류가 하나라도 있으면 저장하지 말고 수정 후 재검증하라.
+
+SAFETY RULE 3 — NEVER DELETE EXISTING CODE
+  기존 함수, 라우트, 컴포넌트를 절대 삭제하지 마라.
+  기존 코드를 "교체"가 아닌 "확장"하는 방식으로 작성하라.
+  새 기능은 기존 코드 옆에 추가하되, 기존 로직은 유지하라.
+
+SAFETY RULE 4 — IMPORT PATH VERIFICATION
+  새 컴포넌트나 함수를 import할 때:
+  - 해당 파일이 실제로 존재하는지 먼저 확인하라.
+  - 경로가 정확한지 확인하라 (대소문자 포함).
+  - 존재하지 않는 파일에서 import하지 마라.
+
+SAFETY RULE 5 — ONE FILE AT A TIME
+  파일 하나를 완전히 완료하고 검증한 뒤에 다음 파일로 이동하라.
+  에러가 발생하면 즉시 멈추고 보고하라. 에러를 무시하고 진행하지 마라.
+
+SAFETY RULE 6 — SHARED COMPONENT STRATEGY
+  공통 컴포넌트(검색, 뷰 토글, 배지 등)는 새 파일에 작성하라.
+  기존 컴포넌트 파일 내부를 직접 수정하기 전에 해당 파일을 읽어라.
+
+SAFETY RULE 7 — TEST BEFORE CLAIMING DONE
+  각 파일 수정 완료 후 다음을 확인하라:
+  - 앱이 여전히 실행되는가?
+  - 기존 기능이 여전히 작동하는가?
+  - 새 기능이 의도대로 동작하는가?
+  확인 없이 "완료"라고 보고하지 마라.
+```
+
+---
+
+## 📁 STEP 0 — PROJECT SCAN (필수, 가장 먼저 실행)
+
+프로젝트 전체를 스캔하고 아래 항목을 보고하라. **보고 완료 전까지 Step 1로 넘어가지 마라.**
+
+```
+아래 항목을 조사하고 보고하라:
+
+1. 프로젝트 폴더 구조 (3단계 깊이까지, tree 형태로)
+
+2. 기술 스택 파악:
+   - 프론트엔드: React / Vue / plain HTML / Next.js / other?
+   - 스타일링: CSS modules / Tailwind / styled-components / inline styles / other?
+   - 라우터: React Router / Next.js router / other?
+   - 상태관리: useState / Redux / Zustand / React Query / other?
+   - 백엔드: Node.js Express / Python Flask / FastAPI / other?
+   - DB: PostgreSQL / MySQL / SQLite / Supabase / other?
+   - ORM: Prisma / Sequelize / SQLAlchemy / raw SQL / other?
+
+3. 공통 유틸 파일 위치:
+   - utils.js / helpers.js / format.js 등 존재 여부와 경로
+
+4. 공통 컴포넌트 폴더 위치:
+   - components/ 또는 shared/ 폴더 존재 여부와 경로
+
+5. 리스트 페이지 파일 목록 (테이블/리스트/카드 형태로 데이터를 보여주는 모든 파일):
+   예: src/pages/Reservations.jsx, src/pages/Guests.jsx ...
+
+6. 상세(Detail) 페이지 파일 목록 (:id 파라미터를 받는 모든 파일):
+   예: src/pages/ReservationDetail.jsx ...
+
+7. 라우터 설정 파일 위치:
+   예: src/App.jsx, src/router/index.js ...
+
+8. 현재 리스트 페이지들이 데이터를 가져오는 방식:
+   - fetch() / axios / React Query / SWR / Supabase client / other?
+   - API 엔드포인트 패턴 (예: /api/reservations, /api/guests)
+
+보고 형식:
+─────────────────────────────
+Tech Stack: React + Tailwind + React Router + Express + PostgreSQL
+Utils file: src/utils/format.js (exists / not found)
+Components folder: src/components/ (exists / not found)
+List pages found: [파일 목록]
+Detail pages found: [파일 목록]
+Router file: src/App.jsx
+Data fetching: fetch() + useEffect
+─────────────────────────────
+```
+
+---
+
+## 🛠️ STEP 1 — CREATE SHARED UTILITY FILES
+
+Step 0 보고가 완료된 후 실행하라.
+
+### 1-A. 공통 포맷 유틸 파일
+
+아래 파일이 이미 존재하면 기존 내용을 읽은 뒤 **기존 함수를 삭제하지 말고** 없는 함수만 추가하라.
+존재하지 않으면 새로 생성하라.
+
+파일 위치: `src/utils/formatters.js` (또는 프로젝트의 utils 폴더 위치에 맞게 조정)
+
+```javascript
+// src/utils/formatters.js
+// ─────────────────────────────────────────────────────────
+// SHARED FORMATTERS — used across all list & detail pages
+// MIGRATION NOTE: convert to TypeScript utilities in .NET/React production
+// ─────────────────────────────────────────────────────────
+
+/**
+ * Format ISO date string → "15 Mar 2025"
+ */
+export const formatDate = (value) => {
+  if (!value) return '—';
+  try {
+    return new Date(value).toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+  } catch {
+    return String(value);
+  }
+};
+
+/**
+ * Format date + time → "15 Mar 2025, 14:30"
+ */
+export const formatDateTime = (value) => {
+  if (!value) return '—';
+  try {
+    return new Date(value).toLocaleString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return String(value);
+  }
+};
+
+/**
+ * Format currency → "฿ 4,500.00" or "$ 580.00"
+ */
+export const formatCurrency = (amount, currencyCode = 'USD') => {
+  if (amount == null || amount === '') return '—';
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currencyCode,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `${currencyCode} ${Number(amount).toFixed(2)}`;
+  }
+};
+
+/**
+ * Truncate long text with ellipsis
+ */
+export const truncate = (str, maxLength = 40) => {
+  if (!str) return '—';
+  return str.length > maxLength ? str.slice(0, maxLength) + '…' : str;
+};
+
+/**
+ * Safe display — never show null/undefined/"null"/"undefined"
+ */
+export const display = (value) => {
+  if (value == null || value === '' || value === 'null' || value === 'undefined') return '—';
+  return String(value);
+};
+```
+
+---
+
+### 1-B. 공통 StatusBadge 컴포넌트
+
+파일 위치: `src/components/shared/StatusBadge.jsx`
+(폴더가 없으면 생성하되, 기존 components 폴더 구조에 맞게 위치 조정)
+
+```jsx
+// src/components/shared/StatusBadge.jsx
+// MIGRATION NOTE: convert to styled-component with theme tokens in production
+
+const STATUS_STYLES = {
+  // ── Reservation ──
+  confirmed:    { bg: '#dcfce7', color: '#166534', label: 'Confirmed' },
+  checked_in:   { bg: '#dbeafe', color: '#1e40af', label: 'Checked In' },
+  checked_out:  { bg: '#f3f4f6', color: '#374151', label: 'Checked Out' },
+  cancelled:    { bg: '#fee2e2', color: '#991b1b', label: 'Cancelled' },
+  tentative:    { bg: '#fef9c3', color: '#854d0e', label: 'Tentative' },
+  no_show:      { bg: '#fde8d8', color: '#9a3412', label: 'No Show' },
+  // ── Housekeeping ──
+  clean:        { bg: '#dcfce7', color: '#166534', label: 'Clean' },
+  dirty:        { bg: '#fee2e2', color: '#991b1b', label: 'Dirty' },
+  inspected:    { bg: '#dbeafe', color: '#1e40af', label: 'Inspected' },
+  in_progress:  { bg: '#fef9c3', color: '#854d0e', label: 'In Progress' },
+  pending:      { bg: '#fef9c3', color: '#854d0e', label: 'Pending' },
+  completed:    { bg: '#dbeafe', color: '#1e40af', label: 'Completed' },
+  // ── General ──
+  active:       { bg: '#dcfce7', color: '#166534', label: 'Active' },
+  inactive:     { bg: '#f3f4f6', color: '#6b7280', label: 'Inactive' },
+  high:         { bg: '#fee2e2', color: '#991b1b', label: 'High' },
+  normal:       { bg: '#f3f4f6', color: '#374151', label: 'Normal' },
+  low:          { bg: '#f0fdf4', color: '#15803d', label: 'Low' },
+  // ── Rate type ──
+  bar:          { bg: '#ede9fe', color: '#5b21b6', label: 'BAR' },
+  corporate:    { bg: '#dbeafe', color: '#1e40af', label: 'Corporate' },
+  package:      { bg: '#fce7f3', color: '#9d174d', label: 'Package' },
+  promotional:  { bg: '#fef9c3', color: '#854d0e', label: 'Promo' },
+  // ── Booking source ──
+  direct:       { bg: '#dcfce7', color: '#166534', label: 'Direct' },
+  booking_com:  { bg: '#dbeafe', color: '#1e40af', label: 'Booking.com' },
+  expedia:      { bg: '#ede9fe', color: '#5b21b6', label: 'Expedia' },
+  airbnb:       { bg: '#fee2e2', color: '#991b1b', label: 'Airbnb' },
+};
+
+export const StatusBadge = ({ status, size = 'md' }) => {
+  const key = (status || '').toLowerCase().replace(/[\s-]+/g, '_');
+  const style = STATUS_STYLES[key] || { bg: '#f3f4f6', color: '#374151', label: status };
+
+  const padding = size === 'lg' ? '4px 14px' : '2px 10px';
+  const fontSize = size === 'lg' ? '13px' : '11px';
+
+  return (
+    <span style={{
+      background: style.bg,
+      color: style.color,
+      padding,
+      borderRadius: '9999px',
+      fontSize,
+      fontWeight: 600,
+      whiteSpace: 'nowrap',
+      display: 'inline-block',
+    }}>
+      {style.label || (status || '').replace(/_/g, ' ')}
+    </span>
+  );
+};
+
+export default StatusBadge;
+```
+
+---
+
+### 1-C. 공통 ListPageWrapper 컴포넌트 (핵심)
+
+이 컴포넌트가 이번 작업의 핵심이다. 모든 리스트 페이지에서 이 wrapper를 사용한다.
+
+파일 위치: `src/components/shared/ListPageWrapper.jsx`
+
+```jsx
+// src/components/shared/ListPageWrapper.jsx
+// ─────────────────────────────────────────────────────────────────
+// Universal List Page Wrapper
+// Provides: Card/Table toggle, Search, Type filter dropdown, 
+//           Row hover highlight, Row click → detail navigation
+// Usage:
+//   <ListPageWrapper
+//     title="Reservations"
+//     data={reservations}
+//     columns={COLUMNS}
+//     cardRenderer={(item) => <ReservationCard item={item} />}
+//     filterKey="status"
+//     filterOptions={STATUS_OPTIONS}
+//     onRowClick={(item) => navigate(`/reservations/${item.id}`)}
+//     searchKeys={['booking_ref', 'guest_name', 'status']}
+//     isLoading={loading}
+//     onAddNew={() => navigate('/reservations/new')}
+//     addNewLabel="+ New Reservation"
+//   />
+// ─────────────────────────────────────────────────────────────────
+
+import { useState, useMemo } from 'react';
+import StatusBadge from './StatusBadge';
+
+// ── View Mode Toggle Button ──────────────────────────────────────
+const ViewToggle = ({ view, onChange }) => (
+  <div style={{
+    display: 'flex',
+    background: '#f3f4f6',
+    borderRadius: '8px',
+    padding: '3px',
+    gap: '2px',
+  }}>
+    {['table', 'card'].map((mode) => (
+      <button
+        key={mode}
+        onClick={() => onChange(mode)}
+        style={{
+          padding: '6px 14px',
+          borderRadius: '6px',
+          border: 'none',
+          cursor: 'pointer',
+          fontSize: '13px',
+          fontWeight: 500,
+          background: view === mode ? '#ffffff' : 'transparent',
+          color: view === mode ? '#111827' : '#6b7280',
+          boxShadow: view === mode ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+          transition: 'all 0.15s ease',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '5px',
+        }}
+      >
+        {mode === 'table' ? (
+          <><span>☰</span> Table</>
+        ) : (
+          <><span>⊞</span> Card</>
+        )}
+      </button>
+    ))}
+  </div>
+);
+
+// ── Search Input ─────────────────────────────────────────────────
+const SearchInput = ({ value, onChange, placeholder }) => (
+  <div style={{ position: 'relative' }}>
+    <span style={{
+      position: 'absolute', left: '10px', top: '50%',
+      transform: 'translateY(-50%)', color: '#9ca3af', fontSize: '14px',
+    }}>🔍</span>
+    <input
+      type="text"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder || 'Search...'}
+      style={{
+        paddingLeft: '32px',
+        paddingRight: '12px',
+        paddingTop: '8px',
+        paddingBottom: '8px',
+        border: '1px solid #e5e7eb',
+        borderRadius: '8px',
+        fontSize: '14px',
+        color: '#111827',
+        background: '#ffffff',
+        outline: 'none',
+        width: '240px',
+        transition: 'border-color 0.15s ease',
+      }}
+      onFocus={(e) => e.target.style.borderColor = '#6366f1'}
+      onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+    />
+  </div>
+);
+
+// ── Filter Dropdown ──────────────────────────────────────────────
+const FilterDropdown = ({ label, value, options, onChange }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+    <label style={{ fontSize: '13px', color: '#6b7280', whiteSpace: 'nowrap' }}>
+      {label}:
+    </label>
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      style={{
+        padding: '8px 28px 8px 12px',
+        border: '1px solid #e5e7eb',
+        borderRadius: '8px',
+        fontSize: '13px',
+        color: '#374151',
+        background: '#ffffff',
+        cursor: 'pointer',
+        outline: 'none',
+        appearance: 'none',
+        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%239ca3af' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E")`,
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'right 10px center',
+        minWidth: '140px',
+      }}
+      onFocus={(e) => e.target.style.borderColor = '#6366f1'}
+      onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+    >
+      <option value="">All {label}s</option>
+      {(options || []).map((opt) => (
+        <option key={opt.value ?? opt} value={opt.value ?? opt}>
+          {opt.label ?? opt}
+        </option>
+      ))}
+    </select>
+  </div>
+);
+
+// ── Table View ───────────────────────────────────────────────────
+const TableView = ({ columns, data, onRowClick }) => {
+  const [hoveredRow, setHoveredRow] = useState(null);
+
+  return (
+    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: '10px', border: '1px solid #e5e7eb' }}>
+      <table style={{ minWidth: '800px', width: '100%', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+            {columns.map((col) => (
+              <th key={col.key} style={{
+                padding: '10px 16px',
+                textAlign: col.align || 'left',
+                fontSize: '11px',
+                fontWeight: 600,
+                color: '#6b7280',
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+                whiteSpace: 'nowrap',
+                width: col.width,
+              }}>
+                {col.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((item, index) => (
+            <tr
+              key={item.id || index}
+              onClick={() => onRowClick && onRowClick(item)}
+              onMouseEnter={() => setHoveredRow(index)}
+              onMouseLeave={() => setHoveredRow(null)}
+              style={{
+                borderBottom: '1px solid #f3f4f6',
+                cursor: onRowClick ? 'pointer' : 'default',
+                background: hoveredRow === index ? '#f0f4ff' : '#ffffff',
+                transition: 'background 0.12s ease',
+              }}
+            >
+              {columns.map((col) => (
+                <td key={col.key} style={{
+                  padding: '12px 16px',
+                  fontSize: '14px',
+                  color: col.primary ? '#111827' : '#374151',
+                  fontWeight: col.primary ? 600 : 400,
+                  textAlign: col.align || 'left',
+                  whiteSpace: col.wrap ? 'normal' : 'nowrap',
+                  maxWidth: col.maxWidth || 'none',
+                  overflow: col.maxWidth ? 'hidden' : 'visible',
+                  textOverflow: col.maxWidth ? 'ellipsis' : 'clip',
+                }}>
+                  {col.render ? col.render(item) : (item[col.key] ?? '—')}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+// ── Card Grid View ───────────────────────────────────────────────
+const CardView = ({ data, cardRenderer, onRowClick }) => {
+  const [hoveredCard, setHoveredCard] = useState(null);
+
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+      gap: '16px',
+    }}>
+      {data.map((item, index) => (
+        <div
+          key={item.id || index}
+          onClick={() => onRowClick && onRowClick(item)}
+          onMouseEnter={() => setHoveredCard(index)}
+          onMouseLeave={() => setHoveredCard(null)}
+          style={{
+            background: '#ffffff',
+            border: `1px solid ${hoveredCard === index ? '#6366f1' : '#e5e7eb'}`,
+            borderRadius: '12px',
+            padding: '20px',
+            cursor: onRowClick ? 'pointer' : 'default',
+            transition: 'all 0.15s ease',
+            boxShadow: hoveredCard === index
+              ? '0 4px 16px rgba(99,102,241,0.12)'
+              : '0 1px 3px rgba(0,0,0,0.05)',
+            transform: hoveredCard === index ? 'translateY(-2px)' : 'none',
+          }}
+        >
+          {cardRenderer ? cardRenderer(item) : (
+            // Default card renderer — override with cardRenderer prop
+            <div>
+              {Object.entries(item).slice(0, 5).map(([key, val]) => (
+                <div key={key} style={{ marginBottom: '8px' }}>
+                  <div style={{ fontSize: '10px', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    {key.replace(/_/g, ' ')}
+                  </div>
+                  <div style={{ fontSize: '14px', color: '#111827', marginTop: '2px' }}>
+                    {val != null ? String(val) : '—'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// ── Empty State ──────────────────────────────────────────────────
+const EmptyState = ({ onAddNew, addNewLabel }) => (
+  <div style={{ textAlign: 'center', padding: '64px 24px' }}>
+    <div style={{ fontSize: '40px', marginBottom: '16px' }}>📭</div>
+    <p style={{ color: '#6b7280', fontSize: '15px', marginBottom: '20px' }}>
+      No records found.
+    </p>
+    {onAddNew && (
+      <button
+        onClick={onAddNew}
+        style={{
+          padding: '10px 20px',
+          background: '#6366f1',
+          color: '#ffffff',
+          border: 'none',
+          borderRadius: '8px',
+          fontSize: '14px',
+          fontWeight: 600,
+          cursor: 'pointer',
+        }}
+      >
+        {addNewLabel || '+ Add New'}
+      </button>
+    )}
+  </div>
+);
+
+// ── Loading State ────────────────────────────────────────────────
+const LoadingState = () => (
+  <div style={{ textAlign: 'center', padding: '64px 24px', color: '#9ca3af', fontSize: '15px' }}>
+    Loading...
+  </div>
+);
+
+// ── MAIN ListPageWrapper ─────────────────────────────────────────
+const ListPageWrapper = ({
+  title,           // Page title string
+  data = [],       // Array of records
+  columns = [],    // [{ key, label, render, primary, align, width, maxWidth, wrap }]
+  cardRenderer,    // (item) => JSX — custom card layout
+  filterKey,       // Field name to filter by dropdown (e.g., 'status', 'type')
+  filterLabel,     // Dropdown label (e.g., 'Status', 'Type')
+  filterOptions,   // [{ value, label }] or ['value1', 'value2']
+  searchKeys = [], // Fields to search across (e.g., ['name', 'booking_ref'])
+  searchPlaceholder,
+  onRowClick,      // (item) => void
+  isLoading,
+  onAddNew,
+  addNewLabel,
+  actions,         // Additional JSX to render in the toolbar (e.g., export button)
+}) => {
+  const [viewMode, setViewMode] = useState('table');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterValue, setFilterValue] = useState('');
+
+  // ── Filter & Search logic ──────────────────────────────────────
+  const filteredData = useMemo(() => {
+    let result = [...data];
+
+    // Type/status dropdown filter
+    if (filterValue && filterKey) {
+      result = result.filter((item) =>
+        String(item[filterKey] || '').toLowerCase() === filterValue.toLowerCase()
+      );
+    }
+
+    // Search filter — searches across searchKeys
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter((item) => {
+        if (searchKeys.length > 0) {
+          return searchKeys.some((key) =>
+            String(item[key] || '').toLowerCase().includes(q)
+          );
+        }
+        // Fallback: search all string fields
+        return Object.values(item).some((val) =>
+          String(val || '').toLowerCase().includes(q)
+        );
+      });
+    }
+
+    return result;
+  }, [data, filterValue, filterKey, searchQuery, searchKeys]);
+
+  return (
+    <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
+
+      {/* ── PAGE HEADER ── */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '20px',
+        flexWrap: 'wrap',
+        gap: '12px',
+      }}>
+        <div>
+          <h1 style={{ fontSize: '22px', fontWeight: 700, color: '#111827', margin: 0 }}>
+            {title}
+          </h1>
+          <p style={{ fontSize: '13px', color: '#6b7280', margin: '4px 0 0' }}>
+            {isLoading ? 'Loading...' : `${filteredData.length} record${filteredData.length !== 1 ? 's' : ''}`}
+            {data.length !== filteredData.length && ` (filtered from ${data.length})`}
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          {actions}
+          {onAddNew && (
+            <button
+              onClick={onAddNew}
+              style={{
+                padding: '9px 18px',
+                background: '#6366f1',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'background 0.15s ease',
+              }}
+              onMouseEnter={(e) => e.target.style.background = '#4f46e5'}
+              onMouseLeave={(e) => e.target.style.background = '#6366f1'}
+            >
+              {addNewLabel || '+ Add New'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── TOOLBAR: Search + Filter + View Toggle ── */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+        marginBottom: '16px',
+        flexWrap: 'wrap',
+        padding: '12px 16px',
+        background: '#f9fafb',
+        borderRadius: '10px',
+        border: '1px solid #e5e7eb',
+      }}>
+        <SearchInput
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder={searchPlaceholder || `Search ${title?.toLowerCase()}...`}
+        />
+
+        {filterKey && filterOptions && (
+          <FilterDropdown
+            label={filterLabel || filterKey}
+            value={filterValue}
+            options={filterOptions}
+            onChange={setFilterValue}
+          />
+        )}
+
+        {/* Clear filters button — only shown when filters active */}
+        {(searchQuery || filterValue) && (
+          <button
+            onClick={() => { setSearchQuery(''); setFilterValue(''); }}
+            style={{
+              padding: '8px 12px',
+              background: 'transparent',
+              border: '1px solid #d1d5db',
+              borderRadius: '8px',
+              fontSize: '12px',
+              color: '#6b7280',
+              cursor: 'pointer',
+            }}
+          >
+            ✕ Clear
+          </button>
+        )}
+
+        <div style={{ marginLeft: 'auto' }}>
+          <ViewToggle view={viewMode} onChange={setViewMode} />
+        </div>
+      </div>
+
+      {/* ── CONTENT AREA ── */}
+      {isLoading ? (
+        <LoadingState />
+      ) : filteredData.length === 0 ? (
+        <EmptyState onAddNew={onAddNew} addNewLabel={addNewLabel} />
+      ) : viewMode === 'table' ? (
+        <TableView
+          columns={columns}
+          data={filteredData}
+          onRowClick={onRowClick}
+        />
+      ) : (
+        <CardView
+          data={filteredData}
+          cardRenderer={cardRenderer}
+          onRowClick={onRowClick}
+        />
+      )}
+
+    </div>
+  );
+};
+
+export default ListPageWrapper;
+```
+
+---
+
+### 1-D. 공통 DetailPageWrapper 컴포넌트
+
+파일 위치: `src/components/shared/DetailPageWrapper.jsx`
+
+```jsx
+// src/components/shared/DetailPageWrapper.jsx
+// Universal detail page layout with Edit mode support
+// MIGRATION NOTE: extend with form validation library in production
+
+import { useState } from 'react';
+import StatusBadge from './StatusBadge';
+import { formatDate, formatDateTime, formatCurrency, display } from '../../utils/formatters';
+// ⚠️ Adjust the import path above to match your project structure
+
+// ── Field display component ──────────────────────────────────────
+export const DetailField = ({ label, value, type = 'text', currencyCode }) => {
+  const displayValue = (() => {
+    if (value == null || value === '') return '—';
+    if (type === 'date') return formatDate(value);
+    if (type === 'datetime') return formatDateTime(value);
+    if (type === 'currency') return formatCurrency(value, currencyCode);
+    if (type === 'boolean') return value ? 'Yes' : 'No';
+    if (type === 'badge') return null; // handled below
+    return display(value);
+  })();
+
+  return (
+    <div style={{ marginBottom: '18px' }}>
+      <dt style={{
+        fontSize: '11px', fontWeight: 600, color: '#9ca3af',
+        textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px',
+      }}>
+        {label}
+      </dt>
+      <dd style={{ margin: 0, fontSize: '15px', color: '#111827', wordBreak: 'break-word' }}>
+        {type === 'badge'
+          ? <StatusBadge status={value} size="md" />
+          : displayValue
+        }
+      </dd>
+    </div>
+  );
+};
+
+// ── Editable Field component ─────────────────────────────────────
+export const EditableField = ({ label, fieldKey, value, type = 'text', onChange, options }) => (
+  <div style={{ marginBottom: '18px' }}>
+    <label style={{
+      display: 'block', fontSize: '11px', fontWeight: 600,
+      color: '#6b7280', textTransform: 'uppercase',
+      letterSpacing: '0.08em', marginBottom: '6px',
+    }}>
+      {label}
+    </label>
+    {type === 'select' ? (
+      <select
+        value={value || ''}
+        onChange={(e) => onChange(fieldKey, e.target.value)}
+        style={inputStyle}
+      >
+        {(options || []).map((opt) => (
+          <option key={opt.value ?? opt} value={opt.value ?? opt}>
+            {opt.label ?? opt}
+          </option>
+        ))}
+      </select>
+    ) : type === 'textarea' ? (
+      <textarea
+        value={value || ''}
+        onChange={(e) => onChange(fieldKey, e.target.value)}
+        rows={3}
+        style={{ ...inputStyle, resize: 'vertical', height: 'auto' }}
+      />
+    ) : (
+      <input
+        type={type === 'date' ? 'date' : type === 'number' ? 'number' : 'text'}
+        value={value || ''}
+        onChange={(e) => onChange(fieldKey, e.target.value)}
+        style={inputStyle}
+      />
+    )}
+  </div>
+);
+
+const inputStyle = {
+  width: '100%',
+  padding: '9px 12px',
+  border: '1px solid #d1d5db',
+  borderRadius: '8px',
+  fontSize: '14px',
+  color: '#111827',
+  background: '#ffffff',
+  outline: 'none',
+  boxSizing: 'border-box',
+};
+
+// ── MAIN DetailPageWrapper ───────────────────────────────────────
+const DetailPageWrapper = ({
+  title,           // Primary identifier to show in H1
+  subtitle,        // Secondary info shown below title
+  status,          // Status value for badge
+  record,          // Full data record object
+  onBack,          // () => void — back button handler
+  onEdit,          // (updatedRecord) => Promise<void> — save handler
+  onDelete,        // () => void — optional delete/archive
+  deleteLabel,     // Label for delete button (default: "Archive")
+  editFields,      // Array defining which fields are editable in edit mode:
+                   // [{ key, label, type, options }]
+  leftContent,     // JSX — left card content (view mode)
+  rightContent,    // JSX — right card content (view mode)
+  tabContent,      // [{ label, content: JSX }] — tabs at bottom
+  isLoading,
+}) => {
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editData, setEditData] = useState({});
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+
+  const handleEditStart = () => {
+    setEditData({ ...(record || {}) });
+    setSaveError(null);
+    setIsEditMode(true);
+  };
+
+  const handleFieldChange = (key, value) => {
+    setEditData((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleSave = async () => {
+    if (!onEdit) return;
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      await onEdit(editData);
+      setIsEditMode(false);
+    } catch (err) {
+      setSaveError(err?.message || 'Failed to save. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setIsEditMode(false);
+    setEditData({});
+    setSaveError(null);
+  };
+
+  const [activeTab, setActiveTab] = useState(0);
+
+  if (isLoading) {
+    return (
+      <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>
+        Loading...
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '24px' }}>
+
+      {/* ── HEADER BAR ── */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between',
+        alignItems: 'center', marginBottom: '28px',
+        flexWrap: 'wrap', gap: '12px',
+      }}>
+        {/* Back button */}
+        <button
+          onClick={onBack}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '6px',
+            background: 'none', border: 'none',
+            color: '#6b7280', fontSize: '14px', cursor: 'pointer',
+            padding: '6px 10px', borderRadius: '6px',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = '#f3f4f6'; e.currentTarget.style.color = '#111827'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = '#6b7280'; }}
+        >
+          ← Back
+        </button>
+
+        {/* Action buttons */}
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {isEditMode ? (
+            <>
+              {saveError && (
+                <span style={{ fontSize: '13px', color: '#dc2626', marginRight: '8px' }}>
+                  ⚠ {saveError}
+                </span>
+              )}
+              <button onClick={handleCancel} style={btnOutline}>
+                Cancel
+              </button>
+              <button onClick={handleSave} disabled={isSaving} style={btnPrimary}>
+                {isSaving ? 'Saving...' : '✓ Save Changes'}
+              </button>
+            </>
+          ) : (
+            <>
+              {onDelete && (
+                <button onClick={onDelete} style={btnDanger}>
+                  {deleteLabel || 'Archive'}
+                </button>
+              )}
+              {onEdit && (
+                <button onClick={handleEditStart} style={btnPrimary}>
+                  ✎ Edit
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ── TITLE SECTION ── */}
+      <div style={{ marginBottom: '28px' }}>
+        {status && <StatusBadge status={status} size="md" />}
+        <h1 style={{
+          fontSize: '26px', fontWeight: 700, color: '#111827',
+          margin: '8px 0 4px', lineHeight: 1.3,
+        }}>
+          {title || '—'}
+        </h1>
+        {subtitle && (
+          <p style={{ color: '#6b7280', fontSize: '14px', margin: '0 0 6px' }}>
+            {subtitle}
+          </p>
+        )}
+        <p style={{ color: '#9ca3af', fontSize: '12px', margin: 0 }}>
+          {record?.created_at && `Created: ${formatDate(record.created_at)}`}
+          {record?.updated_at && ` · Updated: ${formatDate(record.updated_at)}`}
+        </p>
+      </div>
+
+      {/* ── TWO-COLUMN INFO CARDS ── */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'minmax(0, 3fr) minmax(0, 2fr)',
+        gap: '20px',
+        marginBottom: '28px',
+      }}
+        className="detail-grid"
+      >
+        {/* LEFT CARD */}
+        <div style={cardStyle}>
+          <h2 style={cardTitleStyle}>Details</h2>
+          {isEditMode && editFields ? (
+            editFields
+              .filter((f) => f.position !== 'right')
+              .map((field) => (
+                <EditableField
+                  key={field.key}
+                  label={field.label}
+                  fieldKey={field.key}
+                  value={editData[field.key]}
+                  type={field.type}
+                  options={field.options}
+                  onChange={handleFieldChange}
+                />
+              ))
+          ) : (
+            leftContent
+          )}
+        </div>
+
+        {/* RIGHT CARD */}
+        <div style={{ ...cardStyle, background: '#f9fafb' }}>
+          <h2 style={cardTitleStyle}>Summary</h2>
+          {isEditMode && editFields ? (
+            editFields
+              .filter((f) => f.position === 'right')
+              .map((field) => (
+                <EditableField
+                  key={field.key}
+                  label={field.label}
+                  fieldKey={field.key}
+                  value={editData[field.key]}
+                  type={field.type}
+                  options={field.options}
+                  onChange={handleFieldChange}
+                />
+              ))
+          ) : (
+            rightContent
+          )}
+        </div>
+      </div>
+
+      {/* ── TABS ── */}
+      {tabContent && tabContent.length > 0 && (
+        <div>
+          <div style={{
+            display: 'flex', borderBottom: '2px solid #e5e7eb',
+            gap: '4px', marginBottom: '20px',
+          }}>
+            {tabContent.map((tab, i) => (
+              <button
+                key={i}
+                onClick={() => setActiveTab(i)}
+                style={{
+                  padding: '10px 18px',
+                  background: 'none',
+                  border: 'none',
+                  borderBottom: `2px solid ${activeTab === i ? '#6366f1' : 'transparent'}`,
+                  marginBottom: '-2px',
+                  fontSize: '14px',
+                  fontWeight: activeTab === i ? 600 : 400,
+                  color: activeTab === i ? '#6366f1' : '#6b7280',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <div>{tabContent[activeTab]?.content}</div>
+        </div>
+      )}
+
+    </div>
+  );
+};
+
+// ── Shared button styles ─────────────────────────────────────────
+const btnPrimary = {
+  padding: '9px 18px', background: '#6366f1', color: '#ffffff',
+  border: 'none', borderRadius: '8px', fontSize: '14px',
+  fontWeight: 600, cursor: 'pointer',
+};
+const btnOutline = {
+  padding: '9px 18px', background: '#ffffff', color: '#374151',
+  border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px',
+  fontWeight: 500, cursor: 'pointer',
+};
+const btnDanger = {
+  padding: '9px 18px', background: '#ffffff', color: '#dc2626',
+  border: '1px solid #fca5a5', borderRadius: '8px', fontSize: '14px',
+  fontWeight: 500, cursor: 'pointer',
+};
+const cardStyle = {
+  background: '#ffffff', border: '1px solid #e5e7eb',
+  borderRadius: '12px', padding: '24px',
+};
+const cardTitleStyle = {
+  fontSize: '11px', fontWeight: 600, color: '#9ca3af',
+  textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '20px',
+};
+
+export default DetailPageWrapper;
+```
+
+---
+
+## 🔌 STEP 2 — APPLY TO EACH LIST PAGE
+
+Step 1의 공통 컴포넌트 파일들이 생성된 것을 확인한 뒤 진행하라.
+
+각 리스트 페이지마다 아래 절차를 따르라:
+
+### 2-A. 각 리스트 페이지 수정 절차
+
+```
+1. 해당 리스트 페이지 파일을 읽는다 (전체 내용).
+2. 기존 데이터 페칭 로직(useEffect, fetch, API call)을 그대로 유지한다.
+3. 기존 return() 내용을 ListPageWrapper로 감싸는 방식으로 교체한다.
+4. columns 배열을 정의한다 (아래 각 엔티티별 정의 참조).
+5. cardRenderer 함수를 정의한다.
+6. filterOptions를 해당 엔티티의 status/type 값으로 정의한다.
+7. onRowClick에 기존 상세 페이지 라우트를 연결한다.
+   - 라우트가 없으면 연결하지 말고 "route missing for X" 로 보고하라.
+8. 파일 저장 전 JSX 문법 검증을 수행한다.
+```
+
+### 2-B. 엔티티별 columns 정의 참고
+
+아래는 참고용 columns 정의다. **실제 필드명은 프로젝트 스키마에 맞게 조정하라.**
+
+```javascript
+// ── RESERVATIONS ──────────────────────────────────────────
+const RESERVATION_COLUMNS = [
+  { key: 'booking_ref',   label: 'Booking Ref',  primary: true, width: '130px' },
+  { key: 'guest_name',    label: 'Guest',        maxWidth: '160px' },
+  { key: 'property_name', label: 'Property',     maxWidth: '140px' },
+  { key: 'room_number',   label: 'Room'                          },
+  { key: 'checkin_date',  label: 'Check-in',
+    render: (r) => formatDate(r.checkin_date) },
+  { key: 'checkout_date', label: 'Check-out',
+    render: (r) => formatDate(r.checkout_date) },
+  { key: 'nights',        label: 'Nights',       align: 'center' },
+  { key: 'total_amount',  label: 'Total',
+    render: (r) => formatCurrency(r.total_amount, r.currency), align: 'right' },
+  { key: 'status',        label: 'Status',
+    render: (r) => <StatusBadge status={r.status} /> },
+  { key: 'booking_source', label: 'Source',
+    render: (r) => <StatusBadge status={r.booking_source} /> },
+];
+
+const RESERVATION_FILTER_OPTIONS = [
+  { value: 'confirmed',  label: 'Confirmed'   },
+  { value: 'checked_in', label: 'Checked In'  },
+  { value: 'checked_out',label: 'Checked Out' },
+  { value: 'cancelled',  label: 'Cancelled'   },
+  { value: 'tentative',  label: 'Tentative'   },
+];
+
+// ── GUESTS ────────────────────────────────────────────────
+const GUEST_COLUMNS = [
+  { key: 'full_name',    label: 'Name',         primary: true                   },
+  { key: 'email',        label: 'Email',        maxWidth: '180px'               },
+  { key: 'phone',        label: 'Phone'                                         },
+  { key: 'nationality',  label: 'Nationality'                                   },
+  { key: 'total_stays',  label: 'Stays',        align: 'center'                 },
+  { key: 'vip_status',   label: 'VIP',
+    render: (r) => r.vip_status
+      ? <span style={{ color: '#d97706', fontWeight: 700 }}>★ VIP</span>
+      : <span style={{ color: '#9ca3af' }}>—</span>
+  },
+];
+
+// ── PROPERTIES ────────────────────────────────────────────
+const PROPERTY_COLUMNS = [
+  { key: 'name',             label: 'Property Name', primary: true              },
+  { key: 'code',             label: 'Code',          width: '80px'              },
+  { key: 'city',             label: 'City'                                      },
+  { key: 'country',          label: 'Country'                                   },
+  { key: 'star_rating',      label: 'Stars',
+    render: (r) => '★'.repeat(r.star_rating || 0)                               },
+  { key: 'default_currency', label: 'Currency'                                  },
+  { key: 'status',           label: 'Status',
+    render: (r) => <StatusBadge status={r.status} />                            },
+];
+
+// ── ROOMS ─────────────────────────────────────────────────
+const ROOM_COLUMNS = [
+  { key: 'room_number',          label: 'Room #',    primary: true, width: '80px' },
+  { key: 'floor',                label: 'Floor',     align: 'center'              },
+  { key: 'room_type_name',       label: 'Type',      maxWidth: '150px'            },
+  { key: 'view_type',            label: 'View'                                    },
+  { key: 'housekeeping_status',  label: 'HK Status',
+    render: (r) => <StatusBadge status={r.housekeeping_status} />                 },
+  { key: 'occupancy_status',     label: 'Occupancy',
+    render: (r) => <StatusBadge status={r.occupancy_status} />                   },
+];
+
+// ── ROOM TYPES ────────────────────────────────────────────
+const ROOM_TYPE_COLUMNS = [
+  { key: 'name',          label: 'Room Type',    primary: true                   },
+  { key: 'code',          label: 'Code',         width: '100px'                  },
+  { key: 'max_occupancy', label: 'Max Occ.',     align: 'center'                 },
+  { key: 'base_rate',     label: 'Base Rate',
+    render: (r) => formatCurrency(r.base_rate, r.currency), align: 'right'       },
+  { key: 'status',        label: 'Status',
+    render: (r) => <StatusBadge status={r.status} />                             },
+];
+
+// ── RATE PLANS ────────────────────────────────────────────
+const RATE_PLAN_COLUMNS = [
+  { key: 'name',       label: 'Rate Plan',    primary: true                      },
+  { key: 'code',       label: 'Code',         width: '120px'                     },
+  { key: 'rate_type',  label: 'Type',
+    render: (r) => <StatusBadge status={r.rate_type} />                          },
+  { key: 'amount',     label: 'Rate',
+    render: (r) => formatCurrency(r.amount, r.currency), align: 'right'          },
+  { key: 'valid_from', label: 'From',
+    render: (r) => formatDate(r.valid_from)                                      },
+  { key: 'valid_to',   label: 'To',
+    render: (r) => formatDate(r.valid_to)                                        },
+  { key: 'status',     label: 'Status',
+    render: (r) => <StatusBadge status={r.status} />                             },
+];
+
+// ── HOUSEKEEPING TASKS ────────────────────────────────────
+const HK_TASK_COLUMNS = [
+  { key: 'room_number',   label: 'Room #',    primary: true, width: '80px'       },
+  { key: 'task_type',     label: 'Task',
+    render: (r) => <StatusBadge status={r.task_type} />                          },
+  { key: 'priority',      label: 'Priority',
+    render: (r) => <StatusBadge status={r.priority} />                           },
+  { key: 'assigned_to',   label: 'Assigned To'                                  },
+  { key: 'status',        label: 'Status',
+    render: (r) => <StatusBadge status={r.status} />                             },
+  { key: 'scheduled_time', label: 'Scheduled'                                   },
+];
+
+// ── USERS / STAFF ─────────────────────────────────────────
+const USER_COLUMNS = [
+  { key: 'full_name',     label: 'Name',      primary: true                      },
+  { key: 'email',         label: 'Email',     maxWidth: '200px'                  },
+  { key: 'role',          label: 'Role',
+    render: (r) => <StatusBadge status={r.role} />                               },
+  { key: 'property_name', label: 'Property',  maxWidth: '150px'                  },
+  { key: 'status',        label: 'Status',
+    render: (r) => <StatusBadge status={r.status} />                             },
+  { key: 'last_login',    label: 'Last Login',
+    render: (r) => formatDateTime(r.last_login)                                  },
+];
+```
+
+### 2-C. 리스트 페이지 적용 템플릿
+
+각 리스트 페이지에 아래 패턴을 적용하라. 기존 데이터 페칭 로직은 유지하고 return() 부분만 교체한다:
+
+```jsx
+// BEFORE (기존 코드 유지):
+// const [data, setData] = useState([]);
+// const [loading, setLoading] = useState(true);
+// useEffect(() => { fetch('/api/reservations').then(...) }, []);
+// ↑ 이 부분은 절대 수정하지 말 것
+
+// AFTER (return 부분만 교체):
+import { useNavigate } from 'react-router-dom'; // 기존 import 확인 후 추가
+import ListPageWrapper from '../components/shared/ListPageWrapper';
+import { StatusBadge } from '../components/shared/StatusBadge';
+import { formatDate, formatCurrency } from '../utils/formatters';
+// ⚠️ import 경로는 실제 프로젝트 구조에 맞게 조정
+
+function ReservationsPage() {
+  // 기존 상태 및 useEffect는 그대로 유지
+  const navigate = useNavigate();
+
+  return (
+    <ListPageWrapper
+      title="Reservations"
+      data={data}                           // 기존 상태 변수명 사용
+      columns={RESERVATION_COLUMNS}         // 위에서 정의한 columns
+      cardRenderer={(item) => (             // 카드 뷰 커스텀 레이아웃
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+            <span style={{ fontWeight: 700, fontFamily: 'monospace', fontSize: '13px' }}>
+              {item.booking_ref}
+            </span>
+            <StatusBadge status={item.status} />
+          </div>
+          <div style={{ fontWeight: 600, marginBottom: '4px' }}>{item.guest_name}</div>
+          <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '8px' }}>
+            {item.property_name} · Room {item.room_number}
+          </div>
+          <div style={{ fontSize: '13px', color: '#374151' }}>
+            {formatDate(item.checkin_date)} → {formatDate(item.checkout_date)}
+          </div>
+          <div style={{ marginTop: '12px', fontWeight: 700, fontSize: '16px', color: '#111827' }}>
+            {formatCurrency(item.total_amount, item.currency)}
+          </div>
+        </div>
+      )}
+      filterKey="status"
+      filterLabel="Status"
+      filterOptions={RESERVATION_FILTER_OPTIONS}
+      searchKeys={['booking_ref', 'guest_name', 'room_number']}
+      searchPlaceholder="Search by ref, guest, room..."
+      onRowClick={(item) => navigate(`/reservations/${item.id}`)}
+      isLoading={loading}                   // 기존 loading 상태 변수명 사용
+      onAddNew={() => navigate('/reservations/new')}
+      addNewLabel="+ New Reservation"
+    />
+  );
+}
+```
+
+---
+
+## 🖥️ STEP 3 — APPLY DETAIL PAGE WRAPPER
+
+각 상세 페이지 파일을 읽고 DetilPageWrapper를 적용하라.
+
+### 3-A. 상세 페이지 적용 패턴
+
+```jsx
+// 예시: ReservationDetail.jsx
+import { useNavigate, useParams } from 'react-router-dom';
+import DetailPageWrapper, { DetailField } from '../components/shared/DetailPageWrapper';
+import { formatCurrency } from '../utils/formatters';
+// ⚠️ import 경로 조정 필수
+
+function ReservationDetailPage() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  // 기존 데이터 페칭 로직 유지
+  // const [record, setRecord] = useState(null);
+  // const [loading, setLoading] = useState(true);
+  // useEffect(() => { fetch(`/api/reservations/${id}`).then(...) }, [id]);
+
+  // Edit 저장 핸들러
+  const handleEdit = async (updatedData) => {
+    const response = await fetch(`/api/reservations/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updatedData),
+    });
+    if (!response.ok) throw new Error('Failed to update reservation');
+    // 저장 후 상태 업데이트 (기존 로직에 맞게 조정)
+  };
+
+  return (
+    <DetailPageWrapper
+      title={record?.booking_ref}
+      subtitle={`${record?.property_name} · Room ${record?.room_number}`}
+      status={record?.status}
+      record={record}
+      onBack={() => navigate('/reservations')}
+      onEdit={handleEdit}
+      editFields={[
+        // LEFT CARD 편집 필드
+        { key: 'checkin_date',  label: 'Check-in Date',  type: 'date'   },
+        { key: 'checkout_date', label: 'Check-out Date', type: 'date'   },
+        { key: 'adults',        label: 'Adults',         type: 'number' },
+        { key: 'children',      label: 'Children',       type: 'number' },
+        { key: 'special_requests', label: 'Special Requests', type: 'textarea' },
+        // RIGHT CARD 편집 필드 (position: 'right' 지정)
+        { key: 'status', label: 'Status', type: 'select', position: 'right',
+          options: [
+            { value: 'confirmed',   label: 'Confirmed'   },
+            { value: 'checked_in',  label: 'Checked In'  },
+            { value: 'checked_out', label: 'Checked Out' },
+            { value: 'cancelled',   label: 'Cancelled'   },
+          ]
+        },
+        { key: 'booking_source', label: 'Booking Source', type: 'select', position: 'right',
+          options: ['direct', 'booking_com', 'expedia', 'airbnb']
+        },
+      ]}
+      isLoading={loading}
+      leftContent={
+        <>
+          <DetailField label="Booking Reference" value={record?.booking_ref} />
+          <DetailField label="Guest Name"        value={record?.guest_name} />
+          <DetailField label="Property"          value={record?.property_name} />
+          <DetailField label="Room"              value={record?.room_number} />
+          <DetailField label="Check-in"          value={record?.checkin_date}  type="date" />
+          <DetailField label="Check-out"         value={record?.checkout_date} type="date" />
+          <DetailField label="Nights"            value={record?.nights} />
+          <DetailField label="Adults"            value={record?.adults} />
+          <DetailField label="Children"          value={record?.children} />
+          <DetailField label="Special Requests"  value={record?.special_requests} />
+        </>
+      }
+      rightContent={
+        <>
+          <DetailField label="Status"         value={record?.status}         type="badge" />
+          <DetailField label="Booking Source" value={record?.booking_source} type="badge" />
+          <DetailField label="Room Rate / Night"
+            value={formatCurrency(record?.room_rate_per_night, record?.currency)} />
+          <DetailField label="Total Charges"
+            value={formatCurrency(record?.total_room_charges, record?.currency)} />
+          <DetailField label="Tax"
+            value={formatCurrency(record?.tax_amount, record?.currency)} />
+          <div style={{
+            borderTop: '1px solid #e5e7eb', paddingTop: '16px', marginTop: '8px'
+          }}>
+            <DetailField label="TOTAL AMOUNT"
+              value={formatCurrency(record?.total_amount, record?.currency)} />
+          </div>
+          <DetailField label="Amount Paid"
+            value={formatCurrency(record?.amount_paid, record?.currency)} />
+        </>
+      }
+      tabContent={[
+        { label: 'Payment History', content: <div style={{ color: '#6b7280', padding: '20px' }}>No payment records.</div> },
+        { label: 'Notes',           content: <div style={{ color: '#6b7280', padding: '20px' }}>No notes.</div> },
+        { label: 'Activity Log',    content: <div style={{ color: '#6b7280', padding: '20px' }}>No activity.</div> },
+      ]}
+    />
+  );
+}
+```
+
+---
+
+## 📱 STEP 4 — RESPONSIVE CSS
+
+프로젝트의 전역 CSS 파일(예: `src/index.css`, `src/App.css`)을 읽고 아래 스타일을 추가하라. 기존 스타일은 삭제하지 마라.
+
+```css
+/* ──────────────────────────────────────────────────────────────
+   Hospitality App — Shared Responsive Styles
+   추가 위치: src/index.css 또는 src/App.css 파일 끝부분에 추가
+   ────────────────────────────────────────────────────────────── */
+
+/* Detail page: 2-column → 1-column on mobile */
+@media (max-width: 768px) {
+  .detail-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Table scroll container */
+.table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent text selection on row click */
+.table-wrapper tr {
+  user-select: none;
+}
+
+/* Card grid responsive */
+@media (max-width: 640px) {
+  .card-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Smooth transitions */
+* {
+  box-sizing: border-box;
+}
+```
+
+---
+
+## ✅ STEP 5 — FINAL VERIFICATION REPORT
+
+모든 단계 완료 후 아래 형식으로 보고하라:
+
+```
+══════════════════════════════════════════════════════
+  LIST & DETAIL PAGE ENHANCEMENT — FINAL REPORT
+══════════════════════════════════════════════════════
+
+SHARED COMPONENTS CREATED
+──────────────────────────────────────────────────────
+src/utils/formatters.js              ✅ Created / ✅ Updated
+src/components/shared/StatusBadge.jsx    ✅ Created
+src/components/shared/ListPageWrapper.jsx ✅ Created
+src/components/shared/DetailPageWrapper.jsx ✅ Created
+Global CSS added to: [파일명]         ✅ Done
+
+LIST PAGES UPDATED
+──────────────────────────────────────────────────────
+Page               | Card/Table | Search | Filter | Row Click | Status
+───────────────────|────────────|────────|────────|───────────|────────
+Reservations       |     ✅     |   ✅   |   ✅   |     ✅    |  ✅ Done
+Guests             |     ✅     |   ✅   |   ✅   |     ✅    |  ✅ Done
+Properties         |     ✅     |   ✅   |   ✅   |     ✅    |  ✅ Done
+Rooms              |     ✅     |   ✅   |   ✅   |     ✅    |  ✅ Done
+Room Types         |     ✅     |   ✅   |   ✅   |     ✅    |  ✅ Done
+Rate Plans         |     ✅     |   ✅   |   ✅   |     ✅    |  ✅ Done
+Housekeeping Tasks |     ✅     |   ✅   |   ✅   |     ✅    |  ✅ Done
+Users              |     ✅     |   ✅   |   ✅   |     ✅    |  ✅ Done
+
+DETAIL PAGES UPDATED
+──────────────────────────────────────────────────────
+Page                 | Back Btn | Edit Mode | Save/Cancel | Status
+─────────────────────|──────────|───────────|─────────────|────────
+Reservation Detail   |    ✅    |    ✅     |     ✅      | ✅ Done
+Guest Detail         |    ✅    |    ✅     |     ✅      | ✅ Done
+Property Detail      |    ✅    |    ✅     |     ✅      | ✅ Done
+...
+
+ISSUES / SKIPPED
+──────────────────────────────────────────────────────
+[수정 불가 파일이나 누락된 라우트 등 보고]
+
+══════════════════════════════════════════════════════
+  앱이 정상 실행되는지 확인 후 완료 보고하라.
+══════════════════════════════════════════════════════
+```
+
+---
+
+## ⚠️ IF ERRORS OCCUR
+
+```
+에러 발생 시 처리 규칙:
+
+1. SYNTAX ERROR in a component file
+   → 수정한 내용을 원래대로 되돌린다
+   → 에러 내용과 파일명을 보고한다
+   → 해당 파일은 건너뛰고 다음 파일로 진행한다
+
+2. IMPORT PATH ERROR
+   → 에러 메시지를 보고한다
+   → 해당 import 경로를 실제 파일 경로로 수정한다
+   → 수정 후 다시 검증한다
+
+3. ROUTE NOT FOUND for detail page
+   → onRowClick을 추가하지 않는다
+   → "Route missing: /[entity]/:id — skipped onRowClick" 으로 보고한다
+
+4. API ENDPOINT NOT FOUND for Edit save
+   → handleEdit 함수를 빈 Promise.resolve()로 대체한다
+   → "Edit API endpoint unknown for [entity] — placeholder used" 로 보고한다
+
+5. APP CRASHES after change
+   → 즉시 해당 파일의 변경 내용을 원복한다
+   → 크래시 원인을 보고한다
+   → 절대 크래시 상태로 다음 단계를 진행하지 않는다
+```
