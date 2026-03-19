@@ -204,33 +204,72 @@ router.get(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const branchId = req.params.id;
+      const dateParam = (req.query.date as string) || "";
+
+      const todayLocal = new Date().toISOString().slice(0, 10);
+      const isToday = !dateParam || dateParam === todayLocal;
 
       const { rows: branchRows } = await pool.query(
-        `SELECT name FROM branches WHERE id = $1 AND deleted_at IS NULL`,
+        `SELECT name, timezone FROM branches WHERE id = $1 AND deleted_at IS NULL`,
         [branchId]
       );
       if (!branchRows.length) {
         res.status(404).json({ error: "NOT_FOUND" });
         return;
       }
+      const branch = branchRows[0] as { name: string; timezone: string };
+      const tz = branch.timezone || "UTC";
 
-      const { rows } = await pool.query(
-        `SELECT r.*,
-           res.reservation_no,
-           res.customer_name AS guest_name,
-           res.guest_count,
-           res.checked_in_at AS check_in_time,
-           res.end_time AS expected_check_out
-         FROM rooms r
-         LEFT JOIN reservations res ON res.room_id = r.id AND res.status = 'checked_in'
-         WHERE r.branch_id = $1 AND r.is_active = true AND r.deleted_at IS NULL
-         ORDER BY r.sort_order, r.name`,
-        [branchId]
-      );
+      let rows: Record<string, unknown>[];
+
+      if (isToday) {
+        // Live view — join only currently checked-in reservations
+        const result = await pool.query(
+          `SELECT r.*,
+             res.reservation_no,
+             res.customer_name AS guest_name,
+             res.guest_count,
+             res.checked_in_at AS check_in_time,
+             res.end_time AS expected_check_out,
+             res.status AS reservation_status
+           FROM rooms r
+           LEFT JOIN reservations res ON res.room_id = r.id AND res.status = 'checked_in'
+           WHERE r.branch_id = $1 AND r.is_active = true AND r.deleted_at IS NULL
+           ORDER BY r.sort_order, r.name`,
+          [branchId]
+        );
+        rows = result.rows as Record<string, unknown>[];
+      } else {
+        // Date view — show reservations scheduled for the given date
+        const result = await pool.query(
+          `SELECT r.*,
+             res.reservation_no,
+             res.customer_name AS guest_name,
+             res.guest_count,
+             res.start_time AS check_in_time,
+             res.end_time AS expected_check_out,
+             res.status AS reservation_status
+           FROM rooms r
+           LEFT JOIN reservations res ON res.room_id = r.id
+             AND res.status NOT IN ('cancelled', 'no_show')
+             AND (res.start_time AT TIME ZONE $2)::date = $3::date
+           WHERE r.branch_id = $1 AND r.is_active = true AND r.deleted_at IS NULL
+           ORDER BY r.sort_order, r.name`,
+          [branchId, tz, dateParam]
+        );
+        rows = result.rows as Record<string, unknown>[];
+      }
+
+      const roomTypes: string[] = [
+        ...new Set(rows.map((r) => r.room_type as string).filter(Boolean)),
+      ];
 
       res.json({
         branchId,
-        branchName: (branchRows[0] as { name: string }).name,
+        branchName: branch.name,
+        isLive: isToday,
+        viewDate: dateParam || todayLocal,
+        roomTypes,
         rooms: rows.map(formatRoomWithReservation),
         updatedAt: new Date().toISOString(),
       });
@@ -282,6 +321,7 @@ function formatRoomWithReservation(row: Record<string, unknown>) {
     guestCount: row.guest_count ?? null,
     checkInTime: row.check_in_time ?? null,
     expectedCheckOut: row.expected_check_out ?? null,
+    reservationStatus: row.reservation_status ?? null,
   };
 }
 

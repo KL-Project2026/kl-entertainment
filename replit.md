@@ -43,6 +43,7 @@ The project is structured as a pnpm monorepo using TypeScript, with distinct `ap
 - **Shareholder & Investor Management:** CRUD for shareholders, equity tracking, settlement generation, and an investor dashboard.
 - **Reporting:** Tabbed reports for Revenue, Occupancy, Commissions, and Profit & Loss with charts.
 - **Customer Booking Portal:** Allows customers to register, login, view upcoming bookings, and make new reservations through a 3-step wizard.
+- **Room Board Date & Type Filters:** Room board now has a date navigator (prev/next day arrows + date input, defaults to today) and a room type filter dropdown. Today mode shows live status with a pulsing "Live" indicator and real-time WebSocket updates; other dates show scheduled reservations for each room (date-view mode with "No Booking" placeholders). API (`GET /branches/:id/room-board?date=YYYY-MM-DD`) returns `isLive`, `viewDate`, `roomTypes`, and `reservationStatus` per room.
 
 **Chunk 07 — List Page Audit & UI Polish (COMPLETE):**
 - `utils.ts`: Added `formatDate(iso)` and `formatDateTime(iso)` helpers (use `toLocaleDateString` / `toLocaleString`).
