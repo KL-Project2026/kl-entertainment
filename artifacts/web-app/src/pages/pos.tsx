@@ -264,7 +264,6 @@ function AddItemModal({ orderId, onClose, onAdded }: { orderId: string; onClose:
 export default function POS() {
   const [, navigate] = useLocation();
   const search = useSearch();
-  // Use window.location.search as the source of truth for query params
   const windowSearch = typeof window !== "undefined" ? window.location.search : "";
   const effectiveSearch = windowSearch || search;
   const params = new URLSearchParams(effectiveSearch);
@@ -341,7 +340,6 @@ export default function POS() {
       const err = await resp.json().catch(() => ({}));
       throw new Error((err as { error?: string }).error || `HTTP ${resp.status}`);
     }
-
     invalidateOrders();
   };
 

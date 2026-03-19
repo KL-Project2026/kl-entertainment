@@ -89,6 +89,26 @@ export default function Login() {
               required
             />
             
+            <div className="pt-1">
+              <p className="text-xs text-muted-foreground/60 uppercase tracking-widest mb-2">Demo Accounts</p>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { label: "Super Admin", email: "admin@klproject.com", password: "Admin@123!" },
+                  { label: "Club Noir KL Manager", email: "kl01@klproject.com", password: "Manager@123!" },
+                  { label: "Velvet Lounge PJ Manager", email: "kl02@klproject.com", password: "Manager@123!" },
+                ].map((account) => (
+                  <button
+                    key={account.email}
+                    type="button"
+                    onClick={() => { setEmail(account.email); setPassword(account.password); }}
+                    className="px-3 py-1.5 rounded-full text-xs font-medium border border-primary/20 bg-primary/5 text-primary/70 hover:bg-primary/15 hover:border-primary/40 hover:text-primary transition-colors cursor-pointer"
+                  >
+                    {account.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {loginMutation.isError && (
               <motion.p 
                 initial={{ opacity: 0, x: -10 }}
