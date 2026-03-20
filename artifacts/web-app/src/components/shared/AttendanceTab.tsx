@@ -32,26 +32,37 @@ const fmtTime = (v: string | null) => {
 
 const StatusChip: React.FC<{ status: string }> = ({ status }) => {
   const map: Record<string, { bg: string; color: string; label: string }> = {
-    present:     { bg: "#dcfce7", color: "#166534", label: "Present" },
-    absent:      { bg: "#fee2e2", color: "#991b1b", label: "Absent" },
-    late:        { bg: "#fef9c3", color: "#854d0e", label: "Late" },
-    half_day:    { bg: "#fde8d8", color: "#9a3412", label: "Half Day" },
-    day_off:     { bg: "#f3f4f6", color: "#6b7280", label: "Day Off" },
-    early_leave: { bg: "#fde8d8", color: "#9a3412", label: "Early Leave" },
+    present:     { bg: "rgba(34,197,94,0.15)",  color: "#4ade80", label: "출근" },
+    absent:      { bg: "rgba(239,68,68,0.15)",   color: "#f87171", label: "결근" },
+    late:        { bg: "rgba(234,179,8,0.15)",   color: "#facc15", label: "지각" },
+    half_day:    { bg: "rgba(249,115,22,0.15)",  color: "#fb923c", label: "반차" },
+    day_off:     { bg: "rgba(156,163,175,0.15)", color: "#9ca3af", label: "휴무" },
+    early_leave: { bg: "rgba(249,115,22,0.15)",  color: "#fb923c", label: "조퇴" },
   };
-  const s = map[status] ?? { bg: "#f3f4f6", color: "#374151", label: status };
+  const s = map[status] ?? { bg: "rgba(156,163,175,0.15)", color: "#9ca3af", label: status };
   return (
-    <span style={{ background: s.bg, color: s.color, padding: "2px 10px",
-      borderRadius: 9999, fontSize: 11, fontWeight: 600 }}>{s.label}</span>
+    <span style={{
+      background: s.bg, color: s.color,
+      padding: "2px 10px", borderRadius: 9999,
+      fontSize: 11, fontWeight: 600,
+      border: `1px solid ${s.color}40`,
+    }}>{s.label}</span>
   );
 };
 
-const SCard: React.FC<{ label: string; value: string | number; color?: string }> = ({ label, value, color = "#111827" }) => (
-  <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10,
-    padding: "14px 18px", minWidth: 110 }}>
-    <div style={{ fontSize: 11, color: "#9ca3af", textTransform: "uppercase",
-      letterSpacing: "0.07em", marginBottom: 4 }}>{label}</div>
-    <div style={{ fontSize: 18, fontWeight: 700, color }}>{value}</div>
+const SCard: React.FC<{ label: string; value: string | number; accent?: string }> = ({ label, value, accent }) => (
+  <div style={{
+    background: "rgba(255,255,255,0.04)",
+    border: "1px solid rgba(255,255,255,0.08)",
+    borderRadius: 10,
+    padding: "14px 18px",
+    minWidth: 100,
+  }}>
+    <div style={{
+      fontSize: 11, color: "rgba(255,255,255,0.4)",
+      textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 4,
+    }}>{label}</div>
+    <div style={{ fontSize: 18, fontWeight: 700, color: accent ?? "rgba(255,255,255,0.9)" }}>{value}</div>
   </div>
 );
 
@@ -75,8 +86,7 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({ staffId }) => {
       const [recJson, sumJson, todJson] = await Promise.all([
         recRes.json(), sumRes.json(), todRes.json(),
       ]);
-      const list: AttendanceRecord[] = recJson.data ?? [];
-      setRecords(list);
+      setRecords(recJson.data ?? []);
       setSummary(sumJson.data ?? null);
       setToday(todJson.data ?? null);
     } catch {
@@ -120,101 +130,136 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({ staffId }) => {
   };
 
   if (loading) return (
-    <div style={{ padding: 40, textAlign: "center", color: "#9ca3af" }}>Loading...</div>
+    <div style={{ padding: 40, textAlign: "center", color: "rgba(255,255,255,0.4)" }}>
+      로딩 중...
+    </div>
   );
 
   return (
     <div style={{ padding: "4px 0" }}>
+
       {/* 오늘 출퇴근 */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12,
-        background: "#f9fafb", borderRadius: 10, padding: "14px 18px",
-        marginBottom: 20, border: "1px solid #e5e7eb", flexWrap: "wrap" }}>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 12,
+        background: "rgba(255,255,255,0.04)",
+        borderRadius: 10, padding: "14px 18px", marginBottom: 20,
+        border: "1px solid rgba(255,255,255,0.08)", flexWrap: "wrap",
+      }}>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 4 }}>
-            Today's Attendance
+          <div style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.9)", marginBottom: 4 }}>
+            오늘의 출퇴근
           </div>
           {today ? (
-            <div style={{ fontSize: 12, color: "#6b7280" }}>
-              In: {fmtTime(today.clock_in)}
-              {today.clock_out && <> · Out: {fmtTime(today.clock_out)} · {today.hours_worked ?? 0}h</>}
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>
+              출근: {fmtTime(today.clock_in)}
+              {today.clock_out && <> · 퇴근: {fmtTime(today.clock_out)} · {today.hours_worked ?? 0}시간</>}
             </div>
           ) : (
-            <div style={{ fontSize: 12, color: "#9ca3af" }}>No clock-in record today</div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>오늘 출퇴근 기록이 없습니다</div>
           )}
         </div>
-        {err && <span style={{ fontSize: 12, color: "#dc2626" }}>⚠ {err}</span>}
+        {err && <span style={{ fontSize: 12, color: "#f87171" }}>⚠ {err}</span>}
         {!today && (
           <button onClick={clockIn} disabled={busy} style={{
             padding: "9px 18px", background: "#D1AE38", color: "#fff",
             border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600,
             cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.6 : 1,
-          }}>{busy ? "Processing..." : "▶ Clock In"}</button>
+          }}>{busy ? "처리 중..." : "▶ 출근"}</button>
         )}
         {isClockedIn && (
           <button onClick={clockOut} disabled={busy} style={{
-            padding: "9px 18px", background: "#374151", color: "#fff",
-            border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600,
+            padding: "9px 18px",
+            background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.85)",
+            border: "1px solid rgba(255,255,255,0.15)",
+            borderRadius: 8, fontSize: 13, fontWeight: 600,
             cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.6 : 1,
-          }}>{busy ? "Processing..." : "■ Clock Out"}</button>
+          }}>{busy ? "처리 중..." : "■ 퇴근"}</button>
         )}
         {today && !isClockedIn && (
-          <span style={{ fontSize: 12, color: "#166534", fontWeight: 600 }}>✓ Clocked Out</span>
+          <span style={{ fontSize: 12, color: "#4ade80", fontWeight: 600 }}>✓ 퇴근 완료</span>
         )}
       </div>
 
-      {/* 요약 카드 */}
-      <div style={{ display: "flex", alignItems: "center",
-        justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <SCard label="Present" value={`${summary?.present_days ?? 0}d`} />
-          <SCard label="Hours" value={`${summary?.total_hours ?? 0}h`} color="#D1AE38" />
-          <SCard label="Late" value={`${summary?.late_days ?? 0}d`}
-            color={(summary?.late_days ?? 0) > 0 ? "#dc2626" : "#111827"} />
-          <SCard label="Absent" value={`${summary?.absent_days ?? 0}d`}
-            color={(summary?.absent_days ?? 0) > 0 ? "#dc2626" : "#111827"} />
+      {/* 요약 카드 + 월 선택 */}
+      <div style={{
+        display: "flex", alignItems: "center",
+        justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12,
+      }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <SCard label="출근일" value={`${summary?.present_days ?? 0}일`} />
+          <SCard label="근무시간" value={`${summary?.total_hours ?? 0}h`} accent="#D1AE38" />
+          <SCard label="지각" value={`${summary?.late_days ?? 0}일`}
+            accent={(summary?.late_days ?? 0) > 0 ? "#f87171" : undefined} />
+          <SCard label="결근" value={`${summary?.absent_days ?? 0}일`}
+            accent={(summary?.absent_days ?? 0) > 0 ? "#f87171" : undefined} />
         </div>
-        <input type="month" value={month} onChange={e => setMonth(e.target.value)}
-          style={{ padding: "8px 12px", border: "1px solid #e5e7eb",
-            borderRadius: 8, fontSize: 13, outline: "none" }} />
+        <input
+          type="month"
+          value={month}
+          onChange={e => setMonth(e.target.value)}
+          style={{
+            padding: "8px 12px",
+            background: "rgba(255,255,255,0.06)",
+            border: "1px solid rgba(255,255,255,0.12)",
+            borderRadius: 8, fontSize: 13,
+            color: "rgba(255,255,255,0.85)",
+            outline: "none",
+            colorScheme: "dark",
+          }}
+        />
       </div>
 
       {/* 기록 테이블 */}
-      <div style={{ overflowX: "auto" }}>
+      <div style={{ overflowX: "auto", borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)" }}>
         <table style={{ width: "100%", minWidth: 560, borderCollapse: "collapse" }}>
           <thead>
-            <tr style={{ background: "#f9fafb" }}>
-              {["Date", "In", "Out", "Hours", "Late (min)", "Status", "Notes"].map(h => (
-                <th key={h} style={{ padding: "8px 12px", fontSize: 11, color: "#6b7280",
+            <tr style={{ background: "rgba(255,255,255,0.04)" }}>
+              {["날짜", "출근", "퇴근", "근무시간", "지각(분)", "상태", "메모"].map(h => (
+                <th key={h} style={{
+                  padding: "10px 14px", fontSize: 11,
+                  color: "rgba(255,255,255,0.4)",
                   textAlign: "left", textTransform: "uppercase", letterSpacing: "0.06em",
-                  fontWeight: 600, borderBottom: "1px solid #e5e7eb", whiteSpace: "nowrap" }}>{h}</th>
+                  fontWeight: 600, borderBottom: "1px solid rgba(255,255,255,0.08)",
+                  whiteSpace: "nowrap",
+                }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {records.length === 0 ? (
-              <tr><td colSpan={7} style={{ padding: 32, textAlign: "center", color: "#9ca3af" }}>
-                No records</td></tr>
+              <tr>
+                <td colSpan={7} style={{
+                  padding: 32, textAlign: "center",
+                  color: "rgba(255,255,255,0.3)", fontSize: 13,
+                }}>기록 없음</td>
+              </tr>
             ) : records.map(r => (
-              <tr key={r.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                <td style={{ padding: "10px 12px", fontSize: 13, fontWeight: 500 }}>
+              <tr key={r.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+                <td style={{ padding: "10px 14px", fontSize: 13, fontWeight: 500, color: "rgba(255,255,255,0.85)" }}>
                   {formatDate(r.work_date)}</td>
-                <td style={{ padding: "10px 12px", fontSize: 13 }}>{fmtTime(r.clock_in)}</td>
-                <td style={{ padding: "10px 12px", fontSize: 13 }}>
+                <td style={{ padding: "10px 14px", fontSize: 13, color: "rgba(255,255,255,0.7)" }}>
+                  {fmtTime(r.clock_in)}</td>
+                <td style={{ padding: "10px 14px", fontSize: 13, color: "rgba(255,255,255,0.7)" }}>
                   {r.clock_out
                     ? fmtTime(r.clock_out)
                     : r.status === "present"
-                      ? <span style={{ color: "#D1AE38", fontWeight: 600 }}>On Shift</span>
+                      ? <span style={{ color: "#D1AE38", fontWeight: 600 }}>근무 중</span>
                       : "—"
                   }
                 </td>
-                <td style={{ padding: "10px 12px", fontSize: 13, fontWeight: 600 }}>
+                <td style={{ padding: "10px 14px", fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.85)" }}>
                   {r.hours_worked != null ? `${r.hours_worked}h` : "—"}</td>
-                <td style={{ padding: "10px 12px", fontSize: 13,
-                  color: (r.late_minutes ?? 0) > 0 ? "#dc2626" : "#9ca3af" }}>
+                <td style={{
+                  padding: "10px 14px", fontSize: 13,
+                  color: (r.late_minutes ?? 0) > 0 ? "#f87171" : "rgba(255,255,255,0.3)",
+                }}>
                   {(r.late_minutes ?? 0) > 0 ? `${r.late_minutes}` : "—"}</td>
-                <td style={{ padding: "10px 12px" }}><StatusChip status={r.status} /></td>
-                <td style={{ padding: "10px 12px", fontSize: 12, color: "#6b7280",
-                  maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <td style={{ padding: "10px 14px" }}>
+                  <StatusChip status={r.status} /></td>
+                <td style={{
+                  padding: "10px 14px", fontSize: 12, color: "rgba(255,255,255,0.4)",
+                  maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                }}>
                   {r.notes ?? "—"}</td>
               </tr>
             ))}
