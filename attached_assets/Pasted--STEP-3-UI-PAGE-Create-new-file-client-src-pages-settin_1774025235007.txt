@@ -1,0 +1,245 @@
+---
+
+### STEP 3 — UI PAGE
+Create new file: `client/src/pages/settings/MenuConfigPage.jsx`
+(or equivalent path matching your existing settings page file structure)
+
+Add route to Settings section in sidebar navigation (do NOT modify existing routes).
+Settings sidebar entry: "Menu Configuration"
+Route path: `/settings/menu-configuration`
+
+The page has the following layout and sections:
+
+---
+
+#### PAGE HEADER
+Title: "Menu Configuration"
+Subtitle: "Manage categories, sub-types, tax rules, and commission defaults"
+Right side: "Admin only" warning badge
+
+---
+
+#### BRANCH SELECTOR
+Dropdown at the top (same pattern as existing branch selectors in the system).
+- SUPER_ADMIN / ADMIN: sees all branches + "Global (All Branches)" option
+- STORE_MANAGER: sees own branch only + read-only mode badge
+
+When "Global" selected: edits apply to global config (no branch_id).
+When specific branch selected: shows branch overrides merged with global.
+
+---
+
+#### TABS
+Four tabs (use same tab component pattern as the rest of the app):
+
+**Tab 1: Categories**
+This is the primary tab. Default active.
+
+Left panel (2/3 width): Category tree list
+- Shows top-level categories as expandable rows
+- Each top-level row shows:
+  - Drag handle (⠿) — for sort_order reorder
+  - Icon (emoji)
+  - Category name + translated name (in muted smaller text below, if translations exist)
+  - Item count badge (e.g. "12 items")
+  - Sub-type count badge (e.g. "4 sub-types")
+  - Status badge: Active (green) / Hidden (gray)
+  - Edit button
+  - Expand/collapse arrow
+- Expanded state shows child sub-types (same row structure, indented)
+- Sub-type rows also have: Edit button, drag handle, item count, status badge
+
+Right panel (1/3 width): Edit form (appears when Edit clicked)
+- Form fields:
+  - Category Name (text input, required)
+  - Display Name Translations:
+    - Show fields for all active languages in the system (EN, ZH, MS, TH, KO, JA)
+    - Collapsible — collapsed by default, expand to show
+  - Parent Category (dropdown — "Top-level category" or select a parent)
+    - Selecting a parent makes this a sub-type
+    - Disable this field if the category already has children
+  - Icon (emoji picker — simple text input with common emoji suggestions)
+  - Display Order (number input)
+  - Status (toggle: Visible / Hidden)
+  - Notes (textarea, optional)
+
+- Tax Override section (collapsible, labeled "Tax Settings"):
+  - "Override branch tax rate" toggle
+  - When ON: Tax Rate % input (e.g. 6.00 for 6% SST)
+  - When OFF: shows "Using branch default: X.XX%"
+  - Helper text: "Applies to all items in this category. Leave off to use branch tax configuration."
+
+- Commission Defaults section (collapsible, labeled "Commission Defaults"):
+  - Commission Type: radio (None / Percentage / Flat Amount)
+  - Percentage: input % (e.g. 10 = 10% of item price per hostess)
+  - Flat Amount: input MYR (e.g. 5.00 per item sold)
+  - Helper text: "Default values only. Override per-item in Menu page."
+
+- Save button + Cancel button
+- Delete (soft-delete) button — only shown if item_count = 0, styled in danger/red
+
+Bottom of left panel: "+ Add Category" button → clears right panel and shows empty form
+
+---
+
+**Tab 2: Sub-types**
+Flat table view of ALL sub-types (parent_id IS NOT NULL) across all categories.
+Columns: Sub-type name | Parent category | Item count | Status | Actions (Edit / Move to different parent)
+Useful for quick bulk management without drilling into each category.
+Same Edit form as Tab 1 right panel.
+
+---
+
+**Tab 3: Tax Mapping**
+Read-only summary table for all categories showing:
+| Category | Sub-types | Items | Tax Rule | Effective Rate |
+Effective Rate = tax_rate_override if set, else branch default tax rate.
+Clicking a row navigates to that category's edit form in Tab 1 (Tax Settings expanded).
+
+---
+
+**Tab 4: Commission Defaults**
+Read-only summary table:
+| Category | Commission Type | Rate/Amount | Items affected |
+Same navigation pattern as Tab 3.
+
+---
+
+#### BRANCH OVERRIDE PANEL
+Shown only when a specific branch (not Global) is selected.
+Positioned below the main tab content.
+Card title: "Branch Visibility Overrides — [Branch Name]"
+Shows a simple list of categories with per-branch is_visible toggle.
+STORE_MANAGER can only access this panel for their own branch.
+
+---
+
+#### AUDIT LOG DRAWER
+"View Audit Log" link/button at bottom of page.
+Opens a right-side drawer (or bottom panel) showing recent menu_config_audit_log entries.
+Each entry: timestamp | action | category name | changed by | old → new value summary
+ADMIN / SUPER_ADMIN only.
+
+---
+
+### STEP 4 — CONNECT MENU PAGE (READ-ONLY CHANGE)
+In the existing Menu page:
+- The Category tabs at the top (Beverages, Food, etc.) should now be driven by the 
+  same menu_categories API response, respecting sort_order and is_visible.
+- Currently these may be hardcoded or separately fetched — if so, update the fetch
+  to use GET /api/v1/settings/menu-config/categories?branch_id=X&flat=true
+- DO NOT modify the item CRUD functionality, pricing, status toggles, or any other
+  logic in the existing Menu page.
+- This is the ONLY change to the Menu page.
+
+---
+
+### STEP 5 — SIDEBAR NAVIGATION
+In the existing Settings sidebar section, add a new navigation item:
+  Icon: 🗂️ (or use the existing icon system)
+  Label: "Menu Configuration"
+  Route: /settings/menu-configuration
+  Access: render only if user role is ADMIN or SUPER_ADMIN
+  (STORE_MANAGER: show with "(Read Only)" label or lock icon)
+
+DO NOT remove or reorder any existing Settings navigation items.
+ADD the new item after the last existing Settings item.
+
+---
+
+### RBAC PERMISSION MATRIX
+
+| Action                          | SUPER_ADMIN | ADMIN | STORE_MANAGER | STAFF | HOSTESS |
+|---------------------------------|-------------|-------|---------------|-------|---------|
+| View categories (read)          | ✅          | ✅    | ✅ (own branch)| ❌    | ❌      |
+| Create / Edit category          | ✅          | ✅    | ❌            | ❌    | ❌      |
+| Soft-delete category            | ✅          | ✅    | ❌            | ❌    | ❌      |
+| Reorder (drag sort)             | ✅          | ✅    | ❌            | ❌    | ❌      |
+| Set tax override                | ✅          | ✅    | ❌            | ❌    | ❌      |
+| Set commission default          | ✅          | ✅    | ❌            | ❌    | ❌      |
+| Branch visibility override      | ✅          | ✅    | ✅ (own only) | ❌    | ❌      |
+| View audit log                  | ✅          | ✅    | ❌            | ❌    | ❌      |
+
+---
+
+### VALIDATION RULES
+- Category name: required, max 100 chars, unique within same parent scope
+- Max nesting depth: 2 levels only (top-level + one level of sub-types)
+  → if user tries to add a sub-type under an existing sub-type, return 400 error with clear message
+- tax_rate_override: must be between 0.0000 and 1.0000 (0% to 100%)
+- commission_default_rate and commission_default_flat: cannot both be > 0
+  → show UI validation: when one is filled, disable the other
+- Soft-delete block: if category has item_count > 0, show:
+  "Cannot hide this category — it has N active items. 
+   Move or deactivate items first in the Menu page."
+- Reorder: validate all IDs in the order array exist and belong to the same parent scope
+
+---
+
+### I18N REQUIREMENTS
+Add i18n keys for all new UI strings.
+Follow the existing i18n file structure and key naming convention.
+Language files to update: EN, ZH (Simplified), MS, TH, KO, JA
+Key prefix: `settings.menuConfig.*`
+
+Example keys to add:
+- settings.menuConfig.title
+- settings.menuConfig.subtitle
+- settings.menuConfig.tabs.categories
+- settings.menuConfig.tabs.subTypes
+- settings.menuConfig.tabs.taxMapping
+- settings.menuConfig.tabs.commissionDefaults
+- settings.menuConfig.category.addNew
+- settings.menuConfig.category.editTitle
+- settings.menuConfig.category.deleteBlocked
+- settings.menuConfig.category.taxOverride
+- settings.menuConfig.category.commissionDefault
+- settings.menuConfig.branchOverride.title
+- settings.menuConfig.auditLog.title
+(Add any additional keys as needed — do not hardcode any user-facing strings)
+
+---
+
+### ERROR HANDLING
+All API errors must follow the existing error response format in this codebase.
+Standard error shape: { success: false, error: 'ERROR_CODE', message: '...' }
+Use these specific error codes for this module:
+- CATEGORY_HAS_ITEMS → 409 (cannot soft-delete)
+- MAX_NESTING_DEPTH → 400 (tried to nest deeper than 2 levels)
+- CATEGORY_NAME_DUPLICATE → 409 (duplicate name in same scope)
+- BRANCH_ACCESS_DENIED → 403 (STORE_MANAGER accessing another branch)
+- INVALID_TAX_RATE → 400 (outside 0–1 range)
+- INVALID_COMMISSION → 400 (both rate and flat set simultaneously)
+
+---
+
+### DO NOT
+- Do NOT delete or modify existing menu_categories data
+- Do NOT touch menu_items table schema or its API routes
+- Do NOT hardcode any tax rate, currency, or commission value
+- Do NOT add branch_id filtering to the existing Menu page item fetch (only the category tab fetch)
+- Do NOT remove any existing Settings navigation items
+- Do NOT use polling for any real-time updates — this page is config-only, no Socket.io needed
+- Do NOT expose audit log to STORE_MANAGER or below
+
+---
+
+### DELIVERABLES CHECKLIST
+- [ ] DB migration: ALTER TABLE menu_categories (new columns)
+- [ ] DB migration: CREATE TABLE menu_category_branch_overrides
+- [ ] DB migration: CREATE TABLE menu_config_audit_log
+- [ ] API: GET /categories (nested tree + branch override merge)
+- [ ] API: POST /categories (create + audit log)
+- [ ] API: PUT /categories/:id (update + audit log)
+- [ ] API: DELETE /categories/:id (soft-delete with item count guard)
+- [ ] API: PATCH /categories/reorder (bulk sort_order update)
+- [ ] API: PATCH /branch-override (upsert branch visibility)
+- [ ] API: GET /audit-log
+- [ ] UI: Settings › Menu Configuration page (all 4 tabs)
+- [ ] UI: Branch Override panel
+- [ ] UI: Audit Log drawer
+- [ ] UI: Sidebar nav item added under Settings (ADMIN/STORE_MANAGER only)
+- [ ] Menu page: category tabs now fetched from settings API (sort_order + is_visible respected)
+- [ ] RBAC: all routes protected, STORE_MANAGER branch scope enforced
+- [ ] i18n: all 6 language files updated with settings.menuConfig.* keys
+- [ ] Error handling: all 6 error codes implemented with correct HTTP status
