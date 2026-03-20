@@ -106,6 +106,8 @@ export function initRoomSocket(io: SocketServer): void {
   });
 }
 
+export function getSharedIo(): SocketServer | null { return _io; }
+
 export function emitRoomUpdate(branchId: string, roomData: Record<string, unknown>): void {
   if (!_io) return;
   _io.to(`branch:${branchId}`).emit("room_board_update", {

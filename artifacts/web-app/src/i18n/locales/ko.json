@@ -150,5 +150,22 @@
     "live_rates": "실시간 환율",
     "base": "기준: MYR",
     "last_updated": "마지막 업데이트"
+  },
+  "room_table": {
+    "menu_label": "룸 & 테이블",
+    "type_room": "룸",
+    "type_table": "테이블",
+    "type_booth": "부스",
+    "pricing_rules": "요금 규칙",
+    "add_pricing_rule": "요금 규칙 추가",
+    "applicable_days": "적용 요일",
+    "time_window": "시간대",
+    "date_range": "날짜 범위",
+    "price_per_hour": "시간당",
+    "price_per_session": "세션당",
+    "price_flat_rate": "고정 요금",
+    "daily_revenue": "오늘의 매출",
+    "availability_view": "가용성",
+    "no_pricing_rules": "요금 규칙이 없습니다. 규칙을 추가하여 요금 청구를 활성화하세요."
   }
 }

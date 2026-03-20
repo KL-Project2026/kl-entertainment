@@ -154,5 +154,22 @@
     "live_rates": "Kadar Pertukaran Langsung",
     "base": "Asas: MYR",
     "last_updated": "Kemaskini Terakhir"
+  },
+  "room_table": {
+    "menu_label": "Bilik & Meja",
+    "type_room": "Bilik",
+    "type_table": "Meja",
+    "type_booth": "Booth",
+    "pricing_rules": "Peraturan Harga",
+    "add_pricing_rule": "Tambah Peraturan Harga",
+    "applicable_days": "Hari Berkenaan",
+    "time_window": "Tetingkap Masa",
+    "date_range": "Julat Tarikh",
+    "price_per_hour": "Setiap Jam",
+    "price_per_session": "Setiap Sesi",
+    "price_flat_rate": "Kadar Tetap",
+    "daily_revenue": "Pendapatan Hari Ini",
+    "availability_view": "Ketersediaan",
+    "no_pricing_rules": "Tiada peraturan harga dikonfigurasi. Tambah peraturan untuk mengaktifkan pengebilan."
   }
 }

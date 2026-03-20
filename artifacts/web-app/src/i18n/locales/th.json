@@ -150,5 +150,22 @@
     "live_rates": "อัตราแลกเปลี่ยนสด",
     "base": "สกุลหลัก: MYR",
     "last_updated": "อัปเดตล่าสุด"
+  },
+  "room_table": {
+    "menu_label": "ห้อง & โต๊ะ",
+    "type_room": "ห้อง",
+    "type_table": "โต๊ะ",
+    "type_booth": "บูธ",
+    "pricing_rules": "กฎราคา",
+    "add_pricing_rule": "เพิ่มกฎราคา",
+    "applicable_days": "วันที่ใช้ได้",
+    "time_window": "ช่วงเวลา",
+    "date_range": "ช่วงวันที่",
+    "price_per_hour": "ต่อชั่วโมง",
+    "price_per_session": "ต่อเซสชั่น",
+    "price_flat_rate": "อัตราคงที่",
+    "daily_revenue": "รายได้วันนี้",
+    "availability_view": "ความพร้อมใช้งาน",
+    "no_pricing_rules": "ไม่มีกฎราคาที่กำหนดไว้ เพิ่มกฎเพื่อเปิดใช้งานการเรียกเก็บเงิน"
   }
 }

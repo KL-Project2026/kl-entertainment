@@ -90,6 +90,18 @@ The project is structured as a pnpm monorepo using TypeScript, with distinct `ap
 
 **Seed Data:** 14 rooms seeded across Club Noir KL (6), Velvet Lounge PJ (5), Eclipse Lounge JB (3); 20 pricing rules.
 
+**Availability endpoint** `GET /api/room-tables/availability?date=&branch_id=`: Returns all room_tables for the branch with reservations (joined from reservations table via room name matching), applicable price per room (via `get_applicable_price()`), daily revenue per room, and branch daily total revenue.
+
+**Availability Calendar UI** (`tables.tsx`): Grid/Availability toggle in the header. Availability view shows date picker + branch selector + horizontal timeline grid (Y: rooms, X: hourly slots 12:00-03:00). Booked slots rendered as colored blocks with guest name + hover tooltip (guest, pax, status, revenue). Per-room revenue column on right. Branch daily revenue summary card at bottom.
+
+**Socket.io**: `PATCH /api/room-tables/:id` emits `room_table_status_changed` to `branch:{branch_id}` room via `getSharedIo()` (exported from rooms.ts) when status field changes.
+
+**Audit Logging**: All CREATE, UPDATE, STATUS_CHANGE, PRICING_DEACTIVATED mutations on `room_tables` and `room_table_pricing` write to `audit_log` table via raw pool.query (entity_type, entity_id, action, changed_by, old_values, new_values, ip_address, user_agent).
+
+**Pricing Soft-Delete**: `DELETE /api/room-tables/:id/pricing/:priceId` sets `is_active = false` (never hard-deletes). Audit logged as `PRICING_DEACTIVATED`.
+
+**i18n**: `room_table.*` namespace (16 keys: menu_label, type_room, type_table, type_booth, pricing_rules, add_pricing_rule, applicable_days, time_window, date_range, price_per_hour, price_per_session, price_flat_rate, daily_revenue, availability_view, no_pricing_rules) added to all 6 locale files (en, ms, zh, ko, ja, th).
+
 ## Production Database Seeding
 
 The development database full snapshot is stored at:

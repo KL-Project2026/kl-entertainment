@@ -154,5 +154,22 @@
     "live_rates": "实时汇率",
     "base": "基准: MYR",
     "last_updated": "最后更新"
+  },
+  "room_table": {
+    "menu_label": "房间 & 桌位",
+    "type_room": "房间",
+    "type_table": "桌位",
+    "type_booth": "包厢",
+    "pricing_rules": "价格规则",
+    "add_pricing_rule": "添加价格规则",
+    "applicable_days": "适用日期",
+    "time_window": "时间范围",
+    "date_range": "日期范围",
+    "price_per_hour": "每小时",
+    "price_per_session": "每场次",
+    "price_flat_rate": "固定费率",
+    "daily_revenue": "今日营收",
+    "availability_view": "可用情况",
+    "no_pricing_rules": "未配置价格规则。添加规则以启用计费。"
   }
 }

@@ -3,11 +3,45 @@ import { pool } from "@workspace/db";
 import { authenticate } from "../middleware/auth";
 import { requireRole } from "../middleware/rbac";
 import { ROLES } from "../config/constants";
+import { getSharedIo } from "./rooms";
 
 const router: IRouter = Router();
 
 const MANAGER_UP = [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.BRANCH_MANAGER, ROLES.MANAGER];
 const ADMIN_UP   = [ROLES.SUPER_ADMIN, ROLES.ADMIN];
+
+type AuthReq = Request & { user?: { id?: string } };
+
+async function writeAudit(
+  entityType: string,
+  entityId: string,
+  action: string,
+  actorId: string | undefined,
+  branchId: string | null,
+  oldValues: Record<string, unknown> | null,
+  newValues: Record<string, unknown> | null,
+  ip: string | undefined,
+  ua: string | undefined,
+): Promise<void> {
+  void branchId;
+  try {
+    await pool.query(
+      `INSERT INTO audit_log
+         (entity_type, entity_id, action, changed_by, old_values, new_values, ip_address, user_agent)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::inet, $8)`,
+      [
+        entityType, entityId, action,
+        actorId ?? null,
+        oldValues ? JSON.stringify(oldValues) : null,
+        newValues ? JSON.stringify(newValues) : null,
+        ip ?? null,
+        ua ?? null,
+      ]
+    );
+  } catch {
+    // non-blocking
+  }
+}
 
 // ─── LIST ───────────────────────────────────────────────────────────────────
 router.get(
@@ -47,11 +81,11 @@ router.get(
       );
 
       const summary = {
-        total:        rows.length,
-        active:       rows.filter(r => r.status === "ACTIVE").length,
-        maintenance:  rows.filter(r => r.status === "MAINTENANCE").length,
-        outOfOrder:   rows.filter(r => r.status === "OUT_OF_ORDER").length,
-        inactive:     rows.filter(r => r.status === "INACTIVE").length,
+        total:       rows.length,
+        active:      rows.filter(r => r.status === "ACTIVE").length,
+        maintenance: rows.filter(r => r.status === "MAINTENANCE").length,
+        outOfOrder:  rows.filter(r => r.status === "OUT_OF_ORDER").length,
+        inactive:    rows.filter(r => r.status === "INACTIVE").length,
       };
 
       res.json({ data: rows, summary });
@@ -62,12 +96,137 @@ router.get(
   }
 );
 
+// ─── AVAILABILITY ─────────────────────────────────────────────────────────────
+// GET /api/room-tables/availability?date=2026-03-21&branch_id=uuid
+router.get(
+  "/room-tables/availability",
+  authenticate,
+  requireRole(MANAGER_UP),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { date, branch_id } = req.query as Record<string, string>;
+
+      if (!date || !branch_id) {
+        res.status(400).json({ error: "date and branch_id are required" });
+        return;
+      }
+
+      // Validate date format
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        res.status(400).json({ error: "date must be YYYY-MM-DD" });
+        return;
+      }
+
+      // Fetch room_tables for this branch
+      const { rows: roomTables } = await pool.query<{
+        id: string; name: string; type: string;
+        capacity_max: number; status: string; branch_id: string;
+      }>(
+        `SELECT id, name, type, capacity_max, status, branch_id
+         FROM room_tables
+         WHERE branch_id = $1
+         ORDER BY sort_order, name`,
+        [branch_id]
+      );
+
+      if (!roomTables.length) {
+        res.json({ date, branch_id, room_tables: [], daily_total_revenue: 0, currency_code: "MYR" });
+        return;
+      }
+
+      // Try to join with reservations via rooms table (name+branch_id match)
+      // Also do a direct branch_id match with reservation_date
+      const { rows: reservations } = await pool.query<{
+        id: string; customer_name: string | null; guest_count: number;
+        start_time: string; end_time: string | null; status: string;
+        room_id: string | null; room_name: string | null;
+        deposit_amount: string;
+      }>(
+        `SELECT
+           r.id, r.customer_name, r.guest_count,
+           r.start_time, r.end_time, r.status,
+           r.room_id, rm.name AS room_name,
+           r.deposit_amount
+         FROM reservations r
+         LEFT JOIN rooms rm ON rm.id = r.room_id
+         WHERE r.branch_id = $1
+           AND r.reservation_date = $2
+           AND r.status NOT IN ('cancelled', 'no_show')
+         ORDER BY r.start_time`,
+        [branch_id, date]
+      );
+
+      // Map reservations by room name for matching with room_tables
+      const resByRoomName = new Map<string, typeof reservations>();
+      for (const res of reservations) {
+        const key = (res.room_name ?? "").toLowerCase();
+        if (!resByRoomName.has(key)) resByRoomName.set(key, []);
+        resByRoomName.get(key)!.push(res);
+      }
+
+      // Resolve applicable price for each room_table at noon on the date
+      const noonTs = `${date}T12:00:00+08:00`;
+
+      const result = await Promise.all(
+        roomTables.map(async (rt) => {
+          const { rows: priceRows } = await pool.query(
+            `SELECT * FROM get_applicable_price($1, $2::timestamptz)`,
+            [rt.id, noonTs]
+          );
+          const applicablePrice = priceRows[0] ?? null;
+
+          const rtReservations = resByRoomName.get(rt.name.toLowerCase()) ?? [];
+          const dailyRevenue = rtReservations.reduce((sum, r) => sum + parseFloat(r.deposit_amount || "0"), 0);
+
+          return {
+            id:           rt.id,
+            name:         rt.name,
+            type:         rt.type,
+            capacity_max: rt.capacity_max,
+            status:       rt.status,
+            daily_revenue: dailyRevenue,
+            currency_code: "MYR",
+            reservations: rtReservations.map(r => ({
+              reservation_id: r.id,
+              guest_name:     r.customer_name ?? "Guest",
+              start_time:     r.start_time,
+              end_time:       r.end_time,
+              status:         r.status,
+              pax:            r.guest_count,
+              revenue:        parseFloat(r.deposit_amount || "0"),
+            })),
+            applicable_price: applicablePrice ? {
+              price_label:   applicablePrice.price_label,
+              base_price:    parseFloat(applicablePrice.base_price),
+              price_type:    applicablePrice.price_type,
+              currency_code: applicablePrice.currency_code ?? "MYR",
+            } : null,
+          };
+        })
+      );
+
+      const dailyTotalRevenue = result.reduce((sum, rt) => sum + rt.daily_revenue, 0);
+
+      res.json({
+        date,
+        branch_id,
+        room_tables: result,
+        daily_total_revenue: dailyTotalRevenue,
+        currency_code: "MYR",
+      });
+    } catch (err) {
+      console.error("[room-tables] availability error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
 // ─── CREATE ──────────────────────────────────────────────────────────────────
 router.post(
   "/room-tables",
   authenticate,
   requireRole(ADMIN_UP),
-  async (req: Request, res: Response): Promise<void> => {
+  async (req: AuthReq, res: Response): Promise<void> => {
     try {
       const {
         branchId, name, type, capacityMin = 1, capacityMax,
@@ -79,10 +238,13 @@ router.post(
         res.status(400).json({ error: "branchId, name, type, capacityMax are required" });
         return;
       }
-
       const validTypes = ["ROOM", "TABLE", "BOOTH"];
       if (!validTypes.includes(type as string)) {
         res.status(400).json({ error: `type must be one of: ${validTypes.join(", ")}` });
+        return;
+      }
+      if (Number(capacityMin) > Number(capacityMax)) {
+        res.status(400).json({ error: "capacity_min must be ≤ capacity_max" });
         return;
       }
 
@@ -96,15 +258,18 @@ router.post(
           branchId, name, type, capacityMin, capacityMax,
           description ?? null,
           amenities ? JSON.stringify(amenities) : "[]",
-          floor ?? null,
-          status,
+          floor ?? null, status,
           imageUrls ? JSON.stringify(imageUrls) : "[]",
           sortOrder,
-          (req as Request & { user?: { id?: string } }).user?.id ?? null,
+          req.user?.id ?? null,
         ]
       );
 
-      res.status(201).json({ data: rows[0] });
+      const created = rows[0];
+      void writeAudit("room_table", created.id, "CREATE", req.user?.id, created.branch_id,
+        null, created, req.ip, req.get("user-agent"));
+
+      res.status(201).json({ data: created });
     } catch (err: unknown) {
       if ((err as { code?: string }).code === "23505") {
         res.status(409).json({ error: "A room/table with this name already exists in this branch" });
@@ -151,10 +316,18 @@ router.patch(
   "/room-tables/:id",
   authenticate,
   requireRole(ADMIN_UP),
-  async (req: Request, res: Response): Promise<void> => {
+  async (req: AuthReq, res: Response): Promise<void> => {
     try {
       const { id } = req.params;
       const body = req.body as Record<string, unknown>;
+
+      // Snapshot before change
+      const { rows: before } = await pool.query(
+        `SELECT * FROM room_tables WHERE id = $1`, [id]
+      );
+      if (!before.length) { res.status(404).json({ error: "Not found" }); return; }
+      const oldRow = before[0] as Record<string, unknown>;
+
       const sets: string[] = [];
       const params: unknown[] = [];
 
@@ -188,7 +361,28 @@ router.patch(
         params
       );
       if (!rows.length) { res.status(404).json({ error: "Not found" }); return; }
-      res.json({ data: rows[0] });
+      const updated = rows[0] as Record<string, unknown>;
+
+      // Audit log
+      const action = body.status !== undefined && body.status !== oldRow.status
+        ? "STATUS_CHANGE" : "UPDATE";
+      void writeAudit("room_table", id, action, req.user?.id,
+        updated.branch_id as string, oldRow, updated, req.ip, req.get("user-agent"));
+
+      // Socket.io emit when status changes
+      if (body.status !== undefined && body.status !== oldRow.status) {
+        const io = getSharedIo();
+        if (io) {
+          io.to(`branch:${updated.branch_id}`).emit("room_table_status_changed", {
+            room_table_id: id,
+            name:          updated.name,
+            status:        updated.status,
+            updated_at:    new Date().toISOString(),
+          });
+        }
+      }
+
+      res.json({ data: updated });
     } catch (err: unknown) {
       if ((err as { code?: string }).code === "23505") {
         res.status(409).json({ error: "A room/table with this name already exists in this branch" });
@@ -205,14 +399,22 @@ router.delete(
   "/room-tables/:id",
   authenticate,
   requireRole(ADMIN_UP),
-  async (req: Request, res: Response): Promise<void> => {
+  async (req: AuthReq, res: Response): Promise<void> => {
     try {
       const { id } = req.params;
+      const { rows: before } = await pool.query(`SELECT * FROM room_tables WHERE id = $1`, [id]);
+      if (!before.length) { res.status(404).json({ error: "Not found" }); return; }
+
       const { rows } = await pool.query(
-        `UPDATE room_tables SET status = 'INACTIVE', updated_at = NOW() WHERE id = $1 RETURNING id`,
+        `UPDATE room_tables SET status = 'INACTIVE', updated_at = NOW() WHERE id = $1 RETURNING id, branch_id`,
         [id]
       );
       if (!rows.length) { res.status(404).json({ error: "Not found" }); return; }
+
+      void writeAudit("room_table", id, "STATUS_CHANGE", req.user?.id,
+        rows[0].branch_id, before[0], { ...before[0], status: "INACTIVE" },
+        req.ip, req.get("user-agent"));
+
       res.json({ success: true });
     } catch (err) {
       console.error("[room-tables] delete error:", err);
@@ -242,7 +444,7 @@ router.get(
   }
 );
 
-// ─── PRICING RULES ───────────────────────────────────────────────────────────
+// ─── PRICING RULES LIST ──────────────────────────────────────────────────────
 router.get(
   "/room-tables/:id/pricing",
   authenticate,
@@ -261,11 +463,12 @@ router.get(
   }
 );
 
+// ─── PRICING CREATE ───────────────────────────────────────────────────────────
 router.post(
   "/room-tables/:id/pricing",
   authenticate,
   requireRole(ADMIN_UP),
-  async (req: Request, res: Response): Promise<void> => {
+  async (req: AuthReq, res: Response): Promise<void> => {
     try {
       const { id } = req.params;
       const {
@@ -276,6 +479,10 @@ router.post(
 
       if (!priceLabel || basePrice === undefined) {
         res.status(400).json({ error: "priceLabel and basePrice are required" });
+        return;
+      }
+      if (Number(basePrice) <= 0) {
+        res.status(400).json({ error: "base_price must be > 0" });
         return;
       }
 
@@ -289,11 +496,18 @@ router.post(
           id, priceLabel, priceType, basePrice, currencyCode,
           applicableDays, timeStart ?? null, timeEnd ?? null,
           dateFrom ?? null, dateTo ?? null, priority, notes ?? null,
-          (req as Request & { user?: { id?: string } }).user?.id ?? null,
+          req.user?.id ?? null,
         ]
       );
 
-      res.status(201).json({ data: rows[0] });
+      const created = rows[0];
+
+      // Get branch_id for audit
+      const { rows: rtRows } = await pool.query(`SELECT branch_id FROM room_tables WHERE id = $1`, [id]);
+      void writeAudit("room_table_pricing", created.id, "CREATE", req.user?.id,
+        rtRows[0]?.branch_id ?? null, null, created, req.ip, req.get("user-agent"));
+
+      res.status(201).json({ data: created });
     } catch (err) {
       console.error("[room-tables] pricing create error:", err);
       res.status(500).json({ error: "Internal server error" });
@@ -301,23 +515,29 @@ router.post(
   }
 );
 
+// ─── PRICING UPDATE ───────────────────────────────────────────────────────────
 router.patch(
   "/room-tables/:id/pricing/:priceId",
   authenticate,
   requireRole(ADMIN_UP),
-  async (req: Request, res: Response): Promise<void> => {
+  async (req: AuthReq, res: Response): Promise<void> => {
     try {
-      const { priceId } = req.params;
+      const { id, priceId } = req.params;
       const body = req.body as Record<string, unknown>;
+
+      const { rows: before } = await pool.query(`SELECT * FROM room_table_pricing WHERE id = $1`, [priceId]);
+      if (!before.length) { res.status(404).json({ error: "Not found" }); return; }
+
       const sets: string[] = [];
       const params: unknown[] = [];
 
       const map: Record<string, string> = {
-        priceLabel: "price_label", priceType: "price_type", basePrice: "base_price",
-        currencyCode: "currency_code", applicableDays: "applicable_days",
-        timeStart: "time_start", timeEnd: "time_end",
-        dateFrom: "date_from", dateTo: "date_to",
-        priority: "priority", notes: "notes", isActive: "is_active",
+        priceLabel:    "price_label",  priceType:     "price_type",
+        basePrice:     "base_price",   currencyCode:  "currency_code",
+        applicableDays:"applicable_days", timeStart:  "time_start",
+        timeEnd:       "time_end",     dateFrom:      "date_from",
+        dateTo:        "date_to",      priority:      "priority",
+        notes:         "notes",        isActive:      "is_active",
       };
 
       for (const [jsKey, dbCol] of Object.entries(map)) {
@@ -335,7 +555,15 @@ router.patch(
         params
       );
       if (!rows.length) { res.status(404).json({ error: "Not found" }); return; }
-      res.json({ data: rows[0] });
+
+      const updated = rows[0];
+      const action = body.isActive !== undefined && body.isActive !== before[0].is_active
+        ? "PRICING_DEACTIVATED" : "UPDATE";
+      const { rows: rtRows } = await pool.query(`SELECT branch_id FROM room_tables WHERE id = $1`, [id]);
+      void writeAudit("room_table_pricing", priceId, action, req.user?.id,
+        rtRows[0]?.branch_id ?? null, before[0], updated, req.ip, req.get("user-agent"));
+
+      res.json({ data: updated });
     } catch (err) {
       console.error("[room-tables] pricing update error:", err);
       res.status(500).json({ error: "Internal server error" });
@@ -343,18 +571,28 @@ router.patch(
   }
 );
 
+// ─── PRICING SOFT DELETE (deactivate) ────────────────────────────────────────
 router.delete(
   "/room-tables/:id/pricing/:priceId",
   authenticate,
   requireRole(ADMIN_UP),
-  async (req: Request, res: Response): Promise<void> => {
+  async (req: AuthReq, res: Response): Promise<void> => {
     try {
-      const { priceId } = req.params;
-      const { rows } = await pool.query(
-        `DELETE FROM room_table_pricing WHERE id = $1 RETURNING id`,
+      const { id, priceId } = req.params;
+      const { rows: before } = await pool.query(`SELECT * FROM room_table_pricing WHERE id = $1`, [priceId]);
+      if (!before.length) { res.status(404).json({ error: "Not found" }); return; }
+
+      // Soft-delete: set is_active = false, never hard-delete
+      await pool.query(
+        `UPDATE room_table_pricing SET is_active = false, updated_at = NOW() WHERE id = $1`,
         [priceId]
       );
-      if (!rows.length) { res.status(404).json({ error: "Not found" }); return; }
+
+      const { rows: rtRows } = await pool.query(`SELECT branch_id FROM room_tables WHERE id = $1`, [id]);
+      void writeAudit("room_table_pricing", priceId, "PRICING_DEACTIVATED", req.user?.id,
+        rtRows[0]?.branch_id ?? null, before[0], { ...before[0], is_active: false },
+        req.ip, req.get("user-agent"));
+
       res.json({ success: true });
     } catch (err) {
       console.error("[room-tables] pricing delete error:", err);

@@ -154,5 +154,22 @@
     "live_rates": "Live FX Rates",
     "base": "Base: MYR",
     "last_updated": "Last Updated"
+  },
+  "room_table": {
+    "menu_label": "Room & Table",
+    "type_room": "Room",
+    "type_table": "Table",
+    "type_booth": "Booth",
+    "pricing_rules": "Pricing Rules",
+    "add_pricing_rule": "Add Pricing Rule",
+    "applicable_days": "Applicable Days",
+    "time_window": "Time Window",
+    "date_range": "Date Range",
+    "price_per_hour": "Per Hour",
+    "price_per_session": "Per Session",
+    "price_flat_rate": "Flat Rate",
+    "daily_revenue": "Today's Revenue",
+    "availability_view": "Availability",
+    "no_pricing_rules": "No pricing rules configured. Add a rule to enable billing."
   }
 }

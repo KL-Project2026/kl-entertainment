@@ -1,0 +1,194 @@
+#### API Response Shape for Availability Endpoint:
+```json
+{
+  "date": "2026-03-21",
+  "branch_id": "uuid",
+  "room_tables": [
+    {
+      "id": "uuid",
+      "name": "VIP Room 1",
+      "type": "ROOM",
+      "capacity_max": 12,
+      "status": "ACTIVE",
+      "daily_revenue": 2400.00,
+      "currency_code": "MYR",
+      "reservations": [
+        {
+          "reservation_id": "uuid",
+          "guest_name": "Kim Jisoo",
+          "start_time": "2026-03-21T18:00:00+08:00",
+          "end_time": "2026-03-21T21:00:00+08:00",
+          "status": "CONFIRMED",
+          "pax": 8,
+          "revenue": 800.00
+        }
+      ],
+      "applicable_price": {
+        "price_label": "Weekend Peak",
+        "base_price": 180.00,
+        "price_type": "PER_HOUR",
+        "currency_code": "MYR"
+      }
+    }
+  ]
+}
+```
+
+---
+
+#### 5. RBAC PERMISSION MATRIX
+Apply existing RBAC middleware to all new routes:
+
+| Role           | List | View | Create | Edit | Delete Pricing | View Revenue |
+|----------------|------|------|--------|------|----------------|--------------|
+| SUPER_ADMIN    | ✅   | ✅   | ✅     | ✅   | ✅             | ✅           |
+| ADMIN          | ✅   | ✅   | ✅     | ✅   | ✅             | ✅           |
+| STORE_MANAGER  | ✅   | ✅   | ✅     | ✅   | ✅             | ✅           |
+| HOSTESS        | ✅   | ✅   | ❌     | ❌   | ❌             | ❌           |
+| STAFF          | ✅   | ✅   | ❌     | ❌   | ❌             | ❌           |
+| DRIVER         | ❌   | ❌   | ❌     | ❌   | ❌             | ❌           |
+| CUSTOMER       | ✅   | ✅   | ❌     | ❌   | ❌             | ❌           |
+
+STORE_MANAGER: can only access room_tables where branch_id matches their assigned branch.
+
+---
+
+#### 6. UI COMPONENTS TO BUILD
+
+##### A. Room & Table List Page
+- Branch selector dropdown at top (ADMIN/SUPER_ADMIN sees all branches; STORE_MANAGER sees own branch only)
+- Filter tabs: All | Room | Table | Booth
+- Card grid layout — each card shows:
+  - Name + Type badge (color-coded: ROOM=blue, TABLE=green, BOOTH=purple)
+  - Capacity (min~max pax)
+  - Status badge
+  - Today's revenue (MYR X,XXX)
+  - Active pricing rule count
+  - Quick action buttons: Edit | Pricing | View Reservations
+- Add New button (top right) → opens Create modal
+
+##### B. Create/Edit Room-Table Modal
+Fields:
+- Branch (dropdown, required — filtered by user's access)
+- Name (text, required)
+- Type (Radio: Room / Table / Booth)
+- Capacity Min / Max (number inputs)
+- Floor (text, optional)
+- Description (textarea — multiline, supports notes like amenities, rules, etc.)
+- Status (select: Active / Inactive / Maintenance / Out of Order)
+- Sort Order (number — for display ordering)
+- Save button with loading state
+
+##### C. Pricing Rules Sub-Panel (within Edit page or separate tab)
+- Title: "Pricing Rules" with "+ Add Rule" button
+- Table of existing rules:
+  | Label | Type | Price | Days | Time Window | Date Range | Priority | Status | Actions |
+- Each row: Edit | Deactivate (never delete)
+- "Add Pricing Rule" form (inline or modal):
+  - Price Label (text, required) — e.g. "Weekday Happy Hour"
+  - Price Type (PER_HOUR / PER_SESSION / FLAT_RATE)
+  - Base Price (number) + Currency (MYR default, configurable)
+  - Applicable Days (checkboxes: Mon Tue Wed Thu Fri Sat Sun — all checked by default)
+  - Time Start / Time End (time pickers — leave blank for all-day)
+  - Date From / Date To (date pickers — leave blank for always active)
+  - Priority (number — higher = takes precedence)
+  - Notes (optional)
+  - Preview: "This rule applies on [Sat, Sun] from 18:00–23:59 at MYR 180/hour"
+
+##### D. Availability / Reservation View (Calendar-style)
+- Date picker at top
+- Shows selected day's room availability as timeline grid:
+  - Y-axis: all room_tables for the branch
+  - X-axis: hourly time slots (e.g. 12:00 → 03:00)
+  - Booked slots shown as colored blocks with guest name
+  - Hover tooltip: guest name, pax, status, revenue amount
+  - Available slots shown as empty (clickable → open New Reservation modal, pre-filled with room + time)
+- Daily Revenue Summary at bottom: per-room revenue + branch total
+
+---
+
+#### 7. SOCKET.IO INTEGRATION
+When room_table status changes (edit, maintenance toggle), emit:
+```javascript
+io.to(`branch_${branch_id}`).emit('room_table_status_changed', {
+  room_table_id: id,
+  name: name,
+  status: newStatus,
+  updated_at: new Date().toISOString()
+});
+// MIGRATION NOTE: Replace with SignalR hub broadcast in .NET migration
+```
+
+---
+
+#### 8. AUDIT LOGGING
+Every CREATE, UPDATE, STATUS_CHANGE to room_tables and room_table_pricing must insert a record into the existing audit_logs table:
+```javascript
+await createAuditLog({
+  entity_type: 'room_table',       // or 'room_table_pricing'
+  entity_id: room_table.id,
+  action: 'CREATE' | 'UPDATE' | 'STATUS_CHANGE' | 'PRICING_DEACTIVATED',
+  actor_id: req.user.id,
+  branch_id: room_table.branch_id,
+  old_values: beforeSnapshot,      // JSON snapshot before change
+  new_values: afterSnapshot,       // JSON snapshot after change
+  ip_address: req.ip,
+  user_agent: req.headers['user-agent']
+});
+```
+
+---
+
+#### 9. i18n KEYS TO ADD
+Add to all language files (en, zh-CN, zh-TW, ms, th, ko, ja):
+```json
+{
+  "room_table": {
+    "menu_label": "Room & Table",
+    "type_room": "Room",
+    "type_table": "Table",
+    "type_booth": "Booth",
+    "pricing_rules": "Pricing Rules",
+    "add_pricing_rule": "Add Pricing Rule",
+    "applicable_days": "Applicable Days",
+    "time_window": "Time Window",
+    "date_range": "Date Range",
+    "price_per_hour": "Per Hour",
+    "price_per_session": "Per Session",
+    "price_flat_rate": "Flat Rate",
+    "daily_revenue": "Today's Revenue",
+    "availability_view": "Availability",
+    "no_pricing_rules": "No pricing rules configured. Add a rule to enable billing."
+  }
+}
+```
+
+---
+
+#### 10. VALIDATION RULES
+- capacity_min must be ≤ capacity_max
+- time_end must be after time_start (if both provided) — handle midnight crossover (e.g. 22:00–02:00)
+- base_price must be > 0
+- If multiple pricing rules exist for same room_table: warn if overlapping day+time windows with same priority (don't block, just warn)
+- branch_id must be accessible to the requesting user (enforce in middleware)
+
+---
+
+### DELIVERABLES CHECKLIST
+- [ ] DB migration script (room_tables + room_table_pricing + price resolution function)
+- [ ] Express routes: /api/v1/room-tables/* (CRUD + pricing + availability)
+- [ ] RBAC middleware applied to all routes
+- [ ] UI: Room & Table list page with branch/type filter
+- [ ] UI: Create/Edit modal
+- [ ] UI: Pricing Rules sub-panel with day/time/date configuration
+- [ ] UI: Availability + Reservation overlay calendar view with daily revenue
+- [ ] Socket.io emit on status change
+- [ ] Audit logging on all mutations
+- [ ] i18n keys added to all 7 language files
+- [ ] Menu item renamed "Room & Table" (backward redirect added)
+
+### DO NOT
+- Do NOT modify existing reservations, folios, sessions, or users tables
+- Do NOT hard-delete any pricing rules (soft-delete only: is_active = false)
+- Do NOT hardcode currency (MYR) or tax rates anywhere
+- Do NOT remove existing navigation routes — add redirects only

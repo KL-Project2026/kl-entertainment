@@ -16,6 +16,7 @@ import {
 import {
   LayoutGrid, Plus, Search, BedDouble, Coffee, Grid2x2,
   Users, CheckCircle2, Wrench, XCircle, ChevronRight, Pencil,
+  CalendarDays, List, Clock,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -32,6 +33,23 @@ interface RoomTable {
 }
 interface Summary { total: number; active: number; maintenance: number; outOfOrder: number; inactive: number; }
 
+interface AvailabilityReservation {
+  reservation_id: string; guest_name: string;
+  start_time: string; end_time: string | null;
+  status: string; pax: number; revenue: number;
+}
+interface AvailabilityRoom {
+  id: string; name: string; type: string; capacity_max: number; status: string;
+  daily_revenue: number; currency_code: string;
+  reservations: AvailabilityReservation[];
+  applicable_price: { price_label: string; base_price: number; price_type: string; currency_code: string; } | null;
+}
+interface AvailabilityData {
+  date: string; branch_id: string;
+  room_tables: AvailabilityRoom[];
+  daily_total_revenue: number; currency_code: string;
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 const TYPE_ICONS: Record<string, React.ReactNode> = {
   ROOM:  <BedDouble className="w-4 h-4" />,
@@ -42,6 +60,11 @@ const TYPE_COLORS: Record<string, string> = {
   ROOM:  "bg-blue-500/20 text-blue-300 border-blue-500/30",
   TABLE: "bg-orange-500/20 text-orange-300 border-orange-500/30",
   BOOTH: "bg-purple-500/20 text-purple-300 border-purple-500/30",
+};
+const TYPE_COLORS_SOLID: Record<string, string> = {
+  ROOM:  "bg-blue-500/70 border-blue-400/80 text-white",
+  TABLE: "bg-orange-500/70 border-orange-400/80 text-white",
+  BOOTH: "bg-purple-500/70 border-purple-400/80 text-white",
 };
 const STATUS_COLORS: Record<string, string> = {
   ACTIVE:       "bg-green-500/20 text-green-300",
@@ -55,6 +78,254 @@ const PRICE_TYPE_LABELS: Record<string, string> = {
 function fmtPrice(p: { priceType: string; basePrice: string }) {
   return `MYR ${parseFloat(p.basePrice).toFixed(0)}${PRICE_TYPE_LABELS[p.priceType] ?? ""}`;
 }
+function todayStr() {
+  return new Date().toISOString().split("T")[0]!;
+}
+
+// ── Timeline helpers ───────────────────────────────────────────────────────
+// Slots: 12:00 → 03:00 next day = 15 one-hour slots
+const HOUR_SLOTS = Array.from({ length: 16 }, (_, i) => (i + 12) % 24);
+const SLOT_WIDTH_PX = 64;
+const ROW_HEIGHT_PX = 52;
+
+function hourToMinutes(h: number) { return h < 12 ? h * 60 + 1440 : h * 60; }
+
+function getSlotStyle(
+  startTs: string, endTs: string | null,
+  type: string
+): { left: number; width: number; color: string } | null {
+  const start = new Date(startTs);
+  const end   = endTs ? new Date(endTs) : new Date(start.getTime() + 2 * 3600_000);
+
+  const startH = start.getHours();
+  const startM = start.getMinutes();
+  const endH   = end.getHours();
+  const endM   = end.getMinutes();
+
+  const startMins = hourToMinutes(startH) + startM;
+  const endMins   = hourToMinutes(endH)   + endM;
+  const baseMins  = hourToMinutes(12);
+
+  const leftMins  = startMins - baseMins;
+  const widthMins = endMins - startMins;
+
+  if (widthMins <= 0 || leftMins + widthMins <= 0 || leftMins >= 16 * 60) return null;
+
+  const clampedLeft  = Math.max(0, leftMins);
+  const clampedWidth = Math.min(widthMins, 16 * 60 - clampedLeft);
+
+  return {
+    left:  (clampedLeft  / 60) * SLOT_WIDTH_PX,
+    width: (clampedWidth / 60) * SLOT_WIDTH_PX - 2,
+    color: TYPE_COLORS_SOLID[type] ?? "bg-primary/70 border-primary text-white",
+  };
+}
+
+// ── Availability Timeline ──────────────────────────────────────────────────
+function AvailabilityTimeline({
+  data, branches, branchFilter, setBranchFilter, date, setDate,
+}: {
+  data: AvailabilityData | null; branches: Branch[];
+  branchFilter: string; setBranchFilter: (v: string) => void;
+  date: string; setDate: (d: string) => void;
+}) {
+  const [tooltip, setTooltip] = useState<{ res: AvailabilityReservation; x: number; y: number } | null>(null);
+
+  return (
+    <div className="space-y-4">
+      {/* Controls */}
+      <div className="flex flex-wrap gap-3 items-end">
+        <div>
+          <Label className="text-xs mb-1 block">Date</Label>
+          <Input type="date" value={date} onChange={e => setDate(e.target.value)}
+            className="w-[160px] h-9" />
+        </div>
+        <div>
+          <Label className="text-xs mb-1 block">Branch</Label>
+          <Select value={branchFilter} onValueChange={setBranchFilter}>
+            <SelectTrigger className="w-[200px] h-9">
+              <SelectValue placeholder="Select branch…" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">Select a branch…</SelectItem>
+              {branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {branchFilter === "__none__" && (
+        <div className="py-12 text-center text-muted-foreground text-sm">
+          <CalendarDays className="w-8 h-8 mx-auto mb-2 opacity-30" />
+          Select a branch to view availability
+        </div>
+      )}
+
+      {branchFilter !== "__none__" && !data && (
+        <div className="py-12 text-center text-muted-foreground text-sm animate-pulse">
+          Loading availability…
+        </div>
+      )}
+
+      {branchFilter !== "__none__" && data && (
+        <>
+          {/* Timeline grid */}
+          <div className="rounded-xl border border-white/10 bg-black/40 overflow-hidden">
+            {/* Header: time slots */}
+            <div className="flex border-b border-white/10 bg-white/5">
+              <div className="shrink-0 w-36 px-3 py-2 text-xs font-medium text-muted-foreground border-r border-white/10">
+                Room / Table
+              </div>
+              <div className="flex overflow-x-auto">
+                {HOUR_SLOTS.map(h => (
+                  <div key={h} style={{ width: SLOT_WIDTH_PX, minWidth: SLOT_WIDTH_PX }}
+                    className="py-2 text-center text-xs text-muted-foreground border-r border-white/5 shrink-0">
+                    {String(h).padStart(2, "0")}:00
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Rows */}
+            {data.room_tables.length === 0 ? (
+              <div className="py-10 text-center text-muted-foreground text-sm">
+                No room tables found for this branch.
+              </div>
+            ) : (
+              data.room_tables.map(rt => (
+                <div key={rt.id} className="flex border-b border-white/5 last:border-0 group hover:bg-white/2 transition-colors"
+                  style={{ height: ROW_HEIGHT_PX }}>
+                  {/* Room label */}
+                  <div className="shrink-0 w-36 px-3 flex flex-col justify-center border-r border-white/10">
+                    <div className="text-xs font-medium truncate">{rt.name}</div>
+                    <div className={`text-[10px] px-1.5 py-0.5 rounded-full w-fit mt-0.5 ${STATUS_COLORS[rt.status]}`}>
+                      {rt.status.replace("_", " ")}
+                    </div>
+                  </div>
+
+                  {/* Timeline track */}
+                  <div className="relative flex-1 overflow-x-auto">
+                    {/* Hour grid lines */}
+                    <div className="absolute inset-0 flex pointer-events-none">
+                      {HOUR_SLOTS.map(h => (
+                        <div key={h} style={{ width: SLOT_WIDTH_PX, minWidth: SLOT_WIDTH_PX }}
+                          className="h-full border-r border-white/5 shrink-0" />
+                      ))}
+                    </div>
+
+                    {/* Reservation blocks */}
+                    {rt.reservations.map((res) => {
+                      const style = getSlotStyle(res.start_time, res.end_time, rt.type);
+                      if (!style) return null;
+                      return (
+                        <div
+                          key={res.reservation_id}
+                          style={{ left: style.left, width: style.width, top: 6, height: ROW_HEIGHT_PX - 12 }}
+                          className={`absolute rounded border text-[10px] px-1.5 py-0.5 cursor-pointer
+                                      flex items-center gap-1 overflow-hidden truncate select-none
+                                      ${style.color} shadow-sm`}
+                          onMouseEnter={(e) => setTooltip({ res, x: e.clientX, y: e.clientY })}
+                          onMouseLeave={() => setTooltip(null)}
+                        >
+                          <Users className="w-2.5 h-2.5 shrink-0" />
+                          <span className="truncate font-medium">{res.guest_name}</span>
+                        </div>
+                      );
+                    })}
+
+                    {rt.reservations.length === 0 && (
+                      <div className="absolute inset-0 flex items-center px-3">
+                        <span className="text-[10px] text-muted-foreground/50">Available all day</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Daily revenue */}
+                  <div className="shrink-0 w-24 px-2 flex flex-col justify-center items-end border-l border-white/10">
+                    <div className="text-[10px] text-muted-foreground">Revenue</div>
+                    <div className="text-xs font-semibold text-green-400">
+                      {rt.daily_revenue > 0 ? `MYR ${rt.daily_revenue.toLocaleString("en-MY", { minimumFractionDigits: 0 })}` : "—"}
+                    </div>
+                    {rt.applicable_price && (
+                      <div className="text-[9px] text-muted-foreground mt-0.5">
+                        MYR {rt.applicable_price.base_price}{PRICE_TYPE_LABELS[rt.applicable_price.price_type] ?? ""}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Daily Revenue Summary */}
+          <div className="rounded-xl border border-white/10 bg-black/40 p-4">
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div>
+                <div className="text-xs text-muted-foreground">Branch Daily Revenue ({date})</div>
+                <div className="text-2xl font-bold text-green-400 mt-0.5">
+                  MYR {data.daily_total_revenue.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div>
+                  <div className="text-xs text-muted-foreground">Rooms</div>
+                  <div className="font-semibold">{data.room_tables.filter(r => r.type === "ROOM").length}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Bookings</div>
+                  <div className="font-semibold">{data.room_tables.reduce((s, r) => s + r.reservations.length, 0)}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Active</div>
+                  <div className="font-semibold text-green-400">{data.room_tables.filter(r => r.status === "ACTIVE").length}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Per-room revenue breakdown */}
+            {data.room_tables.filter(r => r.daily_revenue > 0).length > 0 && (
+              <div className="mt-3 pt-3 border-t border-white/10">
+                <div className="text-xs text-muted-foreground mb-2">Revenue by room:</div>
+                <div className="flex flex-wrap gap-2">
+                  {data.room_tables.filter(r => r.daily_revenue > 0).map(r => (
+                    <div key={r.id} className="flex items-center gap-1.5 text-xs bg-white/5 rounded-full px-2.5 py-1">
+                      <span className={`text-[10px] px-1 rounded ${TYPE_COLORS[r.type]}`}>{r.type[0]}</span>
+                      <span>{r.name}</span>
+                      <span className="text-green-400 font-medium">
+                        MYR {r.daily_revenue.toLocaleString("en-MY", { minimumFractionDigits: 0 })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Tooltip */}
+          {tooltip && (
+            <div
+              className="fixed z-50 pointer-events-none bg-black/90 border border-white/20 rounded-lg p-3 text-xs shadow-xl"
+              style={{ left: tooltip.x + 12, top: tooltip.y - 10 }}>
+              <div className="font-semibold mb-1">{tooltip.res.guest_name}</div>
+              <div className="text-muted-foreground space-y-0.5">
+                <div className="flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  {new Date(tooltip.res.start_time).toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" })}
+                  {tooltip.res.end_time && ` → ${new Date(tooltip.res.end_time).toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" })}`}
+                </div>
+                <div className="flex items-center gap-1"><Users className="w-3 h-3" /> {tooltip.res.pax} pax</div>
+                <div className="capitalize">{tooltip.res.status}</div>
+                {tooltip.res.revenue > 0 && (
+                  <div className="text-green-400">MYR {tooltip.res.revenue.toFixed(2)}</div>
+                )}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 
 // ── Modal ──────────────────────────────────────────────────────────────────
 interface ModalState { id?: string; branchId: string; name: string; type: string;
@@ -67,12 +338,11 @@ const EMPTY_MODAL: ModalState = {
 };
 
 function RoomModal({
-  initial, branches, authH, onClose,
+  initial, branches, onClose,
   onCreate, onUpdate,
 }: {
   initial: ModalState;
   branches: Branch[];
-  authH: Record<string, string>;
   onClose: () => void;
   onCreate: (d: ModalState) => void;
   onUpdate: (d: ModalState) => void;
@@ -192,6 +462,11 @@ export default function Tables() {
   const [search, setSearch]             = useState("");
   const [modal, setModal]               = useState<ModalState | null>(null);
 
+  // Availability view state
+  const [viewMode, setViewMode]             = useState<"grid" | "availability">("grid");
+  const [availDate, setAvailDate]           = useState<string>(todayStr());
+  const [availBranch, setAvailBranch]       = useState<string>("__none__");
+
   const { data: branchesData } = useQuery({
     queryKey: ["branches"],
     queryFn: () => fetch("/api/branches", { headers: authH }).then(r => r.json()),
@@ -210,6 +485,18 @@ export default function Tables() {
   });
   const rooms: RoomTable[] = roomData?.data ?? [];
   const summary: Summary   = roomData?.summary ?? { total: 0, active: 0, maintenance: 0, outOfOrder: 0, inactive: 0 };
+
+  // Availability query
+  const { data: availRaw } = useQuery({
+    queryKey: ["room-tables-availability", availDate, availBranch],
+    queryFn: () =>
+      availBranch === "__none__"
+        ? Promise.resolve(null)
+        : fetch(`/api/room-tables/availability?date=${availDate}&branch_id=${availBranch}`, { headers: authH })
+            .then(r => r.json()),
+    enabled: viewMode === "availability",
+  });
+  const availData: AvailabilityData | null = availRaw ?? null;
 
   const createMut = useMutation({
     mutationFn: async (d: ModalState) => {
@@ -281,18 +568,37 @@ export default function Tables() {
               Manage rooms, tables &amp; booths across all branches
             </p>
           </div>
-          <Button className="gap-2" onClick={openAdd}>
-            <Plus className="w-4 h-4" /> Add Room / Table
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* View toggle */}
+            <div className="flex rounded-lg border border-white/10 bg-black/30 p-0.5">
+              <button
+                onClick={() => setViewMode("grid")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors
+                  ${viewMode === "grid" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                <List className="w-3.5 h-3.5" /> Grid
+              </button>
+              <button
+                onClick={() => setViewMode("availability")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors
+                  ${viewMode === "availability" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                <CalendarDays className="w-3.5 h-3.5" /> Availability
+              </button>
+            </div>
+            {viewMode === "grid" && (
+              <Button className="gap-2" onClick={openAdd}>
+                <Plus className="w-4 h-4" /> Add Room / Table
+              </Button>
+            )}
+          </div>
         </div>
 
-        {/* Summary Cards */}
+        {/* Summary Cards — always visible */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { label: "Total", value: summary.total,       icon: <LayoutGrid className="w-4 h-4" />, color: "text-primary" },
-            { label: "Active", value: summary.active,      icon: <CheckCircle2 className="w-4 h-4" />, color: "text-green-400" },
-            { label: "Maintenance", value: summary.maintenance, icon: <Wrench className="w-4 h-4" />, color: "text-yellow-400" },
-            { label: "Out of Order", value: summary.outOfOrder, icon: <XCircle className="w-4 h-4" />, color: "text-red-400" },
+            { label: "Total",       value: summary.total,       icon: <LayoutGrid className="w-4 h-4" />,    color: "text-primary" },
+            { label: "Active",      value: summary.active,      icon: <CheckCircle2 className="w-4 h-4" />, color: "text-green-400" },
+            { label: "Maintenance", value: summary.maintenance, icon: <Wrench className="w-4 h-4" />,        color: "text-yellow-400" },
+            { label: "Out of Order",value: summary.outOfOrder,  icon: <XCircle className="w-4 h-4" />,       color: "text-red-400" },
           ].map(s => (
             <div key={s.label} className="rounded-xl border border-white/10 bg-black/40 p-4 flex flex-col gap-1">
               <div className={`flex items-center gap-1.5 text-xs font-medium ${s.color}`}>
@@ -303,118 +609,135 @@ export default function Tables() {
           ))}
         </div>
 
-        {/* Filter Bar */}
-        <div className="flex flex-wrap gap-2 items-center">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Search name, floor, description…" className="pl-9" />
-          </div>
-          <Select value={branchFilter} onValueChange={setBranchFilter}>
-            <SelectTrigger className="w-[180px]"><SelectValue placeholder="All Branches" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">All Branches</SelectItem>
-              {branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger className="w-[130px]"><SelectValue placeholder="All Types" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">All Types</SelectItem>
-              <SelectItem value="ROOM">Room</SelectItem>
-              <SelectItem value="TABLE">Table</SelectItem>
-              <SelectItem value="BOOTH">Booth</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[145px]"><SelectValue placeholder="All Status" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">All Status</SelectItem>
-              <SelectItem value="ACTIVE">Active</SelectItem>
-              <SelectItem value="INACTIVE">Inactive</SelectItem>
-              <SelectItem value="MAINTENANCE">Maintenance</SelectItem>
-              <SelectItem value="OUT_OF_ORDER">Out of Order</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        {/* ─── AVAILABILITY VIEW ─────────────────────────────────────────── */}
+        {viewMode === "availability" && (
+          <AvailabilityTimeline
+            data={availData}
+            branches={branches}
+            branchFilter={availBranch}
+            setBranchFilter={setAvailBranch}
+            date={availDate}
+            setDate={setAvailDate}
+          />
+        )}
 
-        {/* Grid */}
-        {isLoading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-52 rounded-xl border border-white/10 bg-black/40 animate-pulse" />
-            ))}
-          </div>
-        ) : rooms.length === 0 ? (
-          <div className="py-20 text-center text-muted-foreground">
-            <LayoutGrid className="w-10 h-10 mx-auto mb-3 opacity-30" />
-            <p>No rooms or tables found.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {rooms.map(r => (
-              <div key={r.id}
-                className="rounded-xl border border-white/10 bg-black/40 hover:border-primary/40 transition-colors
-                           flex flex-col overflow-hidden group">
-                {/* Card Header */}
-                <div className="p-4 flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className={`shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border font-medium ${TYPE_COLORS[r.type]}`}>
-                      {TYPE_ICONS[r.type]} {r.type}
-                    </span>
-                  </div>
-                  <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[r.status]}`}>
-                    {r.status.replace("_", " ")}
-                  </span>
-                </div>
+        {/* ─── GRID VIEW ─────────────────────────────────────────────────── */}
+        {viewMode === "grid" && (
+          <>
+            {/* Filter Bar */}
+            <div className="flex flex-wrap gap-2 items-center">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input value={search} onChange={e => setSearch(e.target.value)}
+                  placeholder="Search name, floor, description…" className="pl-9" />
+              </div>
+              <Select value={branchFilter} onValueChange={setBranchFilter}>
+                <SelectTrigger className="w-[180px]"><SelectValue placeholder="All Branches" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All Branches</SelectItem>
+                  {branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger className="w-[130px]"><SelectValue placeholder="All Types" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All Types</SelectItem>
+                  <SelectItem value="ROOM">Room</SelectItem>
+                  <SelectItem value="TABLE">Table</SelectItem>
+                  <SelectItem value="BOOTH">Booth</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[145px]"><SelectValue placeholder="All Status" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All Status</SelectItem>
+                  <SelectItem value="ACTIVE">Active</SelectItem>
+                  <SelectItem value="INACTIVE">Inactive</SelectItem>
+                  <SelectItem value="MAINTENANCE">Maintenance</SelectItem>
+                  <SelectItem value="OUT_OF_ORDER">Out of Order</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-                {/* Card Body */}
-                <div className="px-4 pb-3 flex-1 space-y-2">
-                  <h3 className="font-semibold text-base leading-tight">{r.name}</h3>
-                  <p className="text-xs text-muted-foreground">{r.branch_name}</p>
-
-                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                    <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" /> {r.capacity_min}–{r.capacity_max} pax</span>
-                    {r.floor && <span>{r.floor}</span>}
-                  </div>
-
-                  {/* Amenities */}
-                  {r.amenities?.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {r.amenities.slice(0, 4).map(a => (
-                        <span key={a} className="text-xs bg-white/5 border border-white/10 px-1.5 py-0.5 rounded-full">
-                          {a}
+            {/* Grid */}
+            {isLoading ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="h-52 rounded-xl border border-white/10 bg-black/40 animate-pulse" />
+                ))}
+              </div>
+            ) : rooms.length === 0 ? (
+              <div className="py-20 text-center text-muted-foreground">
+                <LayoutGrid className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <p>No rooms or tables found.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {rooms.map(r => (
+                  <div key={r.id}
+                    className="rounded-xl border border-white/10 bg-black/40 hover:border-primary/40 transition-colors
+                               flex flex-col overflow-hidden group">
+                    {/* Card Header */}
+                    <div className="p-4 flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className={`shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border font-medium ${TYPE_COLORS[r.type]}`}>
+                          {TYPE_ICONS[r.type]} {r.type}
                         </span>
-                      ))}
-                      {r.amenities.length > 4 && (
-                        <span className="text-xs text-muted-foreground px-1">+{r.amenities.length - 4}</span>
+                      </div>
+                      <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[r.status]}`}>
+                        {r.status.replace("_", " ")}
+                      </span>
+                    </div>
+
+                    {/* Card Body */}
+                    <div className="px-4 pb-3 flex-1 space-y-2">
+                      <h3 className="font-semibold text-base leading-tight">{r.name}</h3>
+                      <p className="text-xs text-muted-foreground">{r.branch_name}</p>
+
+                      <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                        <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" /> {r.capacity_min}–{r.capacity_max} pax</span>
+                        {r.floor && <span>{r.floor}</span>}
+                      </div>
+
+                      {/* Amenities */}
+                      {r.amenities?.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {r.amenities.slice(0, 4).map(a => (
+                            <span key={a} className="text-xs bg-white/5 border border-white/10 px-1.5 py-0.5 rounded-full">
+                              {a}
+                            </span>
+                          ))}
+                          {r.amenities.length > 4 && (
+                            <span className="text-xs text-muted-foreground px-1">+{r.amenities.length - 4}</span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Pricing Preview */}
+                      {r.active_pricing && r.active_pricing.length > 0 && (
+                        <div className="text-xs text-primary font-medium">
+                          from {fmtPrice(r.active_pricing[r.active_pricing.length - 1]!)}
+                          {r.pricing_count > 1 && <span className="text-muted-foreground ml-1">({r.pricing_count} rules)</span>}
+                        </div>
                       )}
                     </div>
-                  )}
 
-                  {/* Pricing Preview */}
-                  {r.active_pricing && r.active_pricing.length > 0 && (
-                    <div className="text-xs text-primary font-medium">
-                      from {fmtPrice(r.active_pricing[r.active_pricing.length - 1])}
-                      {r.pricing_count > 1 && <span className="text-muted-foreground ml-1">({r.pricing_count} rules)</span>}
+                    {/* Card Footer */}
+                    <div className="border-t border-white/5 px-4 py-2.5 flex items-center justify-between">
+                      <button onClick={() => openEdit(r)}
+                        className="text-xs text-muted-foreground hover:text-white flex items-center gap-1 transition-colors">
+                        <Pencil className="w-3 h-3" /> Edit
+                      </button>
+                      <button onClick={() => navigate(`/tables/${r.id}`)}
+                        className="text-xs text-primary hover:text-primary/80 flex items-center gap-1 transition-colors font-medium">
+                        View Detail <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-                  )}
-                </div>
-
-                {/* Card Footer */}
-                <div className="border-t border-white/5 px-4 py-2.5 flex items-center justify-between">
-                  <button onClick={() => openEdit(r)}
-                    className="text-xs text-muted-foreground hover:text-white flex items-center gap-1 transition-colors">
-                    <Pencil className="w-3 h-3" /> Edit
-                  </button>
-                  <button onClick={() => navigate(`/tables/${r.id}`)}
-                    className="text-xs text-primary hover:text-primary/80 flex items-center gap-1 transition-colors font-medium">
-                    View Detail <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            )}
+          </>
         )}
       </div>
 
@@ -422,7 +745,6 @@ export default function Tables() {
         <RoomModal
           initial={modal}
           branches={branches}
-          authH={authH}
           onClose={() => setModal(null)}
           onCreate={createMut.mutate}
           onUpdate={updateMut.mutate}

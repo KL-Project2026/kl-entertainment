@@ -150,5 +150,22 @@
     "live_rates": "リアルタイム為替レート",
     "base": "基準通貨: MYR",
     "last_updated": "最終更新"
+  },
+  "room_table": {
+    "menu_label": "ルーム & テーブル",
+    "type_room": "ルーム",
+    "type_table": "テーブル",
+    "type_booth": "ブース",
+    "pricing_rules": "料金ルール",
+    "add_pricing_rule": "料金ルールを追加",
+    "applicable_days": "適用曜日",
+    "time_window": "時間帯",
+    "date_range": "期間",
+    "price_per_hour": "時間あたり",
+    "price_per_session": "セッションあたり",
+    "price_flat_rate": "一律料金",
+    "daily_revenue": "本日の売上",
+    "availability_view": "空き状況",
+    "no_pricing_rules": "料金ルールが設定されていません。料金請求を有効にするにはルールを追加してください。"
   }
 }
