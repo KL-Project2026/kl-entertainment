@@ -1,0 +1,119 @@
+## TASK: Build "Room & Table" Management Module
+
+### CONTEXT
+This is an additive feature to an existing Karaoke/Entertainment Venue Management System.
+Stack: Node.js + Express + PostgreSQL + Socket.io + JWT RBAC (7 roles).
+**CRITICAL: Add-Only rule — never delete or modify existing working code. All changes are additive.**
+
+---
+
+### FEATURE: Room & Table Management
+
+#### 1. NAVIGATION / MENU RENAME
+- Rename existing menu item "Tables" → "Room & Table" across all UI navigation components
+- Update route paths if needed (maintain backward compatibility with redirects)
+- Do NOT remove old routes — add redirect middleware: old path → new path
+
+---
+
+#### 2. DATABASE SCHEMA — Add the following tables (DO NOT modify existing tables)
+```sql
+-- Room/Table master record
+CREATE TABLE IF NOT EXISTS room_tables (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE RESTRICT,
+  name VARCHAR(100) NOT NULL,                        -- e.g. "VIP Room 1", "Table A3", "Booth 5"
+  type VARCHAR(20) NOT NULL CHECK (type IN ('ROOM', 'TABLE', 'BOOTH')),
+  capacity_min INT NOT NULL DEFAULT 1,
+  capacity_max INT NOT NULL,
+  description TEXT,                                   -- Rich text or markdown description
+  amenities JSONB DEFAULT '[]',                       -- ["Karaoke", "Private Entrance", "Mini Bar"]
+  floor VARCHAR(50),                                  -- "Ground Floor", "Level 2", etc.
+  status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' 
+    CHECK (status IN ('ACTIVE', 'INACTIVE', 'MAINTENANCE', 'OUT_OF_ORDER')),
+  image_urls JSONB DEFAULT '[]',                      -- Array of image URLs
+  sort_order INT DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  created_by UUID REFERENCES users(id),
+  UNIQUE(branch_id, name)
+);
+
+-- Pricing rules (child table — differential pricing by date/day/time)
+CREATE TABLE IF NOT EXISTS room_table_pricing (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  room_table_id UUID NOT NULL REFERENCES room_tables(id) ON DELETE RESTRICT,
+  price_label VARCHAR(100) NOT NULL,                  -- e.g. "Weekday Standard", "Weekend Peak", "Holiday Rate"
+  price_type VARCHAR(20) NOT NULL DEFAULT 'PER_HOUR' 
+    CHECK (price_type IN ('PER_HOUR', 'PER_SESSION', 'FLAT_RATE')),
+  base_price NUMERIC(10, 2) NOT NULL,
+  currency_code CHAR(3) NOT NULL DEFAULT 'MYR',
+  
+  -- Day-of-week applicability (bitmask: 1=Mon, 2=Tue, 4=Wed, 8=Thu, 16=Fri, 32=Sat, 64=Sun)
+  applicable_days INT NOT NULL DEFAULT 127,           -- 127 = all days
+  
+  -- Time window (NULL = all day)
+  time_start TIME,                                    -- e.g. 18:00
+  time_end TIME,                                      -- e.g. 23:59
+  
+  -- Date range override (NULL = always active)
+  date_from DATE,
+  date_to DATE,
+  
+  -- Priority: higher number wins when multiple rules match
+  priority INT NOT NULL DEFAULT 0,
+  
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  created_by UUID REFERENCES users(id)
+);
+
+-- Indexes for performance
+CREATE INDEX IF NOT EXISTS idx_room_tables_branch ON room_tables(branch_id);
+CREATE INDEX IF NOT EXISTS idx_room_tables_type ON room_tables(branch_id, type);
+CREATE INDEX IF NOT EXISTS idx_pricing_room_table ON room_table_pricing(room_table_id);
+CREATE INDEX IF NOT EXISTS idx_pricing_active ON room_table_pricing(room_table_id, is_active);
+```
+
+---
+
+#### 3. PRICING RESOLUTION FUNCTION
+Add this PostgreSQL function for resolving applicable price at a given datetime:
+```sql
+CREATE OR REPLACE FUNCTION get_applicable_price(
+  p_room_table_id UUID,
+  p_check_datetime TIMESTAMPTZ
+)
+RETURNS TABLE(price_id UUID, price_label VARCHAR, base_price NUMERIC, price_type VARCHAR, currency_code CHAR) AS $$
+DECLARE
+  v_day_bit INT;
+  v_time TIME;
+  v_date DATE;
+BEGIN
+  -- Extract components in UTC (venue timezone conversion handled at app layer)
+  v_day_bit := (1 << ((EXTRACT(DOW FROM p_check_datetime)::INT + 6) % 7)); -- Mon=1
+  v_time := p_check_datetime::TIME;
+  v_date := p_check_datetime::DATE;
+
+  RETURN QUERY
+  SELECT 
+    rtp.id, rtp.price_label, rtp.base_price, rtp.price_type, rtp.currency_code
+  FROM room_table_pricing rtp
+  WHERE rtp.room_table_id = p_room_table_id
+    AND rtp.is_active = TRUE
+    AND (rtp.applicable_days & v_day_bit) > 0
+    AND (rtp.time_start IS NULL OR v_time >= rtp.time_start)
+    AND (rtp.time_end IS NULL OR v_time <= rtp.time_end)
+    AND (rtp.date_from IS NULL OR v_date >= rtp.date_from)
+    AND (rtp.date_to IS NULL OR v_date <= rtp.date_to)
+  ORDER BY rtp.priority DESC
+  LIMIT 1;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+---
+
+#### 4. API ENDPOINTS — Add to existing Express router (additive only)

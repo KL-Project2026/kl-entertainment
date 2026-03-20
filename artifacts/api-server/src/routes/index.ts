@@ -28,6 +28,7 @@ import hostessPortalRouter from "./hostess-portal";
 import driverRouter from "./driver";
 import hostessProfilesRouter from "./hostess-profiles";
 import agencyMgmtRouter from "./agency-mgmt";
+import roomTablesRouter from "./room-tables";
 
 const router: IRouter = Router();
 
@@ -60,5 +61,6 @@ router.use(hostessPortalRouter);
 router.use(driverRouter);
 router.use(hostessProfilesRouter);
 router.use(agencyMgmtRouter);
+router.use(roomTablesRouter);
 
 export default router;

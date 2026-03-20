@@ -67,6 +67,29 @@ The project is structured as a pnpm monorepo using TypeScript, with distinct `ap
 - List pages `onRowClick`: `reservations.tsx`, `staff.tsx`, `agents.tsx`, `shareholders.tsx` all navigate to their respective detail pages on row/card click.
 - All fetch calls in detail pages leverage the global JWT interceptor in App.tsx (no manual auth headers needed).
 
+## Room & Table Management (COMPLETE)
+
+**Database:** Two new tables: `room_tables` (branch_id, name, type ROOM/TABLE/BOOTH, capacity_min/max, amenities JSONB, floor, status ACTIVE/INACTIVE/MAINTENANCE/OUT_OF_ORDER, image_urls JSONB, sort_order) and `room_table_pricing` (room_table_id FK, price_label, price_type PER_HOUR/PER_SESSION/FLAT_RATE, base_price MYR, applicable_days bitmask Mon=1…Sun=64, time_start/time_end, date_from/date_to, priority, is_active). PostgreSQL function `get_applicable_price(room_table_id, timestamptz)` resolves the highest-priority matching pricing rule.
+
+**API Route** `artifacts/api-server/src/routes/room-tables.ts`:
+- `GET /api/room-tables` — list with branch/type/status/search filters + summary stats
+- `POST /api/room-tables` — create (ADMIN_UP)
+- `GET /api/room-tables/:id` — detail with all pricing rules
+- `PATCH /api/room-tables/:id` — update (ADMIN_UP)
+- `DELETE /api/room-tables/:id` — soft-delete → status=INACTIVE (ADMIN_UP)
+- `GET /api/room-tables/:id/pricing` — list pricing rules
+- `POST /api/room-tables/:id/pricing` — add pricing rule (ADMIN_UP)
+- `PATCH /api/room-tables/:id/pricing/:priceId` — update pricing rule (ADMIN_UP)
+- `DELETE /api/room-tables/:id/pricing/:priceId` — delete pricing rule (ADMIN_UP)
+- `GET /api/room-tables/:id/effective-price?datetime=` — resolve price via PostgreSQL function
+
+**Frontend:**
+- `tables.tsx` — List page: 4 summary stat cards, branch/type/status/search filters, 3-col card grid with type badge (ROOM/TABLE/BOOTH colored), amenities chips, pricing preview, Edit + View Detail actions. Add/Edit modal with full form.
+- `table-detail.tsx` — Detail page: Info tab (basic info + amenities chips) and Pricing tab (rules with day-of-week circle pills, time window, CRUD add/edit/delete modals with bitmask day selector).
+- Nav item "Tables" → renamed to "Room & Table" in layout.tsx + all 6 locale files.
+
+**Seed Data:** 14 rooms seeded across Club Noir KL (6), Velvet Lounge PJ (5), Eclipse Lounge JB (3); 20 pricing rules.
+
 ## Production Database Seeding
 
 The development database full snapshot is stored at:
