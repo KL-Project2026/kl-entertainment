@@ -51,6 +51,8 @@ interface StaffMember {
   salaryCurrency: string;
   commissionConfig: Record<string, unknown> | null;
   hireDate: string | null;
+  profilePhoto: string | null;
+  notes: string | null;
 }
 
 interface Branch {
@@ -334,17 +336,38 @@ function StaffCard({
   onEarnings: () => void;
   onEdit: () => void;
 }) {
+  const nickname = staff.notes?.match(/Nickname:\s*(.+)/)?.[1];
   return (
     <Card className="p-4 space-y-3 hover:border-white/20 transition-colors">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="font-medium">{staff.fullName}</p>
-          <p className="text-xs text-muted-foreground">{staff.employeeCode ?? "—"}</p>
+      <div className="flex items-start gap-3">
+        {/* Profile photo */}
+        <div className="shrink-0">
+          {staff.profilePhoto ? (
+            <img
+              src={staff.profilePhoto}
+              alt={staff.fullName}
+              className="w-12 h-12 rounded-full object-cover border border-white/10 bg-white/5"
+              onError={(e) => { (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(staff.fullName)}&background=1a1a2e&color=d4a84b&size=48`; }}
+            />
+          ) : (
+            <div className="w-12 h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-lg font-bold text-white/40">
+              {staff.fullName.charAt(0)}
+            </div>
+          )}
         </div>
-        <StatusBadge
-          status={staff.role}
-          className={ROLE_COLORS[staff.role] ?? ROLE_COLORS.general}
-        />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="font-medium truncate">{staff.fullName}</p>
+              {nickname && <p className="text-xs text-primary/70">"{nickname}"</p>}
+              <p className="text-xs text-muted-foreground">{staff.employeeCode ?? "—"}</p>
+            </div>
+            <StatusBadge
+              status={staff.role}
+              className={`${ROLE_COLORS[staff.role] ?? ROLE_COLORS.general} shrink-0`}
+            />
+          </div>
+        </div>
       </div>
 
       <div className="text-xs text-muted-foreground space-y-1">
@@ -372,12 +395,32 @@ const STAFF_COLUMNS: ColumnDef<StaffRow>[] = [
   {
     key: "fullName",
     label: "Name",
-    render: (row) => (
-      <div>
-        <p className="font-medium">{row.fullName as string}</p>
-        <p className="text-xs text-muted-foreground">{(row.employeeCode as string) || "—"}</p>
-      </div>
-    ),
+    render: (row) => {
+      const nickname = (row.notes as string | null)?.match(/Nickname:\s*(.+)/)?.[1];
+      const photo = row.profilePhoto as string | null;
+      const name = row.fullName as string;
+      return (
+        <div className="flex items-center gap-3">
+          {photo ? (
+            <img
+              src={photo}
+              alt={name}
+              className="w-9 h-9 rounded-full object-cover border border-white/10 shrink-0"
+              onError={(e) => { (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=1a1a2e&color=d4a84b&size=36`; }}
+            />
+          ) : (
+            <div className="w-9 h-9 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-sm font-bold text-white/40 shrink-0">
+              {name.charAt(0)}
+            </div>
+          )}
+          <div>
+            <p className="font-medium">{name}</p>
+            {nickname && <p className="text-xs text-primary/60">"{nickname}"</p>}
+            <p className="text-xs text-muted-foreground">{(row.employeeCode as string) || "—"}</p>
+          </div>
+        </div>
+      );
+    },
   },
   {
     key: "role",
