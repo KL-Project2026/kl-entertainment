@@ -77,6 +77,7 @@ const CATEGORIES: CategoryDef[] = [
       { path: "/room-board",   key: "nav.room_board",   icon: Grid,            roles: OPS_UP },
       { path: "/reservations", key: "nav.reservations", icon: CalendarDays,    roles: MANAGER_UP },
       { path: "/pos",          key: "nav.pos",          icon: ShoppingCart,    roles: OPS_UP },
+      { path: "/products",     key: "nav.products",     icon: Package,         roles: MANAGER_UP },
     ],
   },
   {
@@ -123,7 +124,6 @@ const CATEGORIES: CategoryDef[] = [
     accent: "#6B7280",
     items: [
       { path: "/branches",           key: "nav.branches",          icon: Building2, roles: ADMIN_UP },
-      { path: "/products",           key: "nav.products",          icon: Package,   roles: MANAGER_UP },
       { path: "/hostess-dashboard",  key: "nav.hostess_dashboard", icon: Users,     roles: ["super_admin", "admin", "branch_manager", "manager", "hostess"] },
     ],
   },
