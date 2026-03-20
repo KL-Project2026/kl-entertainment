@@ -120,7 +120,7 @@ function Router() {
       <Route path="/products" component={() => <ProtectedRoute component={Products} />} />
       <Route path="/reservations" component={() => <ProtectedRoute component={Reservations} />} />
       <Route path="/reservations/new" component={() => <ProtectedRoute component={BookingWizard} />} />
-      <Route path="/reservations/:id" component={() => <ProtectedRoute component={ReservationDetail} />} />
+      <Route path="/reservations/:id" component={() => <AuthRoute component={ReservationDetail} />} />
       <Route path="/pos" component={() => <ProtectedRoute component={POS} />} />
       <Route path="/staff" component={() => <AuthRoute component={Staff} />} />
       <Route path="/staff/:id" component={() => <AuthRoute component={StaffDetail} />} />
