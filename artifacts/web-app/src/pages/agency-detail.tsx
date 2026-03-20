@@ -293,7 +293,7 @@ export default function AgencyDetail() {
   const qc = useQueryClient();
   const authH = token ? { Authorization: `Bearer ${token}` } : {};
 
-  const [tab, setTab] = useState<"hostesses" | "account">("hostesses");
+  const [tab, setTab] = useState<"hostesses" | "account">("account");
 
   // Date range state
   const now = new Date();

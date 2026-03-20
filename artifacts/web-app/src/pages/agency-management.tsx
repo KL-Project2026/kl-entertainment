@@ -354,7 +354,7 @@ export default function AgencyManagement() {
             <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
               <Briefcase className="w-6 h-6" /> Agencies Management
             </h1>
-            <p className="text-sm text-muted-foreground mt-0.5">에이전시 및 호스티스 커미션 관리</p>
+            <p className="text-sm text-muted-foreground mt-0.5">Agency &amp; Hostess Commission Management</p>
           </div>
           <Button className="gap-2" onClick={() => { setEditTarget(undefined); setModalOpen(true); }}>
             <Plus className="w-4 h-4" /> Add Agency
