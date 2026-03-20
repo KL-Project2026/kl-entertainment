@@ -35,17 +35,17 @@ export default function DailyReport() {
   }, [date]);
 
   const revenueItems = [
-    ["룸 차지",  data?.revenue?.room_revenue],
-    ["POS",      data?.revenue?.pos_revenue],
-    ["호스티스", data?.revenue?.hostess_revenue],
-    ["아웃콜",   data?.revenue?.outcall_revenue],
-    ["합계",     data?.revenue?.total_revenue],
+    ["Room Charge",  data?.revenue?.room_revenue],
+    ["POS",          data?.revenue?.pos_revenue],
+    ["Hostess",      data?.revenue?.hostess_revenue],
+    ["Outcall",      data?.revenue?.outcall_revenue],
+    ["Total",        data?.revenue?.total_revenue],
   ] as [string, number | undefined][];
 
   const paymentItems = [
-    ["현금",   data?.payments?.cash_received],
-    ["카드",   data?.payments?.card_received],
-    ["총 수납", data?.payments?.total_received],
+    ["Cash",           data?.payments?.cash_received],
+    ["Card",           data?.payments?.card_received],
+    ["Total Received", data?.payments?.total_received],
   ] as [string, number | undefined][];
 
   return (
@@ -56,9 +56,9 @@ export default function DailyReport() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-display font-bold flex items-center gap-2">
-              <BarChart3 className="w-6 h-6 text-primary" /> 일일 매출 리포트
+              <BarChart3 className="w-6 h-6 text-primary" /> Daily Sales Report
             </h1>
-            <p className="text-sm text-muted-foreground mt-0.5">일별 매출 및 수납 현황</p>
+            <p className="text-sm text-muted-foreground mt-0.5">Daily revenue &amp; payment overview</p>
           </div>
           <input
             type="date"
@@ -77,16 +77,16 @@ export default function DailyReport() {
 
         {data && !loading && (
           <>
-            {/* 매출 */}
+            {/* Revenue */}
             <Card className="p-5 bg-black/40 border-white/5">
               <h3 className="font-display font-semibold mb-4 flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-primary" /> 매출
+                <TrendingUp className="w-4 h-4 text-primary" /> Revenue
               </h3>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                 {revenueItems.map(([label, value]) => (
-                  <div key={label} className={`rounded-xl p-4 border text-center ${label === "합계" ? "bg-primary/10 border-primary/30" : "bg-white/5 border-white/10"}`}>
+                  <div key={label} className={`rounded-xl p-4 border text-center ${label === "Total" ? "bg-primary/10 border-primary/30" : "bg-white/5 border-white/10"}`}>
                     <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">{label}</p>
-                    <p className={`text-base font-display font-bold ${label === "합계" ? "text-primary" : ""}`}>
+                    <p className={`text-base font-display font-bold ${label === "Total" ? "text-primary" : ""}`}>
                       {value != null ? formatCurrency(value) : "—"}
                     </p>
                   </div>
@@ -94,10 +94,10 @@ export default function DailyReport() {
               </div>
             </Card>
 
-            {/* 수납 */}
+            {/* Payments */}
             <Card className="p-5 bg-black/40 border-white/5">
               <h3 className="font-display font-semibold mb-4 flex items-center gap-2">
-                <CreditCard className="w-4 h-4 text-primary" /> 수납
+                <CreditCard className="w-4 h-4 text-primary" /> Payments
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {paymentItems.map(([label, value]) => (
@@ -115,7 +115,7 @@ export default function DailyReport() {
 
         {!data && !loading && (
           <Card className="p-12 text-center bg-black/40 border-white/5">
-            <p className="text-muted-foreground">선택한 날짜의 데이터가 없습니다.</p>
+            <p className="text-muted-foreground">No data for the selected date.</p>
           </Card>
         )}
       </div>

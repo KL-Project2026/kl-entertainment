@@ -17,7 +17,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  paid: "결제완료", partially_paid: "부분결제", issued: "발행", draft: "초안", void: "취소",
+  paid: "Paid", partially_paid: "Partially Paid", issued: "Issued", draft: "Draft", void: "Void",
 };
 
 function InfoRow({ label, value, accent }: { label: string; value?: string | null; accent?: boolean }) {
@@ -103,9 +103,9 @@ export default function InvoiceDetail() {
     return (
       <DashboardLayout>
         <div className="p-6 text-center py-20 text-muted-foreground">
-          <p>인보이스를 찾을 수 없습니다.</p>
+          <p>Invoice not found.</p>
           <Button variant="ghost" onClick={() => navigate("/invoices")} className="mt-4 gap-2">
-            <ArrowLeft className="w-4 h-4" /> 목록으로
+            <ArrowLeft className="w-4 h-4" /> Back to list
           </Button>
         </div>
       </DashboardLayout>
@@ -118,10 +118,10 @@ export default function InvoiceDetail() {
   const statusLabel = STATUS_LABELS[status] ?? status;
 
   const summaryRows: { label: string; value: string; accent?: boolean }[] = [
-    { label: "소계",  value: formatCurrency(inv.subtotal) },
-    { label: "세금",  value: formatCurrency(inv.tax_amount) },
-    { label: "할인",  value: `-${formatCurrency(inv.discount_amount)}` },
-    { label: "합계",  value: formatCurrency(inv.total_amount), accent: true },
+    { label: "Subtotal", value: formatCurrency(inv.subtotal) },
+    { label: "Tax",      value: formatCurrency(inv.tax_amount) },
+    { label: "Discount", value: `-${formatCurrency(inv.discount_amount)}` },
+    { label: "Total",    value: formatCurrency(inv.total_amount), accent: true },
   ];
 
   return (
@@ -140,13 +140,13 @@ export default function InvoiceDetail() {
                 <Badge className={`border text-xs ${statusColor}`}>{statusLabel}</Badge>
               </div>
               <p className="text-sm text-muted-foreground mt-0.5">
-                예약: {inv.booking_ref} · 발행: {inv.issued_at ? formatDate(inv.issued_at) : "미발행"}
+                Booking: {inv.booking_ref} · Issued: {inv.issued_at ? formatDate(inv.issued_at) : "Not issued"}
               </p>
             </div>
           </div>
         </div>
 
-        {/* 금액 요약 */}
+        {/* Amount Summary */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {summaryRows.map(({ label, value, accent }) => (
             <Card key={label} className="p-4 bg-black/40 border-white/5 text-center">
@@ -156,26 +156,26 @@ export default function InvoiceDetail() {
           ))}
         </div>
 
-        {/* 인보이스 정보 */}
+        {/* Invoice Details */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <Card className="p-5 bg-black/40 border-white/5">
             <h3 className="font-display font-semibold mb-4 flex items-center gap-2">
-              <FileText className="w-4 h-4 text-primary" /> 인보이스 정보
+              <FileText className="w-4 h-4 text-primary" /> Invoice Details
             </h3>
-            <InfoRow label="Invoice No" value={inv.invoice_no} />
-            <InfoRow label="예약 참조" value={inv.booking_ref} />
-            <InfoRow label="발행일" value={inv.issued_at ? formatDate(inv.issued_at) : null} />
-            <InfoRow label="통화" value={inv.currency} />
-            <InfoRow label="합계" value={formatCurrency(inv.total_amount)} accent />
+            <InfoRow label="Invoice No"       value={inv.invoice_no} />
+            <InfoRow label="Booking Ref"      value={inv.booking_ref} />
+            <InfoRow label="Issue Date"       value={inv.issued_at ? formatDate(inv.issued_at) : null} />
+            <InfoRow label="Currency"         value={inv.currency} />
+            <InfoRow label="Total"            value={formatCurrency(inv.total_amount)} accent />
           </Card>
 
-          {/* 결제 내역 */}
+          {/* Payment History */}
           <Card className="p-5 bg-black/40 border-white/5">
             <h3 className="font-display font-semibold mb-4 flex items-center gap-2">
-              <CreditCard className="w-4 h-4 text-primary" /> 결제 내역 ({pays.length}건)
+              <CreditCard className="w-4 h-4 text-primary" /> Payment History ({pays.length})
             </h3>
             {pays.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-6">결제 내역 없음</p>
+              <p className="text-sm text-muted-foreground text-center py-6">No payment records</p>
             ) : (
               pays.map((p) => (
                 <div key={p.id} className="flex justify-between items-center py-2.5 border-b border-white/5 last:border-0 text-sm">
@@ -195,11 +195,11 @@ export default function InvoiceDetail() {
           </Card>
         </div>
 
-        {/* Folio 항목 */}
+        {/* Folio Items */}
         {inv.reservation_id && (
           <div>
             <h3 className="font-display font-semibold mb-3 flex items-center gap-2">
-              <Receipt className="w-4 h-4 text-primary" /> Folio 항목
+              <Receipt className="w-4 h-4 text-primary" /> Folio Items
             </h3>
             <FolioView
               reservationId={inv.reservation_id}

@@ -32,12 +32,12 @@ const fmtTime = (v: string | null) => {
 
 const StatusChip: React.FC<{ status: string }> = ({ status }) => {
   const map: Record<string, { bg: string; color: string; label: string }> = {
-    present:     { bg: "rgba(34,197,94,0.15)",  color: "#4ade80", label: "출근" },
-    absent:      { bg: "rgba(239,68,68,0.15)",   color: "#f87171", label: "결근" },
-    late:        { bg: "rgba(234,179,8,0.15)",   color: "#facc15", label: "지각" },
-    half_day:    { bg: "rgba(249,115,22,0.15)",  color: "#fb923c", label: "반차" },
-    day_off:     { bg: "rgba(156,163,175,0.15)", color: "#9ca3af", label: "휴무" },
-    early_leave: { bg: "rgba(249,115,22,0.15)",  color: "#fb923c", label: "조퇴" },
+    present:     { bg: "rgba(34,197,94,0.15)",  color: "#4ade80", label: "Present" },
+    absent:      { bg: "rgba(239,68,68,0.15)",   color: "#f87171", label: "Absent" },
+    late:        { bg: "rgba(234,179,8,0.15)",   color: "#facc15", label: "Late" },
+    half_day:    { bg: "rgba(249,115,22,0.15)",  color: "#fb923c", label: "Half Day" },
+    day_off:     { bg: "rgba(156,163,175,0.15)", color: "#9ca3af", label: "Day Off" },
+    early_leave: { bg: "rgba(249,115,22,0.15)",  color: "#fb923c", label: "Early Leave" },
   };
   const s = map[status] ?? { bg: "rgba(156,163,175,0.15)", color: "#9ca3af", label: status };
   return (
@@ -90,7 +90,7 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({ staffId }) => {
       setSummary(sumJson.data ?? null);
       setToday(todJson.data ?? null);
     } catch {
-      setErr("데이터 로드 실패");
+      setErr("Failed to load data");
     } finally {
       setLoading(false);
     }
@@ -109,7 +109,7 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({ staffId }) => {
         body: JSON.stringify({ staff_id: staffId }),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error ?? "출근 처리 실패");
+      if (!r.ok) throw new Error(d.error ?? "Clock-in failed");
       load();
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
@@ -124,21 +124,21 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({ staffId }) => {
         body: "{}",
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error ?? "퇴근 처리 실패");
+      if (!r.ok) throw new Error(d.error ?? "Clock-out failed");
       load();
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
 
   if (loading) return (
     <div style={{ padding: 40, textAlign: "center", color: "rgba(255,255,255,0.4)" }}>
-      로딩 중...
+      Loading...
     </div>
   );
 
   return (
     <div style={{ padding: "4px 0" }}>
 
-      {/* 오늘 출퇴근 */}
+      {/* Today's Attendance */}
       <div style={{
         display: "flex", alignItems: "center", gap: 12,
         background: "rgba(255,255,255,0.04)",
@@ -147,15 +147,15 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({ staffId }) => {
       }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.9)", marginBottom: 4 }}>
-            오늘의 출퇴근
+            Today&apos;s Attendance
           </div>
           {today ? (
             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>
-              출근: {fmtTime(today.clock_in)}
-              {today.clock_out && <> · 퇴근: {fmtTime(today.clock_out)} · {today.hours_worked ?? 0}시간</>}
+              In: {fmtTime(today.clock_in)}
+              {today.clock_out && <> · Out: {fmtTime(today.clock_out)} · {today.hours_worked ?? 0}h</>}
             </div>
           ) : (
-            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>오늘 출퇴근 기록이 없습니다</div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>No record for today</div>
           )}
         </div>
         {err && <span style={{ fontSize: 12, color: "#f87171" }}>⚠ {err}</span>}
@@ -164,7 +164,7 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({ staffId }) => {
             padding: "9px 18px", background: "#D1AE38", color: "#fff",
             border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600,
             cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.6 : 1,
-          }}>{busy ? "처리 중..." : "▶ 출근"}</button>
+          }}>{busy ? "Processing..." : "▶ Clock In"}</button>
         )}
         {isClockedIn && (
           <button onClick={clockOut} disabled={busy} style={{
@@ -173,24 +173,24 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({ staffId }) => {
             border: "1px solid rgba(255,255,255,0.15)",
             borderRadius: 8, fontSize: 13, fontWeight: 600,
             cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.6 : 1,
-          }}>{busy ? "처리 중..." : "■ 퇴근"}</button>
+          }}>{busy ? "Processing..." : "■ Clock Out"}</button>
         )}
         {today && !isClockedIn && (
-          <span style={{ fontSize: 12, color: "#4ade80", fontWeight: 600 }}>✓ 퇴근 완료</span>
+          <span style={{ fontSize: 12, color: "#4ade80", fontWeight: 600 }}>✓ Clocked Out</span>
         )}
       </div>
 
-      {/* 요약 카드 + 월 선택 */}
+      {/* Summary Cards + Month picker */}
       <div style={{
         display: "flex", alignItems: "center",
         justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12,
       }}>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <SCard label="출근일" value={`${summary?.present_days ?? 0}일`} />
-          <SCard label="근무시간" value={`${summary?.total_hours ?? 0}h`} accent="#D1AE38" />
-          <SCard label="지각" value={`${summary?.late_days ?? 0}일`}
+          <SCard label="Present Days" value={`${summary?.present_days ?? 0}d`} />
+          <SCard label="Hours Worked" value={`${summary?.total_hours ?? 0}h`} accent="#D1AE38" />
+          <SCard label="Late" value={`${summary?.late_days ?? 0}d`}
             accent={(summary?.late_days ?? 0) > 0 ? "#f87171" : undefined} />
-          <SCard label="결근" value={`${summary?.absent_days ?? 0}일`}
+          <SCard label="Absent" value={`${summary?.absent_days ?? 0}d`}
             accent={(summary?.absent_days ?? 0) > 0 ? "#f87171" : undefined} />
         </div>
         <input
@@ -209,12 +209,12 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({ staffId }) => {
         />
       </div>
 
-      {/* 기록 테이블 */}
+      {/* Records Table */}
       <div style={{ overflowX: "auto", borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)" }}>
         <table style={{ width: "100%", minWidth: 560, borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "rgba(255,255,255,0.04)" }}>
-              {["날짜", "출근", "퇴근", "근무시간", "지각(분)", "상태", "메모"].map(h => (
+              {["Date", "In", "Out", "Hours", "Late (min)", "Status", "Notes"].map(h => (
                 <th key={h} style={{
                   padding: "10px 14px", fontSize: 11,
                   color: "rgba(255,255,255,0.4)",
@@ -231,7 +231,7 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({ staffId }) => {
                 <td colSpan={7} style={{
                   padding: 32, textAlign: "center",
                   color: "rgba(255,255,255,0.3)", fontSize: 13,
-                }}>기록 없음</td>
+                }}>No records</td>
               </tr>
             ) : records.map(r => (
               <tr key={r.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
@@ -243,7 +243,7 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({ staffId }) => {
                   {r.clock_out
                     ? fmtTime(r.clock_out)
                     : r.status === "present"
-                      ? <span style={{ color: "#D1AE38", fontWeight: 600 }}>근무 중</span>
+                      ? <span style={{ color: "#D1AE38", fontWeight: 600 }}>On Shift</span>
                       : "—"
                   }
                 </td>

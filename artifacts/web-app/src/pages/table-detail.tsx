@@ -17,8 +17,8 @@ function DetailRow({ label, value }: { label: string; value?: string | null | nu
 }
 
 const TAB_ITEMS: [string, string][] = [
-  ["info", "기본 정보"],
-  ["availability", "가용성 관리"],
+  ["info", "Info"],
+  ["availability", "Availability"],
 ];
 
 export default function TableDetail() {
@@ -53,9 +53,9 @@ export default function TableDetail() {
     return (
       <DashboardLayout>
         <div className="p-6 text-center py-20 text-muted-foreground">
-          <p>테이블을 찾을 수 없습니다. (/api/tables/:id 엔드포인트 미구현)</p>
+          <p>Table not found.</p>
           <Button variant="ghost" onClick={() => navigate("/tables")} className="mt-4 gap-2">
-            <ArrowLeft className="w-4 h-4" /> 목록으로
+            <ArrowLeft className="w-4 h-4" /> Back to list
           </Button>
         </div>
       </DashboardLayout>
@@ -73,12 +73,12 @@ export default function TableDetail() {
           </button>
           <div className="flex items-center gap-3">
             <LayoutGrid className="w-5 h-5 text-primary" />
-            <h1 className="text-2xl font-display font-bold">{String(table.name ?? "테이블")}</h1>
+            <h1 className="text-2xl font-display font-bold">{String(table.name ?? "Table")}</h1>
           </div>
         </div>
 
         {/* Tabs */}
-        <div style={{ display: "flex", gap: 4, borderBottom: "2px solid #e5e7eb", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 4, borderBottom: "2px solid rgba(255,255,255,0.08)", flexWrap: "wrap" }}>
           {TAB_ITEMS.map(([key, label]) => (
             <button key={key} onClick={() => setActiveTab(key)} style={{
               padding: "10px 18px", background: "none", border: "none",
@@ -94,13 +94,13 @@ export default function TableDetail() {
         {activeTab === "info" && (
           <Card className="p-5 bg-black/40 border-white/5">
             <h3 className="font-display font-semibold mb-4 flex items-center gap-2">
-              <LayoutGrid className="w-4 h-4 text-primary" /> 테이블 정보
+              <LayoutGrid className="w-4 h-4 text-primary" /> Table Info
             </h3>
-            <DetailRow label="테이블명" value={String(table.name ?? "—")} />
-            <DetailRow label="수용 인원" value={table.capacity != null ? `${table.capacity}명` : null} />
-            <DetailRow label="위치" value={String(table.location ?? "—")} />
-            <DetailRow label="상태" value={String(table.status ?? "—")} />
-            {table.notes != null && <DetailRow label="메모" value={String(table.notes)} />}
+            <DetailRow label="Table Name" value={String(table.name ?? "—")} />
+            <DetailRow label="Capacity"   value={table.capacity != null ? `${table.capacity} pax` : null} />
+            <DetailRow label="Location"   value={String(table.location ?? "—")} />
+            <DetailRow label="Status"     value={String(table.status ?? "—")} />
+            {table.notes != null && <DetailRow label="Notes" value={String(table.notes)} />}
           </Card>
         )}
 

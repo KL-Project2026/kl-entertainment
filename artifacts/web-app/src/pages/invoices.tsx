@@ -20,11 +20,11 @@ interface Invoice {
 }
 
 const STATUS_OPTS = [
-  { value: "draft",          label: "초안" },
-  { value: "issued",         label: "발행" },
-  { value: "partially_paid", label: "부분결제" },
-  { value: "paid",           label: "결제완료" },
-  { value: "void",           label: "취소" },
+  { value: "draft",          label: "Draft" },
+  { value: "issued",         label: "Issued" },
+  { value: "partially_paid", label: "Partially Paid" },
+  { value: "paid",           label: "Paid" },
+  { value: "void",           label: "Void" },
 ];
 
 const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
@@ -47,26 +47,26 @@ const COLUMNS: ColumnDef<Record<string, unknown>>[] = [
   },
   {
     key: "booking_ref",
-    label: "예약 Ref",
+    label: "Booking Ref",
     render: (row) => (
       <span className="text-sm text-muted-foreground">{(row.booking_ref as string) || "—"}</span>
     ),
   },
   {
     key: "issued_at",
-    label: "발행일",
+    label: "Issue Date",
     render: (row) => <span className="text-sm">{row.issued_at ? formatDate(row.issued_at as string) : "—"}</span>,
   },
   {
     key: "total_amount",
-    label: "금액",
+    label: "Amount",
     render: (row) => (
       <span className="text-sm font-semibold">{formatCurrency(Number(row.total_amount ?? 0))}</span>
     ),
   },
   {
     key: "status",
-    label: "상태",
+    label: "Status",
     render: (row) => {
       const s = STATUS_STYLE[row.status as string] ?? { bg: "#f3f4f6", color: "#374151" };
       const label = STATUS_OPTS.find(o => o.value === row.status)?.label ?? String(row.status);
@@ -98,8 +98,8 @@ export default function Invoices() {
     <DashboardLayout>
       <div className="p-6">
         <ListPageWrapper
-          title="인보이스"
-          subtitle="예약 인보이스 및 결제 내역"
+          title="Invoices"
+          subtitle="Reservation invoices & payment records"
           data={invoices}
           columns={COLUMNS}
           cardRenderer={(row) => (
@@ -116,20 +116,20 @@ export default function Invoices() {
                   );
                 })()}
               </div>
-              <p className="text-xs text-muted-foreground">{(row.booking_ref as string) || "예약 참조 없음"}</p>
+              <p className="text-xs text-muted-foreground">{(row.booking_ref as string) || "No booking ref"}</p>
               <p className="text-lg font-bold">{formatCurrency(Number(row.total_amount ?? 0))}</p>
-              <p className="text-xs text-muted-foreground">{row.issued_at ? formatDate(row.issued_at as string) : "미발행"}</p>
+              <p className="text-xs text-muted-foreground">{row.issued_at ? formatDate(row.issued_at as string) : "Not issued"}</p>
             </div>
           )}
           filterKey="status"
-          filterLabel="상태"
+          filterLabel="Status"
           filterOptions={STATUS_OPTS}
           searchKeys={["invoice_no", "booking_ref"]}
-          searchPlaceholder="인보이스 번호 / 예약 검색..."
+          searchPlaceholder="Search invoice / booking..."
           isLoading={isLoading}
           onRowClick={(row) => navigate(`/invoices/${(row as { id: string }).id}`)}
           emptyIcon={<Receipt className="w-10 h-10" />}
-          emptyMessage="인보이스가 없습니다"
+          emptyMessage="No invoices found"
         />
       </div>
     </DashboardLayout>

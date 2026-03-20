@@ -22,22 +22,22 @@ const STATUS_OPTS = [
 const COLUMNS: ColumnDef<Record<string, unknown>>[] = [
   {
     key: "name",
-    label: "테이블명",
+    label: "Table Name",
     render: (row) => <span className="font-medium">{row.name as string}</span>,
   },
   {
     key: "capacity",
-    label: "수용 인원",
-    render: (row) => <span className="text-sm text-muted-foreground">{row.capacity != null ? `${row.capacity}명` : "—"}</span>,
+    label: "Capacity",
+    render: (row) => <span className="text-sm text-muted-foreground">{row.capacity != null ? `${row.capacity} pax` : "—"}</span>,
   },
   {
     key: "location",
-    label: "위치",
+    label: "Location",
     render: (row) => <span className="text-sm text-muted-foreground">{(row.location as string) || "—"}</span>,
   },
   {
     key: "status",
-    label: "상태",
+    label: "Status",
     render: (row) => {
       const label = STATUS_OPTS.find(o => o.value === row.status)?.label ?? String(row.status ?? "—");
       return <span className="text-sm">{label}</span>;
@@ -65,8 +65,8 @@ export default function Tables() {
     <DashboardLayout>
       <div className="p-6">
         <ListPageWrapper
-          title="테이블"
-          subtitle="테이블 현황 및 가용성 관리"
+          title="Tables"
+          subtitle="Table status and availability management"
           data={tables}
           columns={COLUMNS}
           cardRenderer={(row) => (
@@ -80,7 +80,7 @@ export default function Tables() {
                 )}
               </div>
               {row.capacity != null && (
-                <p className="text-xs text-muted-foreground">수용: {String(row.capacity)}명</p>
+                <p className="text-xs text-muted-foreground">Cap: {String(row.capacity)} pax</p>
               )}
               {row.location != null && (
                 <p className="text-xs text-muted-foreground">{String(row.location)}</p>
@@ -88,14 +88,14 @@ export default function Tables() {
             </div>
           )}
           filterKey="status"
-          filterLabel="상태"
+          filterLabel="Status"
           filterOptions={STATUS_OPTS}
           searchKeys={["name", "location"]}
-          searchPlaceholder="테이블 검색..."
+          searchPlaceholder="Search tables..."
           isLoading={isLoading}
           onRowClick={(row) => navigate(`/tables/${(row as { id: string }).id}`)}
           emptyIcon={<LayoutGrid className="w-10 h-10" />}
-          emptyMessage="테이블 데이터가 없습니다 (/api/tables 엔드포인트 미구현)"
+          emptyMessage="No tables found"
         />
       </div>
     </DashboardLayout>

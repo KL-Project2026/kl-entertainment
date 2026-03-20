@@ -427,7 +427,7 @@ export default function ReservationDetail() {
 
         {/* ── Tabs ── */}
         <div style={{ display: "flex", gap: 4, borderBottom: "2px solid #e5e7eb", flexWrap: "wrap" }}>
-          {([ ["info", "예약 정보"], ["folio", "Folio (실시간)"] ] as const).map(([key, label]) => (
+          {([ ["info", "Reservation Info"], ["folio", "Folio (Live)"] ] as const).map(([key, label]) => (
             <button key={key} onClick={() => setActiveTab(key)} style={{
               padding: "10px 18px", background: "none", border: "none",
               borderBottom: `2px solid ${activeTab === key ? "#D1AE38" : "transparent"}`,

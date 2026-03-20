@@ -182,7 +182,7 @@ export default function StaffDetail() {
 
         {/* ── Tabs ── */}
         <div style={{ display: "flex", gap: 4, borderBottom: "2px solid #e5e7eb", marginBottom: 24, flexWrap: "wrap" }}>
-          {([ ["info", "기본 정보"], ["attendance", "출퇴근"], ["account", "Account"] ] as const).map(([key, label]) => (
+          {([ ["info", "Profile"], ["attendance", "Attendance"], ["account", "Account"] ] as const).map(([key, label]) => (
             <button key={key} onClick={() => setActiveTab(key)} style={{
               padding: "10px 18px", background: "none", border: "none",
               borderBottom: `2px solid ${activeTab === key ? "#D1AE38" : "transparent"}`,
