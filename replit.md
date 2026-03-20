@@ -66,6 +66,31 @@ The project is structured as a pnpm monorepo using TypeScript, with distinct `ap
 - List pages `onRowClick`: `reservations.tsx`, `staff.tsx`, `agents.tsx`, `shareholders.tsx` all navigate to their respective detail pages on row/card click.
 - All fetch calls in detail pages leverage the global JWT interceptor in App.tsx (no manual auth headers needed).
 
+## Production Database Seeding
+
+The development database full snapshot is stored at:
+`artifacts/api-server/src/scripts/prod-full-seed.sql`
+
+**Automatic (on first deploy):** On every startup, `initProductionDb()` checks if the database has tables. If the database is empty (fresh production deployment), it automatically applies `prod-full-seed.sql` via `psql`. Subsequent startups skip the seed (tables already exist).
+
+**Manual restore (any target):**
+```bash
+TARGET_DATABASE_URL="postgres://..." pnpm --filter @workspace/api-server db:restore
+```
+Skips if target already has tables. To force overwrite, drop the schema first:
+```bash
+psql "$TARGET_DATABASE_URL" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+```
+
+**Re-snapshot:** To regenerate `prod-full-seed.sql` from the current dev DB:
+```bash
+pg_dump "$DATABASE_URL" --no-owner --no-acl --no-comments --schema=public -f artifacts/api-server/src/scripts/full-db-dump.sql
+sed -e '/^\\restrict/d' -e 's/^CREATE SCHEMA public;$/CREATE SCHEMA IF NOT EXISTS public;/' \
+    -e 's/^COMMENT ON SCHEMA public IS/-- COMMENT ON SCHEMA public IS/' \
+    artifacts/api-server/src/scripts/full-db-dump.sql > artifacts/api-server/src/scripts/prod-full-seed.sql
+rm artifacts/api-server/src/scripts/full-db-dump.sql
+```
+
 # External Dependencies
 
 -   **Database:** PostgreSQL (with Drizzle ORM)

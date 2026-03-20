@@ -6,6 +6,7 @@ import { initInvestorSocket } from "./services/investor-socket";
 import { refreshFxRates } from "./services/currency-service";
 import { initTelegramBot } from "./services/telegram-service";
 import { seedDefaultData } from "./services/seed-service";
+import { initProductionDb } from "./scripts/init-production-db";
 
 const rawPort = process.env["PORT"];
 
@@ -31,7 +32,13 @@ const io = new SocketServer(httpServer, {
 initRoomSocket(io);
 initInvestorSocket(io);
 
-seedDefaultData().catch((err) => console.error("[startup] Seed failed:", err));
+initProductionDb()
+  .then(() =>
+    seedDefaultData().catch((err) =>
+      console.error("[startup] Seed failed:", err)
+    )
+  )
+  .catch((err) => console.error("[startup] DB init failed:", err));
 refreshFxRates().catch((err) => console.error("[startup] FX refresh failed:", err));
 setInterval(() => {
   refreshFxRates().catch((err) => console.error("[fx] Periodic refresh failed:", err));

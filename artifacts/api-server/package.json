@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "NODE_ENV=development tsx ./src/index.ts",
     "build": "tsx ./build.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "db:restore": "tsx ./src/scripts/restore-to-target.ts"
   },
   "dependencies": {
     "@types/node-cron": "^3.0.11",
