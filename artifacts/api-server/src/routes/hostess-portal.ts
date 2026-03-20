@@ -51,7 +51,7 @@ router.get(
          JOIN reservations r  ON r.id  = rh.reservation_id
          LEFT JOIN rooms    rm ON rm.id = r.room_id
          WHERE rh.hostess_id = $1
-           AND r.deleted_at IS NULL
+           AND r.status != 'cancelled'
          ORDER BY rh.assigned_at DESC
          LIMIT 50`,
         [targetId]
