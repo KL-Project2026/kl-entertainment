@@ -14,7 +14,10 @@
     "branches": "Branches",
     "products": "Product Catalog",
     "customers": "Customers",
-    "settings": "Settings"
+    "settings": "Settings",
+    "invoices": "Invoices",
+    "tables": "Tables",
+    "daily_report": "Daily Report"
   },
   "auth": {
     "sign_in": "Sign In",

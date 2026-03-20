@@ -1,0 +1,940 @@
+# KL Project — 통합 테스트 & 자동 수정 프롬프트
+> P0~P6 완료 후 실행하세요.
+> 발견된 오류는 자동 수정하고, UI/UX 누락 항목을 전수 검사합니다.
+
+---
+
+## 🔒 테스트 안전 규칙
+
+```
+[T-1] 오류 수정 시 기존 코드 삭제 금지 — 추가/수정만
+[T-2] 파일 수정 전 전체 내용 읽기
+[T-3] 수정 후 저장 전 JSX/SQL 문법 검증
+[T-4] 각 수정 후 앱 실행 상태 확인
+[T-5] 수정 불가한 오류는 "수동 확인 필요"로 표기 후 계속 진행
+[T-6] 테스트 데이터 삽입은 ON CONFLICT DO NOTHING 사용
+```
+
+---
+
+## 📋 전체 테스트 순서
+
+```
+PHASE T1  DB 상태 검증
+PHASE T2  API 엔드포인트 검증
+PHASE T3  프론트엔드 파일 검증
+PHASE T4  UI/UX 기능 전수 검사
+PHASE T5  테스트 데이터 삽입
+PHASE T6  실제 워크플로우 E2E 테스트
+PHASE T7  자동 수정 실행
+PHASE T8  최종 결과 보고
+```
+
+---
+
+## PHASE T1 — DB 상태 검증
+
+아래 SQL을 모두 실행하고 결과를 기록하세요.
+
+### T1-A. 테이블 존재 확인
+
+```sql
+SELECT table_name,
+  (SELECT COUNT(*) FROM information_schema.columns
+   WHERE table_name = t.table_name) AS column_count
+FROM information_schema.tables t
+WHERE table_schema = 'public'
+  AND table_name IN (
+    'reservations','guests','rooms','tables','users',
+    'hostesses','agents','folio_entries','invoices',
+    'payments','receipts','hostess_sessions',
+    'hostess_payouts','agent_commissions','expenses',
+    'attendance','availability_blocks','staff_schedules'
+  )
+ORDER BY table_name;
+```
+
+**기대 결과**: 18개 테이블 모두 표시
+**오류 처리**: 누락된 테이블은 P1 SQL을 즉시 재실행
+
+---
+
+### T1-B. 필수 컬럼 확인
+
+```sql
+-- reservations: room_id nullable 여부
+SELECT column_name, is_nullable, data_type
+FROM information_schema.columns
+WHERE table_name = 'reservations'
+  AND column_name IN ('room_id','table_id','assigned_at','assigned_by');
+
+-- attendance: 필수 컬럼 확인
+SELECT column_name, data_type
+FROM information_schema.columns
+WHERE table_name = 'attendance'
+ORDER BY ordinal_position;
+
+-- availability_blocks: 인덱스 확인
+SELECT indexname FROM pg_indexes
+WHERE tablename = 'availability_blocks';
+```
+
+**오류 처리**:
+- `room_id`가 NOT NULL이면: `ALTER TABLE reservations ALTER COLUMN room_id DROP NOT NULL;`
+- 누락 컬럼이 있으면: `ALTER TABLE [table] ADD COLUMN IF NOT EXISTS [col] [type];`
+
+---
+
+### T1-C. 트리거 및 함수 확인
+
+```sql
+-- 트리거 확인
+SELECT trigger_name, event_object_table, action_timing, event_manipulation
+FROM information_schema.triggers
+WHERE trigger_schema = 'public';
+
+-- 함수 확인
+SELECT routine_name, routine_type
+FROM information_schema.routines
+WHERE routine_schema = 'public'
+  AND routine_name IN (
+    'calc_hours_worked',
+    'generate_invoice_no',
+    'generate_receipt_no'
+  );
+```
+
+**오류 처리**: 없는 함수/트리거는 P1 SQL 재실행
+
+---
+
+### T1-D. 테스트 데이터 최소 확인
+
+```sql
+SELECT 'reservations'    AS tbl, COUNT(*) AS cnt FROM reservations
+UNION ALL
+SELECT 'guests',          COUNT(*) FROM guests
+UNION ALL
+SELECT 'rooms',           COUNT(*) FROM rooms
+UNION ALL
+SELECT 'users',           COUNT(*) FROM users
+UNION ALL
+SELECT 'hostesses',       COUNT(*) FROM hostesses
+UNION ALL
+SELECT 'agents',          COUNT(*) FROM agents;
+```
+
+**기대**: 각 테이블에 1건 이상
+**0건이면**: T5 (테스트 데이터 삽입)로 이동
+
+---
+
+## PHASE T2 — API 엔드포인트 검증
+
+백엔드 라우터 파일을 읽고 아래 엔드포인트 존재 여부를 확인합니다.
+
+### T2-A. 출퇴근 API 체크리스트
+
+```
+□ GET  /api/attendance/staff/:id       — 있음 / 없음
+□ GET  /api/attendance/hostess/:id     — 있음 / 없음
+□ GET  /api/attendance/summary/staff/:id  — 있음 / 없음
+□ GET  /api/attendance/summary/hostess/:id — 있음 / 없음
+□ POST /api/attendance/clock-in        — 있음 / 없음
+□ PUT  /api/attendance/:id/clock-out   — 있음 / 없음
+```
+
+### T2-B. 가용성 API 체크리스트
+
+```
+□ GET  /api/availability/rooms         — 있음 / 없음
+□ GET  /api/availability/blocks        — 있음 / 없음
+□ POST /api/availability/check         — 있음 / 없음
+□ POST /api/availability/block         — 있음 / 없음
+□ DELETE /api/availability/block/:id   — 있음 / 없음
+□ PUT  /api/reservations/:id/assign-room — 있음 / 없음
+```
+
+### T2-C. 회계 API 체크리스트
+
+```
+□ GET  /api/folio/:reservationId       — 있음 / 없음
+□ POST /api/folio/entry                — 있음 / 없음
+□ GET  /api/invoices                   — 있음 / 없음
+□ GET  /api/invoices/:id               — 있음 / 없음
+□ GET  /api/invoices/guest/:guestId    — 있음 / 없음
+□ POST /api/invoices                   — 있음 / 없음
+□ POST /api/payments                   — 있음 / 없음
+□ GET  /api/accounts/guest/:id         — 있음 / 없음
+□ GET  /api/accounts/hostess/:id       — 있음 / 없음
+□ GET  /api/accounts/agent/:id         — 있음 / 없음
+□ GET  /api/accounts/daily             — 있음 / 없음
+□ GET  /api/hostess-sessions/hostess/:id — 있음 / 없음
+□ GET  /api/hostess-payouts/hostess/:id  — 있음 / 없음
+□ GET  /api/agent-commissions/agent/:id  — 있음 / 없음
+```
+
+**오류 처리**: 없는 API는 P2 해당 그룹 코드를 라우터 파일 끝에 즉시 추가
+
+---
+
+### T2-D. API 응답 테스트
+
+각 API를 실제로 호출하여 응답 확인:
+
+```javascript
+// 백엔드 테스트 스크립트 — 임시 파일로 실행
+// test_api.js (테스트 후 삭제)
+
+const BASE = 'http://localhost:3000'; // ⚠️ 실제 포트로 교체
+
+const tests = [
+  { method:'GET',  url:'/api/invoices',            expect: 200 },
+  { method:'GET',  url:'/api/accounts/daily',       expect: 200 },
+  { method:'GET',  url:'/api/availability/rooms?start_dt=2025-01-01T18:00:00&end_dt=2025-01-01T22:00:00', expect: 200 },
+  { method:'POST', url:'/api/availability/check',
+    body:{ entity_type:'room', entity_id:1,
+           start_dt:'2025-06-01T18:00:00', end_dt:'2025-06-01T22:00:00' },
+    expect: 200 },
+];
+
+async function runTests() {
+  console.log('=== API 응답 테스트 시작 ===');
+  for (const t of tests) {
+    try {
+      const opts = {
+        method: t.method,
+        headers: { 'Content-Type': 'application/json' },
+      };
+      if (t.body) opts.body = JSON.stringify(t.body);
+      const res = await fetch(BASE + t.url, opts);
+      const status = res.status === t.expect ? '✅' : '❌';
+      console.log(`${status} ${t.method} ${t.url} → ${res.status}`);
+    } catch (err) {
+      console.log(`❌ ${t.method} ${t.url} → ERROR: ${err.message}`);
+    }
+  }
+  console.log('=== 완료 ===');
+}
+
+runTests();
+```
+
+---
+
+## PHASE T3 — 프론트엔드 파일 검증
+
+### T3-A. 공통 컴포넌트 파일 존재 확인
+
+```
+아래 파일 경로를 확인하고 각각 존재 여부 체크:
+
+□ src/utils/constants.js
+  → HOVER_BG, BRAND_COLOR export 확인
+
+□ src/utils/formatters.js
+  → formatDate, formatCurrency, display export 확인
+
+□ src/utils/useHoverRow.js
+  → useHoverRow hook export 확인
+
+□ src/components/shared/StatusBadge.jsx
+  → StatusBadge component export 확인
+
+□ src/components/shared/AttendanceTab.jsx
+  → AttendanceTab component export 확인
+
+□ src/components/shared/AvailabilityCalendar.jsx
+  → AvailabilityCalendar component export 확인
+
+□ src/components/shared/AccountTab.jsx
+  → GuestAccountTab, HostessAccountTab,
+     AgentAccountTab, StaffAccountTab,
+     RoomAccountTab 모두 export 확인
+
+□ src/components/shared/FolioView.jsx
+  → FolioView component export 확인
+```
+
+**오류 처리**: 파일이 없거나 export가 누락된 경우 P3 해당 파일 즉시 재생성
+
+---
+
+### T3-B. import 경로 오류 스캔
+
+아래 파일들을 읽고 import 경로가 실제 파일과 일치하는지 확인:
+
+```
+확인 대상 파일:
+□ StaffDetail.jsx     — AttendanceTab, StaffAccountTab import
+□ HostessDetail.jsx   — AttendanceTab, HostessAccountTab import
+□ RoomDetail.jsx      — AvailabilityCalendar, RoomAccountTab import
+□ GuestDetail.jsx     — GuestAccountTab import
+□ AgentDetail.jsx     — AgentAccountTab import
+□ ReservationDetail.jsx — FolioView import
+□ 각 리스트 페이지   — useHoverRow import
+```
+
+**오류 처리**: 경로가 틀린 import는 즉시 실제 경로로 수정
+
+---
+
+### T3-C. 탭 구현 확인
+
+각 상세 페이지 파일을 읽고 탭이 올바르게 구현되었는지 확인:
+
+```
+StaffDetail.jsx:
+  □ activeTab state 선언 여부
+  □ 탭 버튼: '기본 정보', '출퇴근', 'Account'
+  □ AttendanceTab 렌더링 조건부 표시
+  □ StaffAccountTab 렌더링 조건부 표시
+
+HostessDetail.jsx:
+  □ activeTab state 선언 여부
+  □ 탭 버튼: '기본 정보', '출퇴근', 'Account' (최소)
+  □ AttendanceTab 렌더링
+  □ HostessAccountTab 렌더링
+
+RoomDetail.jsx:
+  □ activeTab state 선언 여부
+  □ 탭 버튼: '기본 정보', '가용성 관리', 'Account'
+  □ AvailabilityCalendar 렌더링
+  □ RoomAccountTab 렌더링
+
+GuestDetail.jsx:
+  □ GuestAccountTab 렌더링
+
+AgentDetail.jsx:
+  □ AgentAccountTab 렌더링
+
+ReservationDetail.jsx:
+  □ FolioView 렌더링
+```
+
+---
+
+### T3-D. Edit 기능 확인
+
+각 상세 페이지에서 Edit 기능 구현 여부 확인:
+
+```
+□ isEditMode state
+□ editData state
+□ isSaving state
+□ handleEditStart 함수
+□ handleEditCancel 함수
+□ handleFieldChange 함수
+□ handleSave 함수
+□ 헤더에 "편집" 버튼 (배경색 #D1AE38)
+□ Edit 모드에서 "저장" / "취소" 버튼
+□ EditField 헬퍼 컴포넌트
+```
+
+---
+
+### T3-E. Hover + Click 구현 확인
+
+각 리스트 페이지에서:
+
+```
+□ useHoverRow import
+□ hoverProps 사용
+□ rowStyle 또는 cardStyle 사용
+□ onClick → navigate 연결
+□ HOVER_BG = rgba(209, 174, 56, 0.15) 사용 여부
+□ 글자색(color) 변경 없음
+```
+
+---
+
+## PHASE T4 — UI/UX 전수 검사
+
+### T4-A. 리스트 페이지 공통 UI 체크
+
+각 리스트 페이지 파일을 읽고 아래 항목 확인:
+
+```
+검사 항목 (각 리스트 페이지마다):
+
+① 로딩 상태 (Loading spinner / skeleton)
+  □ 있음 / ❌ 없음 → 추가 필요
+
+② 빈 상태 (Empty State)
+  □ 있음 / ❌ 없음 → 추가 필요
+
+③ 검색 입력 (Search Input)
+  □ 있음 / ❌ 없음 → 추가 필요
+
+④ 테이블 수평 스크롤 (overflow-x: auto)
+  □ 있음 / ❌ 없음 → 추가 필요
+
+⑤ 날짜 포맷 (DD MMM YYYY, ISO 문자열 노출 금지)
+  □ 적용됨 / ❌ 미적용 → 수정 필요
+
+⑥ 통화 포맷 (Intl.NumberFormat, 숫자만 노출 금지)
+  □ 적용됨 / ❌ 미적용 → 수정 필요
+
+⑦ 상태 뱃지 (StatusBadge 컴포넌트 사용)
+  □ 적용됨 / ❌ 텍스트만 → 수정 필요
+
+⑧ 컬럼 헤더 (uppercase, 적절한 너비)
+  □ 적용됨 / ❌ 미적용
+
+⑨ 행 구분선 (border-bottom)
+  □ 있음 / ❌ 없음
+```
+
+---
+
+### T4-B. 누락된 UI 요소 자동 추가 패턴
+
+T4-A에서 발견된 누락 항목을 아래 코드로 즉시 추가합니다:
+
+**① 로딩 상태 추가**
+```jsx
+// 기존 데이터 페칭 로직 아래, return 앞에 추가
+if (loading) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: '80px 24px', color: '#9ca3af', fontSize: 14,
+    }}>
+      <div style={{
+        width: 32, height: 32, border: '3px solid #e5e7eb',
+        borderTopColor: '#D1AE38', borderRadius: '50%',
+        animation: 'spin 0.8s linear infinite',
+        marginRight: 12,
+      }} />
+      로딩 중...
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+```
+
+**② 빈 상태 추가**
+```jsx
+// loading 체크 아래에 추가
+if (!loading && (!data || data.length === 0)) {
+  return (
+    <div style={{
+      textAlign: 'center', padding: '80px 24px',
+    }}>
+      <div style={{ fontSize: 40, marginBottom: 16 }}>📭</div>
+      <p style={{ color: '#6b7280', fontSize: 15, marginBottom: 20 }}>
+        데이터가 없습니다.
+      </p>
+    </div>
+  );
+}
+```
+
+**③ 검색 입력 추가**
+```jsx
+// 컴포넌트 내 state 추가
+const [search, setSearch] = useState('');
+
+// 필터링 로직 (기존 data 변수 아래에 추가)
+const filtered = (data || []).filter(item =>
+  Object.values(item).some(val =>
+    String(val || '').toLowerCase().includes(search.toLowerCase())
+  )
+);
+
+// 테이블 위에 추가
+<div style={{ marginBottom: 16, display: 'flex', gap: 12, alignItems: 'center' }}>
+  <div style={{ position: 'relative' }}>
+    <span style={{
+      position: 'absolute', left: 10, top: '50%',
+      transform: 'translateY(-50%)', color: '#9ca3af', fontSize: 14,
+    }}>🔍</span>
+    <input
+      type="text"
+      value={search}
+      onChange={e => setSearch(e.target.value)}
+      placeholder="검색..."
+      style={{
+        paddingLeft: 32, paddingRight: 12, paddingTop: 8, paddingBottom: 8,
+        border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14,
+        outline: 'none', width: 240, color: '#111827', background: '#fff',
+      }}
+      onFocus={e => e.target.style.borderColor = '#D1AE38'}
+      onBlur={e => e.target.style.borderColor = '#e5e7eb'}
+    />
+  </div>
+  <span style={{ fontSize: 13, color: '#9ca3af' }}>
+    {filtered.length}건
+  </span>
+</div>
+
+// 렌더링 시 data 대신 filtered 사용
+```
+
+**④ 테이블 수평 스크롤**
+```jsx
+// 기존 <table> 태그를 아래로 감싸기
+<div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 10, border: '1px solid #e5e7eb' }}>
+  <table style={{ minWidth: 800, width: '100%', borderCollapse: 'collapse' }}>
+    {/* 기존 내용 */}
+  </table>
+</div>
+```
+
+**⑤ 날짜 포맷 수정**
+```jsx
+// 파일 상단에 추가 (이미 있으면 SKIP)
+const fmtDate = (v) => {
+  if (!v) return '—';
+  try {
+    return new Date(v).toLocaleDateString('th-TH', {
+      day: '2-digit', month: 'short', year: 'numeric',
+    });
+  } catch { return String(v); }
+};
+
+// ISO 문자열이 직접 렌더링되는 부분을 교체:
+// BEFORE: {item.created_at}
+// AFTER:  {fmtDate(item.created_at)}
+```
+
+**⑥ 통화 포맷 수정**
+```jsx
+const fmtCurrency = (amount, currency = 'THB') => {
+  if (amount == null) return '—';
+  try {
+    return new Intl.NumberFormat('th-TH', {
+      style: 'currency', currency,
+      minimumFractionDigits: 0, maximumFractionDigits: 0,
+    }).format(amount);
+  } catch { return `${currency} ${Number(amount).toFixed(0)}`; }
+};
+```
+
+**⑦ 상태 뱃지 적용**
+```jsx
+// import 추가 (없으면)
+import { StatusBadge } from '../components/shared/StatusBadge';
+
+// BEFORE: <td>{item.status}</td>
+// AFTER:  <td><StatusBadge status={item.status} /></td>
+```
+
+---
+
+### T4-C. 상세 페이지 공통 UI 체크
+
+각 상세 페이지 파일을 읽고:
+
+```
+① 뒤로가기 버튼
+  □ 있음 / ❌ 없음 → navigate(-1) 버튼 추가
+
+② 제목 (H1 또는 큰 텍스트)
+  □ 있음 / ❌ 없음
+
+③ 상태 뱃지 (StatusBadge)
+  □ 있음 / ❌ 없음
+
+④ 필드 레이블 스타일 (uppercase, small gray)
+  □ 있음 / ❌ 없음
+
+⑤ null/undefined 값 처리 ('—' 표시)
+  □ 있음 / ❌ 미처리 → display() 함수 적용
+
+⑥ 탭 버튼 활성 색상 (#D1AE38)
+  □ 있음 / ❌ 없음
+
+⑦ Edit 버튼 (#D1AE38 배경)
+  □ 있음 / ❌ 없음
+
+⑧ 모바일 반응형 (flex-wrap 또는 grid)
+  □ 있음 / ❌ 없음
+```
+
+---
+
+### T4-D. Room Board 전용 체크
+
+```
+RoomBoard.jsx 파일을 읽고:
+
+□ 각 룸 셀에 hover 효과 적용 여부
+□ 룸 셀 클릭 → /rooms/:id 이동 여부
+□ 룸 상태별 색상 구분 여부:
+   - 가용 (available)  → 초록 계열
+   - 예약됨 (reserved) → 파란 계열
+   - 사용중 (occupied) → 빨간 계열
+   - 점검 (maintenance) → 노란 계열
+□ 실시간 새로고침 버튼 여부
+□ 현재 시간 표시 여부
+```
+
+---
+
+### T4-E. POS 페이지 체크
+
+```
+POS 관련 파일을 읽고:
+
+□ 주문 목록(Orders) 페이지 존재 여부
+  → 없으면 최소 구조로 생성
+
+□ POS 아이템 클릭 시 상세/주문 추가 동작 여부
+
+□ 주문 완료 후 Folio 연동 여부
+  → /api/folio/entry POST 호출 확인
+
+□ 결제 처리 연동 여부
+  → /api/payments POST 호출 확인
+```
+
+---
+
+### T4-F. 네비게이션 메뉴 체크
+
+네비게이션/사이드바 파일을 읽고:
+
+```
+□ 인보이스 메뉴 항목 존재 여부
+  → 없으면 추가: { label: '인보이스', path: '/invoices' }
+
+□ 일일 리포트 메뉴 항목 여부
+  → 없으면 추가: { label: '일일 리포트', path: '/reports/daily' }
+
+□ 출퇴근 현황 메뉴 항목 여부
+  → 없으면 추가: { label: '출퇴근', path: '/attendance' }
+
+□ 테이블 관리 메뉴 항목 여부 (Tables 테이블이 있는 경우)
+  → 없으면 추가: { label: '테이블', path: '/tables' }
+```
+
+**누락 메뉴 추가 패턴:**
+```jsx
+// 네비게이션 파일을 읽고 기존 메뉴 배열 끝에 추가
+// 기존 메뉴 항목 절대 삭제/수정하지 말 것
+
+// 예시 (실제 네비게이션 구조에 맞게 조정):
+{ label: '인보이스', path: '/invoices', icon: '🧾' },
+{ label: '출퇴근',   path: '/attendance', icon: '🕐' },
+{ label: '일일 리포트', path: '/reports/daily', icon: '📊' },
+```
+
+---
+
+## PHASE T5 — 테스트 데이터 삽입
+
+T1-D에서 데이터가 부족한 경우 아래 SQL을 실행합니다.
+**이미 데이터가 있는 테이블은 SKIP합니다.**
+
+### T5-A. 기본 테스트 데이터
+
+```sql
+-- ⚠️ 실제 테이블 컬럼명에 맞게 수정 후 실행
+-- ON CONFLICT DO NOTHING으로 중복 삽입 방지
+
+-- 출퇴근 테스트 데이터 (staff_id=1 기준)
+INSERT INTO attendance
+  (person_type, staff_id, work_date, clock_in, clock_out, status, hours_worked)
+VALUES
+  ('staff', 1, CURRENT_DATE,           NOW() - INTERVAL '8 hours', NOW(), 'present', 8.00),
+  ('staff', 1, CURRENT_DATE - 1,       NOW() - INTERVAL '32 hours', NOW() - INTERVAL '24 hours', 'present', 8.00),
+  ('staff', 1, CURRENT_DATE - 2,       NULL, NULL, 'absent', NULL),
+  ('staff', 1, CURRENT_DATE - 3,       NOW() - INTERVAL '56 hours', NOW() - INTERVAL '48 hours', 'late', 7.50),
+  ('staff', 1, CURRENT_DATE - 4,       NOW() - INTERVAL '80 hours', NOW() - INTERVAL '72 hours', 'present', 8.00)
+ON CONFLICT (person_type, staff_id, hostess_id, work_date) DO NOTHING;
+
+-- 호스티스 출퇴근 (hostess_id=1 기준 — ID 확인 후 조정)
+INSERT INTO attendance
+  (person_type, hostess_id, work_date, clock_in, clock_out, status, hours_worked)
+VALUES
+  ('hostess', 1, CURRENT_DATE,         NOW() - INTERVAL '6 hours', NULL, 'present', NULL),
+  ('hostess', 1, CURRENT_DATE - 1,     NOW() - INTERVAL '30 hours', NOW() - INTERVAL '24 hours', 'present', 6.00),
+  ('hostess', 1, CURRENT_DATE - 2,     NOW() - INTERVAL '54 hours', NOW() - INTERVAL '48 hours', 'present', 6.00)
+ON CONFLICT (person_type, staff_id, hostess_id, work_date) DO NOTHING;
+
+-- 가용성 테스트 (room_id=1 기준 — ID 확인 후 조정)
+INSERT INTO availability_blocks
+  (entity_type, entity_id, block_type, start_dt, end_dt, notes)
+VALUES
+  ('room', 1, 'maintenance', NOW()::date + INTERVAL '10 hours', NOW()::date + INTERVAL '12 hours', '정기 청소'),
+  ('room', 1, 'closed', NOW()::date + INTERVAL '26 hours', NOW()::date + INTERVAL '28 hours', '영업 종료')
+ON CONFLICT DO NOTHING;
+
+-- Folio 테스트 (reservation_id=1 기준 — ID 확인 후 조정)
+INSERT INTO folio_entries
+  (reservation_id, entry_type, description, quantity, unit_price, amount, currency)
+VALUES
+  (1, 'room_charge', '룸 기본 요금 (2시간)', 2, 500.00, 1000.00, 'THB'),
+  (1, 'pos_item', '음료 (맥주 2병)', 2, 200.00, 400.00, 'THB'),
+  (1, 'hostess_charge', '호스티스 지명 요금 (2시간)', 2, 800.00, 1600.00, 'THB'),
+  (1, 'tax', 'VAT 7%', 1, 210.00, 210.00, 'THB')
+ON CONFLICT DO NOTHING;
+```
+
+### T5-B. 인보이스 테스트 데이터
+
+```sql
+-- reservation_id=1, guest_id=1 기준 — 실제 ID로 조정
+DO $$
+DECLARE v_no VARCHAR;
+BEGIN
+  SELECT generate_invoice_no() INTO v_no;
+  INSERT INTO invoices
+    (invoice_no, reservation_id, guest_id,
+     subtotal, tax_amount, total_amount, currency, status, issued_at)
+  VALUES
+    (v_no, 1, 1, 3000.00, 210.00, 3210.00, 'THB', 'issued', NOW())
+  ON CONFLICT (invoice_no) DO NOTHING;
+END $$;
+```
+
+---
+
+## PHASE T6 — E2E 워크플로우 테스트
+
+### T6-A. 출퇴근 워크플로우 테스트
+
+```
+1. /staff/[id] 페이지 접속
+2. '출퇴근' 탭 클릭
+   → 탭 전환 확인 ✅/❌
+3. 요약 카드 4개 표시 확인 (출근일수, 총근무, 지각, 결근)
+   → 확인 ✅/❌
+4. 기록 테이블 표시 확인
+   → 확인 ✅/❌
+5. 월 선택 변경 시 데이터 업데이트 확인
+   → 확인 ✅/❌
+6. "출근" 버튼 존재 확인
+   → 확인 ✅/❌
+```
+
+### T6-B. 가용성 관리 테스트
+
+```
+1. /rooms/[id] 페이지 접속
+2. '가용성 관리' 탭 클릭
+   → 탭 전환 확인 ✅/❌
+3. 24시간 그리드 표시 확인
+   → 확인 ✅/❌
+4. 날짜 변경 시 업데이트 확인
+   → 확인 ✅/❌
+5. "차단 추가" 버튼 존재 확인
+   → 확인 ✅/❌
+6. 차단 추가 모달 열림 확인
+   → 확인 ✅/❌
+```
+
+### T6-C. Folio 실시간 뷰 테스트
+
+```
+1. /reservations/[id] 페이지 접속
+2. 'Folio' 탭 클릭
+   → 탭 전환 확인 ✅/❌
+3. Folio 항목 목록 표시 확인
+   → 확인 ✅/❌
+4. 합계 금액 표시 확인
+   → 확인 ✅/❌
+5. "갱신" 버튼 동작 확인
+   → 확인 ✅/❌
+```
+
+### T6-D. Account 탭 테스트
+
+```
+1. /guests/[id] → 'Account' 탭
+   → 방문횟수, 총지출 카드 표시 ✅/❌
+   → 청구서 목록 표시 ✅/❌
+
+2. /hostesses/[id] → 'Account' 탭
+   → 세션매출, 수령액 카드 표시 ✅/❌
+   → 세션내역 / 정산이력 서브탭 ✅/❌
+
+3. /agents/[id] → 'Account' 탭
+   → 수수료 내역 표시 ✅/❌
+```
+
+### T6-E. 더블부킹 방지 테스트
+
+```javascript
+// 브라우저 콘솔에서 실행
+const testDoubleBooking = async () => {
+  // 첫 번째 체크 — 비어있는 시간
+  const r1 = await fetch('/api/availability/check', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      entity_type: 'room',
+      entity_id: 1,
+      start_dt: '2026-12-01T18:00:00',
+      end_dt:   '2026-12-01T22:00:00',
+    }),
+  });
+  const d1 = await r1.json();
+  console.log('빈 시간 체크:', d1.available ? '✅ 가용' : '❌ 오류');
+
+  // 두 번째 체크 — T5에서 추가한 점검 시간과 겹침
+  const today = new Date().toISOString().split('T')[0];
+  const r2 = await fetch('/api/availability/check', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      entity_type: 'room',
+      entity_id: 1,
+      start_dt: `${today}T10:00:00`,
+      end_dt:   `${today}T11:00:00`,
+    }),
+  });
+  const d2 = await r2.json();
+  console.log('겹침 시간 체크:', !d2.available ? '✅ 차단됨' : '❌ 더블부킹 위험');
+};
+
+testDoubleBooking();
+```
+
+---
+
+## PHASE T7 — 자동 수정 실행
+
+T1~T6에서 발견된 모든 오류를 아래 우선순위로 수정합니다:
+
+### 수정 우선순위
+
+```
+P1 (긴급 — 앱 동작 불가)
+  - import 경로 오류 (컴포넌트 못 찾음)
+  - 누락된 API 엔드포인트
+  - DB 테이블/컬럼 누락
+  - 트리거/함수 누락
+
+P2 (중요 — 기능 미작동)
+  - 탭 전환 안 됨
+  - Hover 효과 없음
+  - Click → navigate 안 됨
+  - Edit 버튼 없음
+
+P3 (보통 — UI 미완성)
+  - 로딩 상태 없음
+  - 빈 상태 없음
+  - 날짜/통화 포맷 미적용
+  - 검색 기능 없음
+  - 상태 뱃지 미적용
+
+P4 (낮음 — 개선사항)
+  - 네비게이션 메뉴 누락
+  - 모바일 반응형 미적용
+  - 수평 스크롤 없음
+```
+
+### 수정 진행 방법
+
+각 오류에 대해:
+1. 해당 파일 읽기
+2. 최소한의 코드로 수정 (기존 코드 삭제 금지)
+3. 저장 전 문법 검증
+4. 저장 후 앱 실행 확인
+5. 수정 결과 기록
+
+---
+
+## PHASE T8 — 최종 결과 보고
+
+모든 테스트 완료 후 아래 형식으로 보고합니다:
+
+```
+══════════════════════════════════════════════════════════
+  KL PROJECT — 통합 테스트 결과 보고
+══════════════════════════════════════════════════════════
+
+📅 테스트 일시: [날짜/시간]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+T1. DB 상태
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+테이블 존재: 18/18 ✅  (또는 X/18 ❌)
+누락 테이블: [목록]
+트리거:      ✅
+함수:        ✅
+수정 실행:   [실행한 SQL 목록]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+T2. API 엔드포인트
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+출퇴근 API:  6/6 ✅
+가용성 API:  6/6 ✅
+회계 API:   14/14 ✅
+누락 API:   [목록]
+수정 실행:  [추가된 API]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+T3. 컴포넌트 파일
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+공통 컴포넌트: 8/8 ✅
+import 오류:  [수정된 파일 목록]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+T4. UI/UX 전수 검사
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+리스트 페이지 항목별 결과:
+페이지          로딩  빈상태  검색  스크롤  날짜  통화  뱃지
+Reservations    ✅    ✅     ✅    ✅     ✅   ✅    ✅
+Guests          ✅    ✅     ✅    ✅     ✅   ✅    ✅
+Rooms           ✅    ✅     ✅    ✅     ✅   ✅    ✅
+Staff           ✅    ❌→✅  ✅    ✅     ✅   ✅    ✅
+[...]
+
+탭 구현:
+StaffDetail     출퇴근✅ Account✅
+HostessDetail   출퇴근✅ Account✅
+RoomDetail      가용성✅ Account✅
+GuestDetail     Account✅
+AgentDetail     Account✅
+ReservDetail    Folio✅
+
+Hover (#D1AE38 반투명):  ✅ 전체 적용
+Click → Detail:          ✅ 전체 적용
+Edit 버튼 (#D1AE38):     ✅ 전체 적용
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+T5. 테스트 데이터
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+attendance:         5건 삽입 ✅
+availability_blocks: 2건 삽입 ✅
+folio_entries:       4건 삽입 ✅
+invoices:            1건 삽입 ✅
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+T6. E2E 워크플로우
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+출퇴근 탭:    ✅
+가용성 탭:    ✅
+Folio 뷰:     ✅
+Account 탭:   ✅
+더블부킹 방지: ✅
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+T7. 자동 수정 결과
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+수정된 파일: [목록]
+수정 내용:   [변경 사항 요약]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+기존 기능 영향 여부
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+기존 예약 조회:   ✅ 정상
+기존 게스트 조회: ✅ 정상
+Room Board:       ✅ 정상
+POS:              ✅ 정상
+로그인/인증:      ✅ 정상
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+수동 확인 필요 항목 (자동 수정 불가)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. [항목] — [이유]
+2. [항목] — [이유]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+앱 최종 실행 상태: ✅ 정상
+══════════════════════════════════════════════════════════
+```

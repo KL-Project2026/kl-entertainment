@@ -14,6 +14,9 @@
     "branches": "分店管理",
     "products": "产品目录",
     "customers": "客户管理",
+    "invoices": "发票",
+    "tables": "餐桌管理",
+    "daily_report": "日报",
     "settings": "设置"
   },
   "auth": {

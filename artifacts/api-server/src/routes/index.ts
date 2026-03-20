@@ -22,6 +22,7 @@ import attendanceApiRouter from "./attendance-api";
 import availabilityRouter from "./availability";
 import folioRouter from "./folio";
 import paymentsApiRouter from "./payments-api";
+import tablesApiRouter from "./tables-api";
 
 const router: IRouter = Router();
 
@@ -48,5 +49,6 @@ router.use(attendanceApiRouter);
 router.use(availabilityRouter);
 router.use(folioRouter);
 router.use(paymentsApiRouter);
+router.use(tablesApiRouter);
 
 export default router;

@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useAuthStore } from "@/lib/auth";
 import { motion } from "framer-motion";
-import { LayoutDashboard, Grid, Building2, Package, LogOut, CalendarDays, ShoppingCart, Users, CalendarCheck, Clock, Handshake, PieChart, LineChart, BarChart2, Globe } from "lucide-react";
+import { LayoutDashboard, Grid, Building2, Package, LogOut, CalendarDays, ShoppingCart, Users, CalendarCheck, Clock, Handshake, PieChart, LineChart, BarChart2, Globe, Receipt, Table2, FileBarChart } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 
@@ -25,6 +25,9 @@ const NAV_ITEMS = [
   { path: "/agents", key: "nav.agents", icon: Handshake },
   { path: "/shareholders", key: "nav.shareholders", icon: PieChart },
   { path: "/investor-dashboard", key: "nav.investor", icon: LineChart },
+  { path: "/invoices", key: "nav.invoices", icon: Receipt },
+  { path: "/tables", key: "nav.tables", icon: Table2 },
+  { path: "/reports/daily", key: "nav.daily_report", icon: FileBarChart },
   { path: "/reports", key: "nav.reports", icon: BarChart2 },
   { path: "/branches", key: "nav.branches", icon: Building2 },
   { path: "/products", key: "nav.products", icon: Package },
