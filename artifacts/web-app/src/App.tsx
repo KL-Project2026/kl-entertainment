@@ -25,6 +25,11 @@ import Shareholders from "@/pages/shareholders";
 import ShareholderDetail from "@/pages/shareholder-detail";
 import InvestorDashboard from "@/pages/investor-dashboard";
 import Reports from "@/pages/reports";
+import Invoices from "@/pages/invoices";
+import InvoiceDetail from "@/pages/invoice-detail";
+import Tables from "@/pages/tables";
+import TableDetail from "@/pages/table-detail";
+import DailyReport from "@/pages/daily-report";
 import { DashboardLayout } from "@/components/layout";
 
 // Customer portal pages
@@ -132,6 +137,13 @@ function Router() {
       <Route path="/shareholders/:id" component={() => <AuthRoute component={ShareholderDetail} />} />
       <Route path="/investor-dashboard" component={() => <AuthRoute component={InvestorDashboard} />} />
       <Route path="/reports" component={() => <AuthRoute component={Reports} />} />
+
+      {/* ── 신규 라우트 ── */}
+      <Route path="/invoices" component={() => <AuthRoute component={Invoices} />} />
+      <Route path="/invoices/:id" component={() => <AuthRoute component={InvoiceDetail} />} />
+      <Route path="/tables" component={() => <AuthRoute component={Tables} />} />
+      <Route path="/tables/:id" component={() => <AuthRoute component={TableDetail} />} />
+      <Route path="/reports/daily" component={() => <AuthRoute component={DailyReport} />} />
 
       {/* Customer portal */}
       <Route path="/customer/login" component={CustomerLogin} />

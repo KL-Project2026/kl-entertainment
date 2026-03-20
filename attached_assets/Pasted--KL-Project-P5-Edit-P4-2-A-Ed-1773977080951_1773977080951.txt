@@ -1,0 +1,671 @@
+# KL Project — P5: Edit 모드 + 신규 페이지 + 라우터
+> P4 완료 후 실행하세요.
+> 이 프롬프트는 2가지 작업을 포함합니다:
+> **A) 상세 페이지 Edit 기능** / **B) 신규 페이지 + 라우터**
+
+---
+
+## 🔒 안전 규칙
+
+```
+[P5-1] 각 파일 수정 전 전체 내용 읽기
+[P5-2] 기존 코드 삭제 절대 금지
+[P5-3] Edit API가 없는 경우 → console.log placeholder로 대체 후 보고
+[P5-4] 신규 페이지는 기존 파일에 영향 없음
+[P5-5] 라우터: 기존 Route 수정/삭제 금지, 끝에만 추가
+[P5-6] 각 파일 저장 후 앱 실행 확인
+```
+
+---
+
+# PART A — 상세 페이지 Edit 기능 추가
+
+Edit 기능이 **없는** 상세 페이지에만 적용합니다.
+P0에서 "Edit 있음"으로 확인된 페이지는 SKIP합니다.
+
+## 적용 대상
+
+```
+P0 결과 기준으로 Edit 없는 페이지:
+□ ReservationDetail.jsx
+□ GuestDetail.jsx
+□ StaffDetail.jsx
+□ HostessDetail.jsx
+□ AgentDetail.jsx
+□ RoomDetail.jsx
+□ [기타 상세 페이지]
+```
+
+---
+
+## Edit 추가 공통 패턴
+
+각 상세 페이지 파일을 읽고, 아래를 기존 코드에 추가하세요.
+
+### Step 1: 상태 추가 (기존 state 선언 아래)
+
+```jsx
+// ── Edit 상태 ─────────────────────────────────────────────
+// 기존 state 아래에 추가
+const [isEditMode, setIsEditMode] = useState(false);
+const [editData,   setEditData]   = useState({});
+const [isSaving,   setIsSaving]   = useState(false);
+const [saveError,  setSaveError]  = useState(null);
+```
+
+### Step 2: Edit 함수 추가 (기존 함수 아래)
+
+```jsx
+// ── Edit 함수 ─────────────────────────────────────────────
+const handleEditStart = () => {
+  setEditData({ ...(record || {}) });
+  setSaveError(null);
+  setIsEditMode(true);
+};
+
+const handleEditCancel = () => {
+  setIsEditMode(false);
+  setEditData({});
+  setSaveError(null);
+};
+
+const handleFieldChange = (key, value) => {
+  setEditData(prev => ({ ...prev, [key]: value }));
+};
+
+const handleSave = async () => {
+  setIsSaving(true);
+  setSaveError(null);
+  try {
+    // ⚠️ API 경로를 실제 엔드포인트로 교체
+    // P0에서 확인한 PUT 엔드포인트 사용
+    // 없으면 console.log(editData) 만 실행하고 보고
+    const res = await fetch(`/api/[entity]/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(editData),
+    });
+    if (!res.ok) {
+      const d = await res.json();
+      throw new Error(d.error || '저장에 실패했습니다.');
+    }
+    const updated = await res.json();
+    setRecord(updated);   // ⚠️ 기존 record setter 이름으로 교체
+    setIsEditMode(false);
+  } catch (err) {
+    setSaveError(err.message);
+  } finally {
+    setIsSaving(false);
+  }
+};
+```
+
+### Step 3: 헤더에 Edit 버튼 추가
+
+기존 헤더 영역(Back 버튼이 있는 곳)에서, Back 버튼 **오른쪽**에 추가합니다.
+
+```jsx
+{/* 기존 헤더 JSX 유지 — Back 버튼 옆에 아래 블록 추가 */}
+<div style={{ display:'flex', gap:8, alignItems:'center' }}>
+  {saveError && (
+    <span style={{ fontSize:12, color:'#dc2626' }}>⚠ {saveError}</span>
+  )}
+
+  {isEditMode ? (
+    <>
+      <button
+        onClick={handleEditCancel}
+        style={{
+          padding:'8px 16px',
+          background:'#ffffff',
+          color:'#374151',
+          border:'1px solid #d1d5db',
+          borderRadius:8,
+          fontSize:13,
+          cursor:'pointer',
+        }}
+      >
+        취소
+      </button>
+      <button
+        onClick={handleSave}
+        disabled={isSaving}
+        style={{
+          padding:'8px 16px',
+          background: isSaving ? '#d4b86a' : '#D1AE38',
+          color:'#ffffff',
+          border:'none',
+          borderRadius:8,
+          fontSize:13,
+          fontWeight:600,
+          cursor: isSaving ? 'not-allowed' : 'pointer',
+        }}
+      >
+        {isSaving ? '저장 중...' : '✓ 저장'}
+      </button>
+    </>
+  ) : (
+    <button
+      onClick={handleEditStart}
+      style={{
+        padding:'8px 16px',
+        background:'#D1AE38',
+        color:'#ffffff',
+        border:'none',
+        borderRadius:8,
+        fontSize:13,
+        fontWeight:600,
+        cursor:'pointer',
+      }}
+      onMouseEnter={e => e.currentTarget.style.background='#b8962e'}
+      onMouseLeave={e => e.currentTarget.style.background='#D1AE38'}
+    >
+      ✎ 편집
+    </button>
+  )}
+</div>
+```
+
+### Step 4: 필드 영역 View / Edit 토글
+
+기존 필드 표시 JSX를 `{isEditMode ? ... : ...}` 로 감쌉니다.
+
+```jsx
+{/* 기존 필드 영역을 아래로 감싸기 */}
+{isEditMode ? (
+  // ── EDIT MODE ───────────────────────────────────────────
+  <div style={{ display:'grid', gap:16 }}>
+    {/*
+      ⚠️ 실제 필드 목록을 record의 컬럼에 맞게 작성
+      아래는 예시입니다 — 실제 필드명으로 교체하세요
+    */}
+
+    {/* 텍스트 필드 예시 */}
+    <EditField
+      label="이름"
+      value={editData.name || editData.first_name || ''}
+      onChange={v => handleFieldChange('name', v)}
+    />
+
+    {/* 상태 필드 예시 */}
+    <EditField
+      label="상태"
+      type="select"
+      value={editData.status || ''}
+      options={['active','inactive','confirmed','cancelled']}
+      // ⚠️ 실제 유효한 상태값으로 교체
+      onChange={v => handleFieldChange('status', v)}
+    />
+
+    {/* 메모 필드 예시 */}
+    <EditField
+      label="메모"
+      type="textarea"
+      value={editData.notes || ''}
+      onChange={v => handleFieldChange('notes', v)}
+    />
+  </div>
+) : (
+  // ── VIEW MODE — 기존 필드 표시 JSX 그대로 ───────────────
+  <div>
+    {/* 기존 필드 내용 여기에 */}
+  </div>
+)}
+```
+
+### Step 5: EditField 헬퍼 컴포넌트 추가
+
+각 상세 페이지 파일 **상단 (컴포넌트 함수 정의 위)** 에 추가합니다.
+
+```jsx
+// ── EditField helper (파일 상단에 추가) ───────────────────
+const EditField = ({ label, value, type = 'text', options = [], onChange }) => (
+  <div>
+    <label style={{
+      display:'block',
+      fontSize:11,
+      fontWeight:600,
+      color:'#6b7280',
+      textTransform:'uppercase',
+      letterSpacing:'0.07em',
+      marginBottom:5,
+    }}>
+      {label}
+    </label>
+
+    {type === 'select' ? (
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        style={EF_STYLE}
+      >
+        {options.map(opt => (
+          <option key={opt.value ?? opt} value={opt.value ?? opt}>
+            {opt.label ?? opt}
+          </option>
+        ))}
+      </select>
+    ) : type === 'textarea' ? (
+      <textarea
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        rows={3}
+        style={{ ...EF_STYLE, resize:'vertical', height:'auto' }}
+      />
+    ) : (
+      <input
+        type={type === 'date' ? 'date' : type === 'number' ? 'number' : 'text'}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        style={EF_STYLE}
+      />
+    )}
+  </div>
+);
+
+const EF_STYLE = {
+  width:'100%',
+  padding:'9px 12px',
+  border:'1px solid #d1d5db',
+  borderRadius:8,
+  fontSize:14,
+  color:'#111827',
+  background:'#ffffff',
+  outline:'none',
+  boxSizing:'border-box',
+};
+```
+
+---
+
+# PART B — 신규 페이지 + 라우터
+
+## B-1. 신규 페이지 생성
+
+P0에서 "없음"으로 확인된 페이지만 생성합니다.
+각 페이지는 최소 구조로 생성하고, 이후 확장합니다.
+
+### InvoiceList.jsx
+
+```jsx
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useHoverRow } from '../utils/useHoverRow';
+// ⚠️ 경로 조정
+
+function InvoiceList() {
+  const [invoices, setInvoices] = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const navigate = useNavigate();
+  const { hoverProps, rowStyle } = useHoverRow();
+
+  useEffect(() => {
+    fetch('/api/invoices')
+      .then(r => r.json())
+      .then(d => { setInvoices(Array.isArray(d) ? d : []); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const fmt = (amount, currency='THB') => {
+    if (amount==null) return '—';
+    try { return new Intl.NumberFormat('th-TH',{style:'currency',currency,minimumFractionDigits:0}).format(amount); }
+    catch { return `${currency} ${amount}`; }
+  };
+
+  const fmtDate = (v) => v ? new Date(v).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'numeric'}) : '—';
+
+  const STATUS_BADGE = {
+    paid:          { bg:'#dcfce7', color:'#166534', label:'결제완료' },
+    partially_paid:{ bg:'#fef9c3', color:'#854d0e', label:'부분결제' },
+    issued:        { bg:'#dbeafe', color:'#1e40af', label:'발행' },
+    draft:         { bg:'#f3f4f6', color:'#6b7280', label:'초안' },
+    void:          { bg:'#fee2e2', color:'#991b1b', label:'취소' },
+  };
+
+  if (loading) return <div style={{padding:60,textAlign:'center',color:'#9ca3af'}}>Loading...</div>;
+
+  return (
+    <div style={{maxWidth:1200,margin:'0 auto',padding:24}}>
+      <div style={{display:'flex',justifyContent:'space-between',
+        alignItems:'center',marginBottom:24}}>
+        <div>
+          <h1 style={{fontSize:22,fontWeight:700,color:'#111827',margin:0}}>인보이스</h1>
+          <p style={{fontSize:13,color:'#6b7280',margin:'4px 0 0'}}>{invoices.length}건</p>
+        </div>
+      </div>
+
+      <div style={{overflowX:'auto',borderRadius:10,border:'1px solid #e5e7eb'}}>
+        <table style={{width:'100%',minWidth:700,borderCollapse:'collapse'}}>
+          <thead>
+            <tr style={{background:'#f9fafb'}}>
+              {['Invoice No','예약 Ref','발행일','금액','상태'].map(h=>(
+                <th key={h} style={{padding:'10px 14px',fontSize:11,color:'#6b7280',
+                  textAlign:'left',textTransform:'uppercase',letterSpacing:'0.06em',
+                  fontWeight:600,borderBottom:'1px solid #e5e7eb',whiteSpace:'nowrap'}}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {invoices.length === 0 ? (
+              <tr><td colSpan={5} style={{padding:40,textAlign:'center',color:'#9ca3af'}}>
+                인보이스 없음
+              </td></tr>
+            ) : invoices.map(inv => {
+              const s = STATUS_BADGE[inv.status] || {bg:'#f3f4f6',color:'#374151',label:inv.status};
+              return (
+                <tr key={inv.id}
+                  {...hoverProps(inv.id)}
+                  style={rowStyle(inv.id)}
+                  onClick={()=>navigate(`/invoices/${inv.id}`)}>
+                  <td style={{padding:'12px 14px',fontWeight:700,
+                    fontFamily:'monospace',fontSize:13}}>{inv.invoice_no}</td>
+                  <td style={{padding:'12px 14px',fontSize:13,color:'#6b7280'}}>
+                    {inv.booking_ref||'—'}</td>
+                  <td style={{padding:'12px 14px',fontSize:13}}>{fmtDate(inv.issued_at)}</td>
+                  <td style={{padding:'12px 14px',fontSize:13,fontWeight:600}}>
+                    {fmt(inv.total_amount,inv.currency)}</td>
+                  <td style={{padding:'12px 14px'}}>
+                    <span style={{background:s.bg,color:s.color,padding:'2px 10px',
+                      borderRadius:9999,fontSize:11,fontWeight:600}}>{s.label}</span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+export default InvoiceList;
+```
+
+### InvoiceDetail.jsx
+
+```jsx
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { FolioView } from '../components/shared/FolioView';
+// ⚠️ 경로 조정
+
+function InvoiceDetail() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [data, setData]       = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch(`/api/invoices/${id}`)
+      .then(r => r.json())
+      .then(d => { setData(d); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [id]);
+
+  const fmt = (amount, currency='THB') => {
+    if (amount==null) return '—';
+    try { return new Intl.NumberFormat('th-TH',{style:'currency',currency,minimumFractionDigits:0}).format(amount); }
+    catch { return `${currency} ${amount}`; }
+  };
+
+  if (loading) return <div style={{padding:60,textAlign:'center',color:'#9ca3af'}}>Loading...</div>;
+  if (!data?.invoice) return <div style={{padding:60,textAlign:'center',color:'#9ca3af'}}>인보이스를 찾을 수 없습니다.</div>;
+
+  const inv = data.invoice;
+  const pays = data.payments || [];
+
+  const STATUS_COLORS = {
+    paid:'#166534', partially_paid:'#854d0e', issued:'#1e40af', draft:'#6b7280', void:'#991b1b',
+  };
+
+  return (
+    <div style={{maxWidth:1000,margin:'0 auto',padding:24}}>
+      {/* 헤더 */}
+      <div style={{display:'flex',justifyContent:'space-between',
+        alignItems:'center',marginBottom:28}}>
+        <button onClick={()=>navigate(-1)}
+          style={{background:'none',border:'none',color:'#6b7280',
+            fontSize:14,cursor:'pointer',padding:'6px 10px'}}>
+          ← 뒤로
+        </button>
+      </div>
+
+      {/* 타이틀 */}
+      <div style={{marginBottom:28}}>
+        <h1 style={{fontSize:26,fontWeight:700,color:'#111827',
+          fontFamily:'monospace',margin:'0 0 6px'}}>{inv.invoice_no}</h1>
+        <p style={{color:'#6b7280',fontSize:13,margin:0}}>
+          예약: {inv.booking_ref||'—'} · 발행: {inv.issued_at
+            ? new Date(inv.issued_at).toLocaleDateString('th-TH') : '—'}
+        </p>
+      </div>
+
+      {/* 금액 요약 */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',
+        gap:16,marginBottom:28}}>
+        {[
+          ['소계', fmt(inv.subtotal, inv.currency)],
+          ['세금', fmt(inv.tax_amount, inv.currency)],
+          ['할인', `-${fmt(inv.discount_amount, inv.currency)}`],
+          ['합계', fmt(inv.total_amount, inv.currency)],
+        ].map(([label,value])=>(
+          <div key={label} style={{background:'#f9fafb',borderRadius:10,padding:'16px 18px',
+            border:'1px solid #e5e7eb'}}>
+            <div style={{fontSize:11,color:'#9ca3af',textTransform:'uppercase',
+              letterSpacing:'0.07em',marginBottom:4}}>{label}</div>
+            <div style={{fontSize:18,fontWeight:700,
+              color:label==='합계'?'#D1AE38':'#111827'}}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* 결제 내역 */}
+      {pays.length > 0 && (
+        <div style={{marginBottom:24}}>
+          <h3 style={{fontSize:14,fontWeight:600,color:'#374151',marginBottom:12}}>
+            결제 내역 ({pays.length}건)
+          </h3>
+          {pays.map(p => (
+            <div key={p.id} style={{display:'flex',gap:16,padding:'10px 14px',
+              background:'#f0fdf4',borderRadius:8,marginBottom:6,fontSize:13}}>
+              <span style={{fontWeight:600,color:'#166534'}}>{fmt(p.amount,p.currency)}</span>
+              <span style={{color:'#6b7280'}}>{p.method}</span>
+              <span style={{color:'#6b7280'}}>
+                {p.paid_at ? new Date(p.paid_at).toLocaleString('th-TH') : '—'}
+              </span>
+              {p.ref_no && <span style={{color:'#9ca3af',fontSize:12}}>{p.ref_no}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Folio 내역 */}
+      <FolioView
+        reservationId={inv.reservation_id}
+        currency={inv.currency||'THB'}
+        isLive={false}
+      />
+    </div>
+  );
+}
+
+export default InvoiceDetail;
+```
+
+### TableList.jsx & TableDetail.jsx
+
+```jsx
+// TableList.jsx — InvoiceList와 동일한 구조로 생성
+// 데이터: GET /api/tables (없으면 빈 목록 처리)
+// navigate: /tables/:id
+
+// TableDetail.jsx — 기본 상세 + AvailabilityCalendar 탭 포함
+import { AvailabilityCalendar } from '../components/shared/AvailabilityCalendar';
+// 탭: ['info','기본 정보'], ['availability','가용성 관리']
+```
+
+### DailyReport.jsx
+
+```jsx
+import { useState, useEffect } from 'react';
+
+function DailyReport() {
+  const [date, setDate]   = useState(new Date().toISOString().split('T')[0]);
+  const [data, setData]   = useState(null);
+  const [loading,setLoading] = useState(false);
+
+  const load = () => {
+    setLoading(true);
+    fetch(`/api/accounts/daily?date=${date}`)
+      .then(r=>r.json())
+      .then(d=>{ setData(d); setLoading(false); })
+      .catch(()=>setLoading(false));
+  };
+
+  useEffect(()=>{ load(); }, [date]);
+
+  const fmt = (v) => {
+    if (v==null) return '—';
+    return new Intl.NumberFormat('th-TH',{style:'currency',currency:'THB',
+      minimumFractionDigits:0}).format(v);
+  };
+
+  return (
+    <div style={{maxWidth:900,margin:'0 auto',padding:24}}>
+      <div style={{display:'flex',justifyContent:'space-between',
+        alignItems:'center',marginBottom:24}}>
+        <h1 style={{fontSize:22,fontWeight:700,color:'#111827',margin:0}}>
+          일일 매출 리포트
+        </h1>
+        <input type="date" value={date} onChange={e=>setDate(e.target.value)}
+          style={{padding:'8px 12px',border:'1px solid #e5e7eb',
+            borderRadius:8,fontSize:13,outline:'none'}} />
+      </div>
+
+      {loading && <div style={{textAlign:'center',color:'#9ca3af',padding:40}}>Loading...</div>}
+
+      {data && !loading && (
+        <>
+          {/* 매출 */}
+          <h3 style={{fontSize:14,fontWeight:600,color:'#374151',marginBottom:12}}>매출</h3>
+          <div style={{display:'grid',
+            gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',
+            gap:12,marginBottom:24}}>
+            {[
+              ['룸 차지',   data.revenue?.room_revenue],
+              ['POS',       data.revenue?.pos_revenue],
+              ['호스티스',  data.revenue?.hostess_revenue],
+              ['아웃콜',    data.revenue?.outcall_revenue],
+              ['합계',      data.revenue?.total_revenue],
+            ].map(([label,value])=>(
+              <div key={label} style={{background:'#f9fafb',borderRadius:10,
+                padding:'16px 18px',border:'1px solid #e5e7eb'}}>
+                <div style={{fontSize:11,color:'#9ca3af',textTransform:'uppercase',
+                  letterSpacing:'0.07em',marginBottom:4}}>{label}</div>
+                <div style={{fontSize:18,fontWeight:700,
+                  color:label==='합계'?'#D1AE38':'#111827'}}>{fmt(value)}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* 수납 */}
+          <h3 style={{fontSize:14,fontWeight:600,color:'#374151',marginBottom:12}}>수납</h3>
+          <div style={{display:'grid',
+            gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:12}}>
+            {[
+              ['현금',  data.payments?.cash_received],
+              ['카드',  data.payments?.card_received],
+              ['총 수납',data.payments?.total_received],
+            ].map(([label,value])=>(
+              <div key={label} style={{background:'#f0fdf4',borderRadius:10,
+                padding:'16px 18px',border:'1px solid #bbf7d0'}}>
+                <div style={{fontSize:11,color:'#9ca3af',textTransform:'uppercase',
+                  letterSpacing:'0.07em',marginBottom:4}}>{label}</div>
+                <div style={{fontSize:18,fontWeight:700,color:'#166534'}}>{fmt(value)}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+export default DailyReport;
+```
+
+---
+
+## B-2. 라우터 업데이트
+
+라우터 파일을 읽고, 아래 Route를 **기존 Route 목록 끝에 추가**합니다.
+이미 존재하는 Route는 추가하지 않습니다.
+
+```jsx
+{/* ── 신규 라우트 — 기존 Route 아래에 추가 ── */}
+
+{/* 인보이스 */}
+<Route path="/invoices"      element={<InvoiceList />} />
+<Route path="/invoices/:id"  element={<InvoiceDetail />} />
+
+{/* 테이블 */}
+<Route path="/tables"        element={<TableList />} />
+<Route path="/tables/:id"    element={<TableDetail />} />
+
+{/* 리포트 */}
+<Route path="/reports/daily" element={<DailyReport />} />
+
+{/* 출퇴근 현황 */}
+<Route path="/attendance"    element={<AttendanceList />} />
+```
+
+그리고 라우터 파일 상단의 import에도 새 컴포넌트를 추가합니다:
+```jsx
+// 기존 import 아래에 추가 (없는 것만)
+import InvoiceList   from './pages/InvoiceList';
+import InvoiceDetail from './pages/InvoiceDetail';
+import TableList     from './pages/TableList';
+import TableDetail   from './pages/TableDetail';
+import DailyReport   from './pages/DailyReport';
+// ⚠️ 경로는 실제 구조에 맞게 조정
+```
+
+---
+
+## 완료 보고 형식
+
+```
+P5 완료 보고:
+
+PART A — Edit 기능
+────────────────────────────────────────
+ReservationDetail  → Edit 추가  ✅ / ⏭ 이미 있음
+GuestDetail        → Edit 추가  ✅ / ⏭
+StaffDetail        → Edit 추가  ✅ / ⏭
+HostessDetail      → Edit 추가  ✅ / ⏭
+AgentDetail        → Edit 추가  ✅ / ⏭
+RoomDetail         → Edit 추가  ✅ / ⏭
+
+Edit API 연결 현황:
+  /api/reservations/:id  → ✅ PUT 있음 / ❌ placeholder 사용
+  /api/guests/:id        → ✅ / ❌
+  ...
+
+PART B — 신규 페이지
+────────────────────────────────────────
+InvoiceList.jsx    ✅ Created
+InvoiceDetail.jsx  ✅ Created
+TableList.jsx      ✅ Created / ⏭ 이미 있음
+TableDetail.jsx    ✅ Created / ⏭
+DailyReport.jsx    ✅ Created
+
+라우터 업데이트:
+  /invoices          ✅ Added
+  /invoices/:id      ✅ Added
+  /tables            ✅ Added
+  /tables/:id        ✅ Added
+  /reports/daily     ✅ Added
+
+앱 실행 상태: ✅ 정상
+→ P6 (최종 검증) 실행 준비 완료
+```
