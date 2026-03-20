@@ -3,9 +3,9 @@ import path from "path";
 import { pool } from "@workspace/db";
 
 // process.cwd() = workspace root in both dev (tsx) and production (node dist/index.cjs)
-const SQL_FILE = path.join(
+const DATA_SEED = path.join(
   process.cwd(),
-  "artifacts/api-server/src/scripts/prod-full-seed.sql"
+  "artifacts/api-server/src/scripts/prod-data-seed.sql"
 );
 
 export async function initProductionDb(): Promise<void> {
@@ -16,29 +16,30 @@ export async function initProductionDb(): Promise<void> {
   }
 
   try {
+    // Check if meaningful data already exists (customers table is a good proxy)
     const { rows } = await pool.query<{ count: string }>(`
-      SELECT COUNT(*)::text AS count
-      FROM information_schema.tables
-      WHERE table_schema = 'public'
-        AND table_type = 'BASE TABLE'
+      SELECT COUNT(*)::text AS count FROM customers
     `);
+    const count = parseInt(rows[0]?.count ?? "0", 10);
 
-    const tableCount = parseInt(rows[0]?.count ?? "0", 10);
-
-    if (tableCount > 0) {
-      console.log(
-        `[db-init] DB has ${tableCount} table(s) — skipping full seed.`
-      );
+    if (count > 0) {
+      console.log(`[db-init] DB already has ${count} customer(s) — skipping data seed.`);
       return;
     }
 
-    console.log("[db-init] Empty database detected — applying full seed...");
-    execSync(`psql "${dbUrl}" -f "${SQL_FILE}"`, {
+    console.log("[db-init] No seed data found — applying full data seed...");
+    execSync(`psql "${dbUrl}" -f "${DATA_SEED}"`, {
       stdio: "inherit",
       timeout: 120_000,
     });
-    console.log("[db-init] Full database seed applied successfully.");
+    console.log("[db-init] Data seed applied successfully.");
   } catch (err) {
+    // Table might not exist yet (fresh DB before schema runs) — safe to skip
+    const msg = String(err);
+    if (msg.includes("does not exist") || msg.includes("relation")) {
+      console.log("[db-init] Schema not ready yet — skipping (will retry next startup).");
+      return;
+    }
     console.error("[db-init] Seed apply failed:", err);
     throw err;
   }
