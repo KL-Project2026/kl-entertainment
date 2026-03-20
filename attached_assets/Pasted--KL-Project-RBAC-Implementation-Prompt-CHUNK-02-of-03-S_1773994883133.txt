@@ -1,0 +1,846 @@
+# KL Project — RBAC Implementation Prompt
+## CHUNK 02 of 03: Store Manager / Hostess / Staff Portals + Room Board RBAC
+---
+
+> ⚠️ DO NOT START THIS CHUNK until Chunk 01 completion checklist is 100% green.
+
+---
+
+## 🔴 CARRY-OVER SAFETY RULES (Apply to Every File in This Chunk)
+
+```
+RULE A — Chunk 01 must be complete and working before this chunk begins.
+          Verify: app starts, existing login works, /api/investor/* returns 200/403.
+
+RULE B — Never delete or rename existing routes, functions, or DB columns.
+          Every change in this chunk is ADDITIVE or WRAPPING only.
+
+RULE C — Room board (Socket.io) changes are HIGH RISK.
+          When adding role filtering to Socket events:
+            → First read the ENTIRE existing socket handler file.
+            → Add a role check INSIDE the event handler, not as a new middleware
+              that wraps the whole socket connection.
+            → Test that existing room status updates still broadcast correctly
+              before adding hostess-specific filtering.
+
+RULE D — Hostess clock-in is a critical operational feature.
+          When modifying the attendance/clock-in endpoint:
+            → Keep the existing endpoint path and method unchanged.
+            → Only ADD the GPS + role validation logic.
+            → If GPS capture fails, the clock-in must still succeed
+              (GPS is supplementary, not blocking).
+
+RULE E — POS orders touch revenue — extreme caution.
+          Do not change any existing pos_orders endpoint logic.
+          Only ADD the staff sub-role permission check as a guard at the
+          route level, not inside the handler.
+```
+
+---
+
+## 📦 CHUNK 02 SCOPE
+
+This chunk implements:
+1. Store Manager portal — dashboard + scoped API additions
+2. Hostess portal — mobile dashboard + self-only data access
+3. Staff sub-role portals — cashier / waiter / bartender / security
+4. Room board Socket.io role filtering (careful — existing feature)
+5. Attendance endpoint enhancement (GPS + role)
+6. Commission read endpoints for Hostess (self-only)
+7. POS order permission guards per staff sub-role
+
+---
+
+## STEP 1 — STORE MANAGER SCOPED MIDDLEWARE
+
+```javascript
+// ============================================================
+// FILE: /src/middleware/scopeGuards.js  (NEW FILE)
+// ACTION: CREATE — no existing file modified
+// PURPOSE: Inject branch_id scope into queries for lower roles
+// ============================================================
+
+const { ROLES } = require('../constants/roles');
+
+/**
+ * enforceBranchScope
+ * For STORE_MANAGER and below: injects branch_id from JWT into req.
+ * For ADMIN and SUPER_ADMIN: passes through without restriction.
+ *
+ * USAGE: Apply to any route that should be branch-scoped.
+ * ⚠️  Do NOT apply to routes that already have branch filtering —
+ *     check existing handlers before applying.
+ */
+const enforceBranchScope = (req, res, next) => {
+  try {
+    const role     = req.user?.role;
+    const branchId = req.user?.branch_id;
+
+    const bypassRoles = [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.INVESTOR];
+    if (bypassRoles.includes(role)) return next();
+
+    if (!branchId) {
+      return res.status(403).json({
+        error: 'No branch assigned to this account. Contact your administrator.',
+      });
+    }
+
+    // Inject scope so handlers can use req.scopedBranchId
+    req.scopedBranchId = branchId;
+
+    // Also inject into query for convenience
+    // ⚠️  Only if the route supports branch_id query param
+    if (!req.query.branch_id) {
+      req.query.branch_id = branchId;
+    }
+
+    next();
+  } catch (err) {
+    console.error('[ScopeGuard] enforceBranchScope error:', err.message);
+    next(); // Fail open — do not block existing requests
+  }
+};
+
+/**
+ * selfOnlyScope
+ * For HOSTESS and DRIVER: injects user_id filter.
+ * Used for commission, attendance, assignment endpoints.
+ */
+const selfOnlyScope = (req, res, next) => {
+  try {
+    const role   = req.user?.role;
+    const userId = req.user?.id;
+
+    const selfRoles = [ROLES.HOSTESS, ROLES.DRIVER];
+    if (!selfRoles.includes(role)) return next();
+
+    req.selfOnlyUserId = userId;
+    next();
+  } catch (err) {
+    console.error('[ScopeGuard] selfOnlyScope error:', err.message);
+    next();
+  }
+};
+
+module.exports = { enforceBranchScope, selfOnlyScope };
+```
+
+---
+
+## STEP 2 — STORE MANAGER API ROUTES (New Routes — Additive)
+
+Create `/src/routes/storeManager.js`:
+
+```javascript
+// ============================================================
+// FILE: /src/routes/storeManager.js  (NEW FILE)
+// ACTION: CREATE — no existing routes modified
+// Mount in app.js: app.use('/api/manager', storeManagerRoutes)
+// ⚠️  Do not merge with existing routes — keep as separate file
+// ============================================================
+
+const express = require('express');
+const router  = express.Router();
+const auth    = require('../middleware/auth'); // ← your existing auth
+const { requireRole }        = require('../middleware/rbac');
+const { enforceBranchScope } = require('../middleware/scopeGuards');
+const { ROLES } = require('../constants/roles');
+
+const managerAccess = requireRole(ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.STORE_MANAGER);
+
+// ── GET /api/manager/dashboard ────────────────────────────
+// Today's branch operations summary
+router.get('/dashboard', auth, managerAccess, enforceBranchScope, async (req, res) => {
+  try {
+    const branchId = req.scopedBranchId || req.query.branch_id;
+    const today    = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+
+    // ⚠️  Replace these queries with your actual table/column names
+    // These are safe READ-only queries — no existing data is modified
+
+    const [arrivalsResult, departuresResult, roomsResult] = await Promise.all([
+      db.query(
+        `SELECT COUNT(*) AS count FROM reservations
+         WHERE branch_id = $1 AND DATE(checkin_date) = $2 AND status = 'CONFIRMED'`,
+        [branchId, today]
+      ),
+      db.query(
+        `SELECT COUNT(*) AS count FROM reservations
+         WHERE branch_id = $1 AND DATE(checkout_date) = $2 AND status = 'CHECKED_IN'`,
+        [branchId, today]
+      ),
+      db.query(
+        `SELECT status, COUNT(*) AS count FROM rooms
+         WHERE branch_id = $1 GROUP BY status`,
+        [branchId]
+      ),
+    ]);
+
+    res.json({
+      arrivals_today:    parseInt(arrivalsResult.rows[0]?.count || 0),
+      departures_today:  parseInt(departuresResult.rows[0]?.count || 0),
+      room_status_summary: roomsResult.rows,
+    });
+  } catch (err) {
+    console.error('[Manager] dashboard error:', err);
+    res.status(500).json({ error: 'Dashboard load failed' });
+  }
+});
+
+// ── GET /api/manager/hostesses/active ────────────────────
+// Active hostess list for current branch
+router.get('/hostesses/active', auth, managerAccess, enforceBranchScope, async (req, res) => {
+  try {
+    const branchId = req.scopedBranchId || req.query.branch_id;
+
+    const result = await db.query(
+      `SELECT
+         h.id, h.name, h.hostess_type, h.status,
+         ha.room_id, ha.started_at,
+         -- ⚠️  agent_fee_rate is intentionally EXCLUDED for STORE_MANAGER
+         CASE WHEN $2 IN ('SUPER_ADMIN', 'ADMIN')
+           THEN h.agent_fee_rate::TEXT
+           ELSE NULL
+         END AS agent_fee_rate
+       FROM hostesses h
+       LEFT JOIN hostess_assignments ha
+         ON ha.hostess_id = h.id AND ha.status = 'ACTIVE'
+       WHERE h.branch_id = $1 AND h.is_active = true
+       ORDER BY h.name`,
+      [branchId, req.user.role]
+    );
+
+    res.json({ data: result.rows });
+  } catch (err) {
+    console.error('[Manager] hostesses/active error:', err);
+    res.status(500).json({ error: 'Failed to fetch active hostesses' });
+  }
+});
+
+// ── GET /api/manager/commissions ─────────────────────────
+// Branch commission overview — READ ONLY for Store Manager
+router.get('/commissions', auth, managerAccess, enforceBranchScope, async (req, res) => {
+  try {
+    const branchId = req.scopedBranchId;
+    const { period } = req.query;
+
+    // Last 30 days default if no period given
+    const dateFilter = period
+      ? `AND DATE_TRUNC('month', c.session_date) = $2`
+      : `AND c.session_date >= NOW() - INTERVAL '30 days'`;
+    const params = period ? [branchId, period] : [branchId];
+
+    const result = await db.query(
+      `SELECT
+         c.id, c.session_date, c.room_id,
+         c.commission_amount, c.net_payable, c.status,
+         h.name AS hostess_name,
+         -- ⚠️  agent_fee_rate hidden for Store Manager
+         -- ⚠️  customer_name hidden for all non-admin
+         NULL AS customer_name
+       FROM commissions c
+       JOIN hostesses h ON h.id = c.hostess_id
+       WHERE c.branch_id = $1 ${dateFilter}
+       ORDER BY c.session_date DESC`,
+      params
+    );
+
+    res.json({ data: result.rows });
+  } catch (err) {
+    console.error('[Manager] commissions error:', err);
+    res.status(500).json({ error: 'Failed to fetch commissions' });
+  }
+});
+
+module.exports = router;
+```
+
+---
+
+## STEP 3 — ROOM BOARD SOCKET.IO ROLE FILTERING
+
+> ⚠️ HIGH RISK SECTION — Read carefully before modifying.
+
+```javascript
+// ============================================================
+// FILE: wherever your Socket.io server code lives (e.g., socket.js)
+// ACTION: ADD role check INSIDE existing event handlers
+// ⚠️  Do NOT restructure existing socket code
+// ⚠️  Do NOT change existing event names
+// ⚠️  ONLY add the role check guard at the top of handlers
+// ============================================================
+
+// FIND your existing socket connection handler (looks like this):
+// io.on('connection', (socket) => { ... });
+
+// INSIDE that handler, ADD role extraction after the connection:
+
+io.on('connection', (socket) => {
+
+  // ── ADD THIS BLOCK at the top of your existing connection handler ──
+  // Extract role from socket handshake auth token
+  let socketUserRole = null;
+  let socketBranchId = null;
+
+  try {
+    const token = socket.handshake.auth?.token || socket.handshake.headers?.authorization?.split(' ')[1];
+    if (token) {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      socketUserRole = decoded.role;
+      socketBranchId = decoded.branch_id;
+    }
+  } catch (err) {
+    // ⚠️ If token fails, do NOT disconnect — legacy clients may not send token
+    // Just leave socketUserRole as null — existing behavior continues
+    console.warn('[Socket] Could not extract role from token:', err.message);
+  }
+  // ── END ADDED BLOCK ──
+
+  // ── YOUR EXISTING SOCKET EVENT HANDLERS BELOW — DO NOT CHANGE THEM ──
+  // Just add a role check at the TOP of each handler:
+
+  // Example — your existing room status update event:
+  socket.on('room:update', (data) => {
+
+    // ADD: Role check guard (add at top of handler, don't change handler logic)
+    const allowedSocketRoles = ['SUPER_ADMIN', 'ADMIN', 'STORE_MANAGER',
+                                 'STAFF_CASHIER', 'STAFF_WAITER',
+                                 'STAFF_BARTENDER', 'STAFF_SECURITY'];
+    if (socketUserRole && !allowedSocketRoles.includes(socketUserRole)) {
+      socket.emit('error', { message: 'Room board access not permitted for your role' });
+      return; // Stop processing — but don't disconnect
+    }
+    // ── END ADDED GUARD ──
+
+    // ⚠️  YOUR EXISTING HANDLER LOGIC CONTINUES UNCHANGED BELOW:
+    // ... existing room update code ...
+  });
+
+  // Example — hostess-specific room event:
+  socket.on('hostess:assignment', (data) => {
+
+    // ADD: Hostess sees only their own assigned room events
+    if (socketUserRole === 'HOSTESS') {
+      const hostessUserId = socket.handshake.auth?.userId;
+      if (data.hostess_id && data.hostess_id !== hostessUserId) {
+        return; // Silently ignore events for other hostesses
+      }
+    }
+    // ── END ADDED GUARD ──
+
+    // ⚠️  EXISTING HANDLER LOGIC UNCHANGED:
+    // ...
+  });
+
+  // ── CUSTOMERS & INVESTORS: block Socket subscription entirely ──
+  if (socketUserRole === 'CUSTOMER' || socketUserRole === 'INVESTOR' || socketUserRole === 'DRIVER') {
+    socket.emit('error', { message: 'Real-time room board not available for this account type.' });
+    socket.disconnect(false); // Graceful disconnect — not forced
+    return;
+  }
+
+  // ── ALL YOUR OTHER EXISTING SOCKET CODE CONTINUES UNCHANGED ──
+});
+```
+
+---
+
+## STEP 4 — HOSTESS API ROUTES (New Routes — Additive)
+
+Create `/src/routes/hostess.js`:
+
+```javascript
+// ============================================================
+// FILE: /src/routes/hostess.js  (NEW FILE)
+// ACTION: CREATE — no existing file modified
+// Mount: app.use('/api/hostess', hostessRoutes)
+// ============================================================
+
+const express = require('express');
+const router  = express.Router();
+const auth    = require('../middleware/auth');
+const { requireRole } = require('../middleware/rbac');
+const { selfOnlyScope } = require('../middleware/scopeGuards');
+const { ROLES } = require('../constants/roles');
+
+const hostessAccess = requireRole(
+  ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.STORE_MANAGER, ROLES.HOSTESS
+);
+
+// ── GET /api/hostess/my-assignments ──────────────────────
+// Self-only: hostess sees only her own assignments
+router.get('/my-assignments', auth, hostessAccess, selfOnlyScope, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const role   = req.user.role;
+
+    // If STORE_MANAGER or ADMIN, they may pass a hostess_id in query
+    const targetId = (role === ROLES.HOSTESS) ? userId : (req.query.hostess_id || userId);
+
+    const result = await db.query(
+      `SELECT
+         ha.id, ha.room_id, ha.started_at, ha.ended_at, ha.status,
+         r.room_number, r.room_type
+       FROM hostess_assignments ha
+       JOIN rooms r ON r.id = ha.room_id
+       WHERE ha.hostess_id = $1
+       ORDER BY ha.started_at DESC
+       LIMIT 50`,
+      [targetId]
+    );
+
+    res.json({ data: result.rows });
+  } catch (err) {
+    console.error('[Hostess] my-assignments error:', err);
+    res.status(500).json({ error: 'Failed to fetch assignments' });
+  }
+});
+
+// ── GET /api/hostess/my-commissions ──────────────────────
+// Self-only: hostess sees only her own commission records
+// ⚠️  customer_name is NEVER returned in this endpoint
+router.get('/my-commissions', auth, hostessAccess, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const role   = req.user.role;
+    const { period } = req.query;
+
+    const targetId = (role === ROLES.HOSTESS) ? userId : (req.query.hostess_id || userId);
+
+    let dateFilter = '';
+    const params = [targetId];
+
+    if (period) {
+      dateFilter = `AND DATE_TRUNC('month', c.session_date) = $2`;
+      params.push(period);
+    } else {
+      dateFilter = `AND c.session_date >= NOW() - INTERVAL '3 months'`;
+    }
+
+    const result = await db.query(
+      `SELECT
+         c.id,
+         c.session_date,
+         c.session_duration,
+         c.order_amount,
+         c.commission_rate,
+         c.commission_amount,
+         -- Show agent deduction only if hostess is AGENT type
+         CASE WHEN h.hostess_type = 'AGENT' THEN c.agent_fee_deduction ELSE NULL END AS agent_fee_deduction,
+         c.net_payable,
+         c.status,
+         -- ⚠️  customer_name intentionally omitted — privacy
+         NULL AS customer_name
+       FROM commissions c
+       JOIN hostesses h ON h.id = c.hostess_id
+       WHERE c.hostess_id = $1 ${dateFilter}
+       ORDER BY c.session_date DESC`,
+      params
+    );
+
+    res.json({ data: result.rows });
+  } catch (err) {
+    console.error('[Hostess] my-commissions error:', err);
+    res.status(500).json({ error: 'Failed to fetch commissions' });
+  }
+});
+
+// ── POST /api/hostess/clock-in ────────────────────────────
+// Clock-in with GPS (GPS is supplementary — failure does not block)
+router.post('/clock-in', auth, hostessAccess, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { latitude, longitude, notes } = req.body;
+    const branchId = req.user.branch_id;
+
+    // Check for existing open attendance record (prevent double clock-in)
+    const existing = await db.query(
+      `SELECT id FROM attendance
+       WHERE user_id = $1 AND clock_out IS NULL
+       ORDER BY clock_in DESC LIMIT 1`,
+      [userId]
+    );
+
+    if (existing.rows.length > 0) {
+      return res.status(409).json({
+        error: 'Already clocked in. Please clock out first.',
+        attendance_id: existing.rows[0].id,
+      });
+    }
+
+    // Insert new attendance record
+    // ⚠️  GPS is nullable — if not provided, clock-in still succeeds
+    const result = await db.query(
+      `INSERT INTO attendance
+         (user_id, branch_id, clock_in, gps_lat_in, gps_lng_in, notes, user_role)
+       VALUES ($1, $2, NOW(), $3, $4, $5, $6)
+       RETURNING id, clock_in`,
+      [userId, branchId, latitude || null, longitude || null, notes || null, req.user.role]
+    );
+
+    res.json({
+      message: 'Clocked in successfully',
+      attendance_id: result.rows[0].id,
+      clock_in: result.rows[0].clock_in,
+      gps_captured: !!(latitude && longitude),
+    });
+  } catch (err) {
+    console.error('[Hostess] clock-in error:', err);
+    res.status(500).json({ error: 'Clock-in failed. Please try again.' });
+  }
+});
+
+// ── POST /api/hostess/clock-out ───────────────────────────
+router.post('/clock-out', auth, hostessAccess, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { latitude, longitude } = req.body;
+
+    const result = await db.query(
+      `UPDATE attendance
+       SET clock_out = NOW(), gps_lat_out = $2, gps_lng_out = $3
+       WHERE user_id = $1 AND clock_out IS NULL
+       RETURNING id, clock_in, clock_out`,
+      [userId, latitude || null, longitude || null]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'No open clock-in record found.' });
+    }
+
+    res.json({
+      message: 'Clocked out successfully',
+      attendance_id: result.rows[0].id,
+      clock_in:  result.rows[0].clock_in,
+      clock_out: result.rows[0].clock_out,
+    });
+  } catch (err) {
+    console.error('[Hostess] clock-out error:', err);
+    res.status(500).json({ error: 'Clock-out failed. Please try again.' });
+  }
+});
+
+module.exports = router;
+```
+
+---
+
+## STEP 5 — STAFF SUB-ROLE POS PERMISSION GUARDS
+
+```javascript
+// ============================================================
+// FILE: wherever your existing POS order routes are defined
+// ACTION: ADD role guard to existing route — do not change handler
+// ⚠️  Add requireRole BEFORE the existing handler, not inside it
+// ⚠️  Read the existing route handler first — only add the guard
+// ============================================================
+
+// Example — your existing POS route may look like:
+// router.post('/api/pos/orders', authMiddleware, createOrderHandler);
+
+// ADD role guard between auth and handler:
+const { requireRole } = require('../middleware/rbac');
+const { ROLES } = require('../constants/roles');
+
+const posCreateAccess = requireRole(
+  ROLES.SUPER_ADMIN,
+  ROLES.ADMIN,
+  ROLES.STORE_MANAGER,
+  ROLES.STAFF_CASHIER,
+  ROLES.STAFF_WAITER,
+);
+
+// ✅ BEFORE (your existing line):
+// router.post('/orders', authMiddleware, createOrderHandler);
+
+// ✅ AFTER (add posCreateAccess — do NOT change createOrderHandler):
+// router.post('/orders', authMiddleware, posCreateAccess, createOrderHandler);
+
+// ── POS Order field masking middleware ───────────────────
+// ADD this middleware to strip sensitive fields for STAFF roles
+// ⚠️  Apply AFTER the handler using a response interceptor pattern
+
+const maskPosOrderFields = (req, res, next) => {
+  const role = req.user?.role;
+  const adminRoles = [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.STORE_MANAGER];
+
+  if (adminRoles.includes(role)) return next();
+
+  // For staff roles: wrap res.json to mask fields
+  const originalJson = res.json.bind(res);
+  res.json = (data) => {
+    if (data && Array.isArray(data.data)) {
+      data.data = data.data.map(order => ({
+        ...order,
+        customer_name:    order.customer_name ? '***' : null, // masked
+        customer_contact: undefined, // removed
+        hostess_assigned: undefined, // removed
+        commission_trigger: undefined, // removed
+      }));
+    } else if (data && data.customer_name) {
+      data.customer_name    = '***';
+      delete data.customer_contact;
+      delete data.hostess_assigned;
+      delete data.commission_trigger;
+    }
+    return originalJson(data);
+  };
+
+  next();
+};
+
+// APPLY to existing POS GET routes (additive):
+// router.get('/orders', authMiddleware, posViewAccess, maskPosOrderFields, getOrdersHandler);
+```
+
+---
+
+## STEP 6 — FRONTEND: HOSTESS MOBILE DASHBOARD
+
+```jsx
+// ============================================================
+// FILE: /src/pages/HostessDashboard.jsx  (NEW FILE)
+// ACTION: CREATE — no existing component modified
+// ============================================================
+
+import React, { useState, useEffect } from 'react';
+
+const HostessDashboard = () => {
+  const [assignments, setAssignments] = useState([]);
+  const [commissions, setCommissions] = useState([]);
+  const [clockStatus, setClockStatus] = useState(null); // 'IN' | 'OUT' | null
+  const [loading, setLoading]         = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [message, setMessage]         = useState(null);
+
+  const token = localStorage.getItem('token');
+  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [assignRes, commRes] = await Promise.all([
+          fetch('/api/hostess/my-assignments', { headers }),
+          fetch('/api/hostess/my-commissions', { headers }),
+        ]);
+        const assignData = await assignRes.json();
+        const commData   = await commRes.json();
+        setAssignments(assignData.data || []);
+        setCommissions(commData.data || []);
+      } catch (err) {
+        setMessage({ type: 'error', text: 'Failed to load data. Please refresh.' });
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadData();
+  }, []);
+
+  const handleClockIn = async () => {
+    setActionLoading(true);
+    try {
+      // Request GPS (non-blocking — proceed even if denied)
+      let lat = null, lng = null;
+      try {
+        const pos = await new Promise((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 })
+        );
+        lat = pos.coords.latitude;
+        lng = pos.coords.longitude;
+      } catch {
+        // GPS not available — continue without it
+      }
+
+      const res = await fetch('/api/hostess/clock-in', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ latitude: lat, longitude: lng }),
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        setClockStatus('IN');
+        setMessage({ type: 'success', text: `Clocked in at ${new Date(data.clock_in).toLocaleTimeString()}` });
+      } else {
+        setMessage({ type: 'error', text: data.error || 'Clock-in failed' });
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleClockOut = async () => {
+    setActionLoading(true);
+    try {
+      let lat = null, lng = null;
+      try {
+        const pos = await new Promise((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 })
+        );
+        lat = pos.coords.latitude; lng = pos.coords.longitude;
+      } catch {}
+
+      const res = await fetch('/api/hostess/clock-out', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ latitude: lat, longitude: lng }),
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        setClockStatus('OUT');
+        setMessage({ type: 'success', text: `Clocked out at ${new Date(data.clock_out).toLocaleTimeString()}` });
+      } else {
+        setMessage({ type: 'error', text: data.error || 'Clock-out failed' });
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  if (loading) return <div className="p-6 text-center">Loading...</div>;
+
+  const totalCommission = commissions.reduce((sum, c) => sum + parseFloat(c.net_payable || 0), 0);
+
+  return (
+    <div className="p-4 max-w-md mx-auto">
+      {/* Message Banner */}
+      {message && (
+        <div className={`mb-4 p-3 rounded-lg text-sm ${
+          message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+        }`}>
+          {message.text}
+          <button className="ml-2 font-bold" onClick={() => setMessage(null)}>×</button>
+        </div>
+      )}
+
+      {/* Clock In/Out */}
+      <div className="bg-white rounded-xl shadow p-5 mb-4">
+        <h2 className="font-semibold text-gray-700 mb-3">Attendance</h2>
+        <div className="flex gap-3">
+          <button
+            onClick={handleClockIn}
+            disabled={actionLoading || clockStatus === 'IN'}
+            className="flex-1 bg-green-500 disabled:bg-gray-300 text-white py-3 rounded-lg font-medium"
+          >
+            {actionLoading ? '...' : 'Clock In'}
+          </button>
+          <button
+            onClick={handleClockOut}
+            disabled={actionLoading || clockStatus === 'OUT'}
+            className="flex-1 bg-red-500 disabled:bg-gray-300 text-white py-3 rounded-lg font-medium"
+          >
+            {actionLoading ? '...' : 'Clock Out'}
+          </button>
+        </div>
+      </div>
+
+      {/* Commission Summary */}
+      <div className="bg-white rounded-xl shadow p-5 mb-4">
+        <h2 className="font-semibold text-gray-700 mb-1">My Commission (3 months)</h2>
+        <p className="text-3xl font-bold text-green-600">${totalCommission.toLocaleString()}</p>
+        <p className="text-xs text-gray-400 mt-1">{commissions.length} sessions</p>
+      </div>
+
+      {/* Assignments */}
+      <div className="bg-white rounded-xl shadow p-5">
+        <h2 className="font-semibold text-gray-700 mb-3">Recent Assignments</h2>
+        {assignments.length === 0
+          ? <p className="text-gray-400 text-sm">No assignments yet.</p>
+          : assignments.slice(0, 10).map(a => (
+            <div key={a.id} className="flex justify-between items-center py-2 border-b last:border-0">
+              <span className="font-medium text-sm">Room {a.room_number}</span>
+              <span className="text-xs text-gray-500">{new Date(a.started_at).toLocaleDateString()}</span>
+              <span className={`text-xs px-2 py-1 rounded-full ${
+                a.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+              }`}>{a.status}</span>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  );
+};
+
+export default HostessDashboard;
+```
+
+---
+
+## STEP 7 — MOUNT NEW ROUTES IN app.js
+
+```javascript
+// ============================================================
+// FILE: app.js / server.js / index.js
+// ACTION: ADD 2 lines — do not modify any existing app.use()
+// ⚠️  Place after Chunk 01 additions, before app.listen()
+// ============================================================
+
+// ADD (do NOT modify existing lines):
+const storeManagerRoutes = require('./src/routes/storeManager');
+const hostessRoutes      = require('./src/routes/hostess');
+
+app.use('/api/manager', storeManagerRoutes);
+app.use('/api/hostess', hostessRoutes);
+```
+
+---
+
+## ✅ CHUNK 02 COMPLETION CHECKLIST
+
+```
+MIDDLEWARE:
+  □ /src/middleware/scopeGuards.js created
+  □ enforceBranchScope tested — ADMIN bypasses, STORE_MANAGER filtered
+  □ selfOnlyScope tested — HOSTESS gets own ID injected
+
+BACKEND:
+  □ /src/routes/storeManager.js created
+  □ /src/routes/hostess.js created
+  □ GET /api/manager/dashboard returns data
+  □ GET /api/hostess/my-commissions returns own records only
+  □ POST /api/hostess/clock-in works (with and without GPS)
+  □ POST /api/hostess/clock-out works
+
+SOCKET.IO (CRITICAL):
+  □ Existing room status updates still broadcast correctly
+  □ CUSTOMER role disconnected gracefully (not causing errors)
+  □ HOSTESS only receives own assigned room events
+  □ No existing socket events broken
+
+POS (CRITICAL):
+  □ Existing POS order creation still works for STAFF_CASHIER
+  □ STAFF_WAITER can create orders (add items only)
+  □ customer_name masked in POS response for STAFF roles
+  □ commission_trigger field removed from STAFF responses
+
+EXISTING FUNCTIONALITY:
+  □ Admin login and all existing admin features still work
+  □ Existing reservation CRUD unchanged
+  □ Existing room board still loads and updates in real-time
+  □ Existing POS orders endpoint unchanged
+  □ No new errors in browser console
+  □ No server crash on startup
+
+FRONTEND:
+  □ /src/pages/HostessDashboard.jsx created
+  □ Route added to router (no existing routes modified)
+```
+
+---
+
+## ⚠️ KNOWN SAFE OMISSIONS — Left for Chunk 03
+
+```
+Chunk 03 will implement:
+  - Driver portal routes & frontend
+  - Customer self-service portal routes & frontend
+  - Nightly investor_reports aggregation job (cron)
+  - Navigation menu role-visibility component
+  - Field masking for guest passport/ID fields
+  - PDPA consent flag middleware for Customer role
+  - Full nav menu guard component (RoleBasedNav)
+```
+
+---
+*KL Project RBAC — Chunk 02 of 03 | Version 3.0 | 2026-03-20*

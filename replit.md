@@ -38,6 +38,8 @@ The project is structured as a pnpm monorepo using TypeScript, with distinct `ap
 - **Reservations:** Includes CRUD operations, state machine transitions, and a booking wizard.
 - **Point of Sale (POS):** Workflow for creating orders, adding items, finalizing, and processing payments.
 - **Staff Management:** CRUD for staff, clock-in/out, attendance tracking, and earnings reports.
+- **RBAC (Chunk 01 — Investor):** Investor role with `investorBranchScope` in JWT; investor report endpoints (`GET/POST /investor/reports`, `GET /investor/kpis`, `GET /investor/reports/export/:period`); investor-reports page.
+- **RBAC (Chunk 02 — Manager/Hostess):** Branch-scope + self-only middleware guards; manager routes (dashboard, active hostesses, commissions, attendance); hostess portal routes (my-assignments, my-commissions, today-status, clock-in with GPS, clock-out with GPS); Socket.io `join_branch` role filtering; POS order access guards with field masking; Hostess Dashboard page (`/hostess-dashboard`) with attendance clock-in/out (GPS), commission summary, and assignment list.
 - **Scheduling:** Weekly shift schedule builder with copy functionality.
 - **Agent Management:** CRUD for agents, commission statements, and payout tracking.
 - **Shareholder & Investor Management:** CRUD for shareholders, equity tracking, settlement generation, and an investor dashboard.

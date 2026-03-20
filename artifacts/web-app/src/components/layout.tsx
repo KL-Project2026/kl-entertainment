@@ -26,6 +26,7 @@ const NAV_ITEMS = [
   { path: "/shareholders", key: "nav.shareholders", icon: PieChart },
   { path: "/investor-dashboard", key: "nav.investor", icon: LineChart },
   { path: "/investor-reports",   key: "nav.investor_reports", icon: PieChart },
+  { path: "/hostess-dashboard",  key: "nav.hostess_dashboard", icon: Users },
   { path: "/invoices", key: "nav.invoices", icon: Receipt },
   { path: "/tables", key: "nav.tables", icon: Table2 },
   { path: "/reports/daily", key: "nav.daily_report", icon: FileBarChart },

@@ -62,13 +62,22 @@ router.get(
 );
 
 // POST /attendance/clock-in
+// Admin-driven clock-in. Accepts optional GPS coords (additive — RULE D)
 router.post(
   "/attendance/clock-in",
   authenticate,
   async (req: Request, res: Response): Promise<void> => {
-    const { staff_id, notes } = req.body as Record<string, string>;
+    const body = req.body as Record<string, unknown>;
+    const staff_id  = body["staff_id"] as string | undefined;
+    const notes     = body["notes"] as string | undefined;
+    const latitude  = body["latitude"] != null ? Number(body["latitude"]) : null;
+    const longitude = body["longitude"] != null ? Number(body["longitude"]) : null;
     const today = new Date().toISOString().split("T")[0];
     try {
+      if (!staff_id) {
+        res.status(400).json({ error: "staff_id is required" });
+        return;
+      }
       // check existing
       const existing = await pool.query(
         `SELECT id, clock_in, clock_out FROM attendance
@@ -77,7 +86,7 @@ router.post(
       );
       if (existing.rows.length > 0) {
         res.status(409).json({
-          error: "이미 오늘 출근 기록이 있습니다.",
+          error: "Attendance record already exists for today.",
           attendance_id: (existing.rows[0] as Record<string, unknown>).id,
         });
         return;
@@ -92,16 +101,22 @@ router.post(
         return;
       }
       const branch_id = (staffRow.rows[0] as Record<string, unknown>).branch_id;
+      // GPS is supplementary — null if not provided (RULE D)
+      const lat = latitude != null && !isNaN(latitude) ? latitude : null;
+      const lng = longitude != null && !isNaN(longitude) ? longitude : null;
       const { rows } = await pool.query(
-        `INSERT INTO attendance (staff_id, branch_id, work_date, clock_in, status, notes)
-         VALUES ($1, $2, $3, NOW(), 'present', $4) RETURNING *`,
-        [staff_id, branch_id, today, notes ?? null]
+        `INSERT INTO attendance
+           (staff_id, branch_id, work_date, clock_in, status, notes,
+            gps_lat_in, gps_lng_in, clock_in_source)
+         VALUES ($1, $2, $3, NOW(), 'present', $4, $5, $6, 'admin')
+         RETURNING *`,
+        [staff_id, branch_id, today, notes ?? null, lat, lng]
       );
       res.json({ success: true, data: rows[0] });
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
       if (e.code === "23505") {
-        res.status(409).json({ error: "중복 출근 기록입니다." });
+        res.status(409).json({ error: "Duplicate attendance record." });
         return;
       }
       console.error("clock-in error:", err);
@@ -124,7 +139,7 @@ router.put(
         [req.params.id]
       );
       if (!rows.length) {
-        res.status(404).json({ error: "출근 기록 없거나 이미 퇴근 처리됨" });
+        res.status(404).json({ error: "No open clock-in record found or already clocked out." });
         return;
       }
       res.json({ success: true, data: rows[0] });

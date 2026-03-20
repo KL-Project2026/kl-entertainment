@@ -25,6 +25,7 @@ import Shareholders from "@/pages/shareholders";
 import ShareholderDetail from "@/pages/shareholder-detail";
 import InvestorDashboard from "@/pages/investor-dashboard";
 import InvestorReports from "@/pages/investor-reports";
+import HostessDashboard from "@/pages/hostess-dashboard";
 import Reports from "@/pages/reports";
 import Invoices from "@/pages/invoices";
 import InvoiceDetail from "@/pages/invoice-detail";
@@ -138,6 +139,7 @@ function Router() {
       <Route path="/shareholders/:id" component={() => <AuthRoute component={ShareholderDetail} />} />
       <Route path="/investor-dashboard" component={() => <AuthRoute component={InvestorDashboard} />} />
       <Route path="/investor-reports" component={() => <AuthRoute component={InvestorReports} />} />
+      <Route path="/hostess-dashboard" component={() => <AuthRoute component={HostessDashboard} />} />
       <Route path="/reports" component={() => <AuthRoute component={Reports} />} />
 
       {/* ── 신규 라우트 ── */}

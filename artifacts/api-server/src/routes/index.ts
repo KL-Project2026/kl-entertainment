@@ -23,6 +23,8 @@ import availabilityRouter from "./availability";
 import folioRouter from "./folio";
 import paymentsApiRouter from "./payments-api";
 import tablesApiRouter from "./tables-api";
+import managerRouter from "./manager";
+import hostessPortalRouter from "./hostess-portal";
 
 const router: IRouter = Router();
 
@@ -50,5 +52,7 @@ router.use(availabilityRouter);
 router.use(folioRouter);
 router.use(paymentsApiRouter);
 router.use(tablesApiRouter);
+router.use(managerRouter);
+router.use(hostessPortalRouter);
 
 export default router;

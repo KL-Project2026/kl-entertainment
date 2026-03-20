@@ -1,4 +1,4 @@
-import { Router, type IRouter, type Request, type Response } from "express";
+import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { pool } from "@workspace/db";
 import { authenticate } from "../middleware/auth";
 import { requireRole } from "../middleware/rbac";
@@ -7,6 +7,69 @@ import { calculateOrderTotals, generateOrderNo, generateReceiptNo } from "../ser
 import { generateInvoiceHtml } from "../services/document-service";
 
 const router: IRouter = Router();
+
+// ── POS Access guards (RULE E: added at route level, handlers unchanged) ────
+const posCreateAccess = requireRole(
+  ROLES.SUPER_ADMIN,
+  ROLES.ADMIN,
+  ROLES.BRANCH_MANAGER,
+  ROLES.MANAGER,
+  ROLES.HALL,
+  ROLES.KITCHEN,
+  ROLES.GENERAL,
+);
+
+const posViewAccess = requireRole(
+  ROLES.SUPER_ADMIN,
+  ROLES.ADMIN,
+  ROLES.BRANCH_MANAGER,
+  ROLES.MANAGER,
+  ROLES.HALL,
+  ROLES.KITCHEN,
+  ROLES.GENERAL,
+  ROLES.HOSTESS,
+);
+
+/**
+ * maskPosOrderFields
+ * Strips sensitive customer data from POS order responses for non-admin/manager roles.
+ * Applied as middleware BEFORE handler so res.json is wrapped.
+ */
+function maskPosOrderFields(req: Request, res: Response, next: NextFunction): void {
+  const role       = req.user?.role;
+  const adminRoles: string[] = [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.BRANCH_MANAGER, ROLES.MANAGER];
+
+  if (!role || adminRoles.includes(role)) {
+    next();
+    return;
+  }
+
+  // Wrap res.json to strip sensitive fields
+  const originalJson = res.json.bind(res) as (body: unknown) => Response;
+  (res.json as (body: unknown) => Response) = (data: unknown) => {
+    if (data && typeof data === "object") {
+      const d = data as Record<string, unknown>;
+      if (Array.isArray(d["data"])) {
+        d["data"] = (d["data"] as Record<string, unknown>[]).map((order) => {
+          const masked = { ...order };
+          if (masked["customer_name"]) masked["customer_name"] = "***";
+          delete masked["customer_contact"];
+          delete masked["hostess_assigned"];
+          delete masked["commission_trigger"];
+          return masked;
+        });
+      } else if (d["customer_name"]) {
+        d["customer_name"] = "***";
+        delete d["customer_contact"];
+        delete d["hostess_assigned"];
+        delete d["commission_trigger"];
+      }
+    }
+    return originalJson(data);
+  };
+
+  next();
+}
 
 function formatOrder(row: Record<string, unknown>) {
   return {
@@ -49,6 +112,8 @@ function formatItem(row: Record<string, unknown>) {
 router.get(
   "/orders",
   authenticate,
+  posViewAccess,
+  maskPosOrderFields,
   async (req: Request, res: Response): Promise<void> => {
     try {
       const { reservation_id, branch_id } = req.query as Record<string, string>;
@@ -92,6 +157,7 @@ router.get(
 router.post(
   "/orders",
   authenticate,
+  posCreateAccess,
   async (req: Request, res: Response): Promise<void> => {
     try {
       const body = (req.body ?? {}) as Record<string, unknown>;

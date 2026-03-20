@@ -1,24 +1,108 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { Server as SocketServer } from "socket.io";
+import jwt from "jsonwebtoken";
 import { pool } from "@workspace/db";
 import { authenticate } from "../middleware/auth";
 import { requireRole, requireBranchAccess } from "../middleware/rbac";
-import { ROLES } from "../config/constants";
+import { ROLES, ROLE_LEVEL } from "../config/constants";
 
 const router: IRouter = Router();
 
 // Shared io instance — set via initRoomSocket
 let _io: SocketServer | null = null;
 
+// Roles allowed to subscribe to the live room board (join_branch)
+const ROOM_BOARD_ALLOWED_ROLES = new Set<string>([
+  ROLES.SUPER_ADMIN,
+  ROLES.ADMIN,
+  ROLES.BRANCH_MANAGER,
+  ROLES.MANAGER,
+  ROLES.HOSTESS,
+  ROLES.KITCHEN,
+  ROLES.HALL,
+  ROLES.GENERAL,
+]);
+
+// Roles that should be gracefully disconnected from the room socket
+const ROOM_BOARD_BLOCKED_ROLES = new Set<string>([
+  "customer",
+  ROLES.INVESTOR,
+  ROLES.DRIVER,
+]);
+
 export function initRoomSocket(io: SocketServer): void {
   _io = io;
   io.on("connection", (socket) => {
+    // ── Extract role from socket handshake auth token ─────────────────────
+    let socketUserRole: string | null = null;
+    let socketBranchId: string | null = null;
+    let socketUserId:   string | null = null;
+
+    try {
+      const token =
+        (socket.handshake.auth as Record<string, string>)?.["token"] ??
+        socket.handshake.headers?.authorization?.split(" ")[1];
+
+      if (token) {
+        const decoded = jwt.verify(
+          token,
+          process.env["JWT_SECRET"] as string
+        ) as Record<string, unknown>;
+        socketUserRole = decoded["role"] as string | null;
+        socketBranchId = (decoded["branchId"] ?? decoded["branch_id"]) as string | null;
+        socketUserId   = decoded["id"] as string | null;
+      }
+    } catch {
+      // If token fails, do NOT disconnect — legacy clients may not send token
+      // Existing behavior continues with socketUserRole = null
+    }
+
+    // ── join_branch — add role check ──────────────────────────────────────
     socket.on("join_branch", ({ branchId }: { branchId: string }) => {
+      // If role is known and blocked: gracefully reject room board subscription
+      if (socketUserRole && ROOM_BOARD_BLOCKED_ROLES.has(socketUserRole)) {
+        socket.emit("error", {
+          message: "Real-time room board not available for this account type.",
+        });
+        return; // Do not join — but do not disconnect (investor still needs socket for dashboard)
+      }
+
+      // If role is known and not in the allowed set (and not null), block
+      if (
+        socketUserRole &&
+        !ROOM_BOARD_ALLOWED_ROLES.has(socketUserRole as typeof ROLES[keyof typeof ROLES])
+      ) {
+        socket.emit("error", {
+          message: "Room board access not permitted for your role.",
+        });
+        return;
+      }
+
+      // Branch-scoped access: non-admin roles can only join their own branch
+      const isAdmin = socketUserRole &&
+        (ROLE_LEVEL[socketUserRole] ?? 0) >= 80;
+
+      if (!isAdmin && socketBranchId && socketBranchId !== branchId) {
+        socket.emit("error", {
+          message: "Cannot subscribe to another branch room board.",
+        });
+        return;
+      }
+
       void socket.join(`branch:${branchId}`);
     });
+
     socket.on("leave_branch", ({ branchId }: { branchId: string }) => {
       void socket.leave(`branch:${branchId}`);
     });
+
+    // ── Graceful disconnect for customer role (not investor — they need dashboard socket) ──
+    if (socketUserRole === "customer") {
+      socket.emit("error", {
+        message: "Real-time room board not available for customers.",
+      });
+      socket.disconnect(false);
+    }
   });
 }
 
