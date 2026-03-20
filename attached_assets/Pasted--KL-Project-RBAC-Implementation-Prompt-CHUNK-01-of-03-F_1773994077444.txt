@@ -1,0 +1,866 @@
+# KL Project — RBAC Implementation Prompt
+## CHUNK 01 of 03: Foundation & Safety Rules + Super Admin / Admin / Investor Roles
+---
+
+> ⚠️ READ THIS ENTIRE CHUNK BEFORE WRITING A SINGLE LINE OF CODE.
+
+---
+
+## 🔴 CRITICAL SAFETY RULES — MUST FOLLOW AT ALL TIMES
+
+```
+These rules apply to EVERY file you touch in this chunk.
+Violating any rule may break existing functionality.
+```
+
+### RULE 1 — NEVER DELETE EXISTING CODE
+```
+❌ DO NOT delete any existing route, function, component, or schema.
+❌ DO NOT remove existing middleware.
+❌ DO NOT rename existing database columns or tables.
+✅ Only ADD new code alongside existing code.
+✅ If a file must be edited, ADD to it — never subtract.
+
+Before editing any existing file:
+  1. Read the entire file first.
+  2. Identify what currently works.
+  3. Add only what is missing.
+  4. Confirm the original logic is still intact after your change.
+```
+
+### RULE 2 — PRESERVE ALL EXISTING API ENDPOINTS
+```
+❌ DO NOT change any existing endpoint URL (path, method, or parameters).
+❌ DO NOT change existing request/response shapes.
+✅ New endpoints are ADDITIVE — new paths only.
+✅ If adding middleware to an existing route, wrap it so it
+   degrades gracefully (does not break if new field is missing).
+
+If you add role-checking middleware to an existing route:
+  → The middleware MUST allow the request through if the role
+    check cannot be evaluated (e.g., missing role field).
+  → Never throw a 500 — return 403 with a clear message.
+```
+
+### RULE 3 — DATABASE MIGRATIONS ARE ADDITIVE ONLY
+```
+❌ DO NOT alter or drop existing columns.
+❌ DO NOT change existing column data types.
+❌ DO NOT remove existing foreign keys or indexes.
+✅ Only ADD new columns (always with DEFAULT values or nullable).
+✅ Only ADD new tables.
+✅ Only ADD new indexes.
+
+Every new column must have a safe default:
+  role VARCHAR(50) DEFAULT 'STAFF' NOT NULL
+  access_scope JSONB DEFAULT '[]' NOT NULL
+  is_active BOOLEAN DEFAULT true NOT NULL
+```
+
+### RULE 4 — SOFT DELETE ONLY (EXISTING RULE — RE-ENFORCE)
+```
+❌ DO NOT add any hard DELETE SQL for reservations, invoices,
+   commissions, or any financial/booking record.
+✅ Status field transitions only: CANCELLED / VOIDED / DELETED.
+✅ Add a deleted_at TIMESTAMP (nullable) column if not present.
+```
+
+### RULE 5 — TEST BEFORE MOVING TO CHUNK 02
+```
+After completing Chunk 01, verify ALL of the following:
+
+  ✅ App starts without errors (npm start / node index.js)
+  ✅ Existing login still works for all previously working accounts
+  ✅ Existing reservation list endpoint still returns data
+  ✅ Existing room board still loads
+  ✅ Existing POS order endpoint still works
+  ✅ New /api/auth/login still returns role in JWT payload
+  ✅ New investor_reports table exists with correct columns
+  ✅ New users.role column exists with correct DEFAULT
+
+If ANY of the above fails → STOP and fix before proceeding.
+DO NOT start Chunk 02 until all checks pass.
+```
+
+---
+
+## 📦 CHUNK 01 SCOPE
+
+This chunk implements:
+1. Role constants & permission matrix (shared foundation)
+2. JWT role injection (non-breaking addition)
+3. Role-check middleware (additive, non-breaking)
+4. Database additions for RBAC (additive migrations only)
+5. Investor report table & nightly aggregation scaffold
+6. SUPER_ADMIN portal additions
+7. ADMIN portal additions
+8. INVESTOR portal (new — no existing code to break)
+
+---
+
+## STEP 1 — ROLE CONSTANTS (New File — No Existing Code Affected)
+
+Create `/src/constants/roles.js` (or `.ts`):
+
+```javascript
+// ============================================================
+// KL Project — Role Constants & Permission Matrix
+// FILE: /src/constants/roles.js
+// ACTION: CREATE NEW FILE — does not affect any existing code
+// ============================================================
+
+const ROLES = {
+  SUPER_ADMIN:   'SUPER_ADMIN',
+  ADMIN:         'ADMIN',
+  INVESTOR:      'INVESTOR',        // NEW in v3.0
+  STORE_MANAGER: 'STORE_MANAGER',
+  HOSTESS:       'HOSTESS',
+  STAFF_CASHIER:    'STAFF_CASHIER',
+  STAFF_WAITER:     'STAFF_WAITER',
+  STAFF_BARTENDER:  'STAFF_BARTENDER',
+  STAFF_SECURITY:   'STAFF_SECURITY',
+  DRIVER:        'DRIVER',
+  CUSTOMER:      'CUSTOMER',
+};
+
+// Hierarchy level — higher number = more privilege
+const ROLE_LEVEL = {
+  SUPER_ADMIN:      100,
+  ADMIN:             80,
+  INVESTOR:          70,   // NEW — between ADMIN and STORE_MANAGER
+  STORE_MANAGER:     60,
+  HOSTESS:           40,
+  STAFF_CASHIER:     30,
+  STAFF_WAITER:      30,
+  STAFF_BARTENDER:   30,
+  STAFF_SECURITY:    30,
+  DRIVER:            20,
+  CUSTOMER:          10,
+};
+
+// Table-level permission matrix
+// Format: ROLE → { table: 'FULL' | 'MANAGE' | 'READ' | 'SELF_ONLY' | 'HIDDEN' }
+const TABLE_PERMISSIONS = {
+  INVESTOR: {
+    investor_reports: 'READ',
+    branches:         'READ',
+    // Everything else → HIDDEN (handled by middleware default)
+  },
+  ADMIN: {
+    branches:            'FULL',
+    rooms:               'FULL',
+    reservations:        'FULL',
+    customers:           'FULL',
+    hostesses:           'FULL',
+    agents:              'FULL',
+    commissions:         'FULL',
+    commission_policies: 'FULL',
+    staff:               'FULL',
+    drivers:             'FULL',
+    pos_orders:          'FULL',
+    products:            'FULL',
+    payments:            'READ',
+    invoices:            'FULL',
+    audit_logs:          'READ',
+    investor_reports:    'FULL',
+  },
+  STORE_MANAGER: {
+    rooms:               'FULL',
+    reservations:        'FULL',
+    customers:           'MANAGE',
+    hostesses:           'MANAGE',
+    hostess_assignments: 'FULL',
+    agents:              'READ',
+    commissions:         'READ',
+    commission_policies: 'READ',
+    staff:               'MANAGE',
+    attendance:          'FULL',
+    drivers:             'MANAGE',
+    pos_orders:          'FULL',
+    products:            'MANAGE',
+    payments:            'READ',
+    invoices:            'FULL',
+    audit_logs:          'READ',
+  },
+  // HOSTESS, STAFF_*, DRIVER, CUSTOMER — handled in Chunk 02 & 03
+};
+
+// Fields that are always hidden regardless of role
+const ALWAYS_HIDDEN_FIELDS = [
+  'password_hash',
+  'cvv',
+  'card_number',
+];
+
+// Fields masked (shown as *** ) for non-ADMIN roles
+const MASKED_FOR_NON_ADMIN = [
+  'card_token',
+  'payment_token',
+];
+
+module.exports = { ROLES, ROLE_LEVEL, TABLE_PERMISSIONS, ALWAYS_HIDDEN_FIELDS, MASKED_FOR_NON_ADMIN };
+```
+
+---
+
+## STEP 2 — DATABASE MIGRATIONS (Additive Only)
+
+```sql
+-- ============================================================
+-- KL Project RBAC — Migration v3.0
+-- ⚠️  ADDITIVE ONLY — No existing columns are altered or dropped
+-- Run this ONCE. Check if columns/tables exist before adding.
+-- ============================================================
+
+-- 2-A: Add role column to users table (if not already present)
+-- SAFE: DEFAULT ensures existing rows are not broken
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS role VARCHAR(50) NOT NULL DEFAULT 'STAFF',
+  ADD COLUMN IF NOT EXISTS branch_id INTEGER REFERENCES branches(id),
+  ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true,
+  ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP,
+  ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id);
+
+-- 2-B: Investor-specific access scope
+-- Allows ADMIN to limit investor to specific branches
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS investor_branch_scope JSONB DEFAULT '[]';
+  -- Example value: [] means ALL branches, [1,3,5] means only those branch IDs
+
+-- 2-C: 2FA fields (non-breaking — nullable)
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS two_fa_enabled BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS two_fa_secret VARCHAR(255);
+
+-- 2-D: Create investor_reports table (NEW — no existing table affected)
+CREATE TABLE IF NOT EXISTS investor_reports (
+  id                        SERIAL PRIMARY KEY,
+  tenant_id                 INTEGER NOT NULL REFERENCES tenants(id),
+  branch_id                 INTEGER REFERENCES branches(id),
+  branch_name               VARCHAR(255),
+  period                    CHAR(7) NOT NULL,  -- Format: YYYY-MM
+  report_type               VARCHAR(50) DEFAULT 'MONTHLY',
+
+  -- Revenue breakdown
+  total_revenue             NUMERIC(15,2) DEFAULT 0,
+  room_revenue              NUMERIC(15,2) DEFAULT 0,
+  beverage_revenue          NUMERIC(15,2) DEFAULT 0,
+  food_revenue              NUMERIC(15,2) DEFAULT 0,
+  package_revenue           NUMERIC(15,2) DEFAULT 0,
+  other_revenue             NUMERIC(15,2) DEFAULT 0,
+
+  -- Cost summary (aggregated — no per-staff breakdown exposed)
+  total_operating_cost      NUMERIC(15,2) DEFAULT 0,
+  total_commission_expense  NUMERIC(15,2) DEFAULT 0,
+  gross_profit              NUMERIC(15,2) DEFAULT 0,
+  net_profit                NUMERIC(15,2) DEFAULT 0,
+
+  -- Operational KPIs
+  room_utilization_pct      NUMERIC(5,2) DEFAULT 0,
+  total_sessions            INTEGER DEFAULT 0,
+  unique_customers          INTEGER DEFAULT 0,
+  avg_spend_per_session     NUMERIC(10,2) DEFAULT 0,
+
+  -- Admin-authored notes visible to investor
+  notes                     TEXT,
+
+  -- Metadata
+  generated_at              TIMESTAMP DEFAULT NOW(),
+  generated_by              VARCHAR(50) DEFAULT 'SYSTEM',
+  currency_code             CHAR(3) DEFAULT 'USD',
+
+  -- Composite unique: one report per branch per period
+  CONSTRAINT uq_investor_report UNIQUE (tenant_id, branch_id, period)
+);
+
+-- 2-E: Investor export audit log (NEW table)
+CREATE TABLE IF NOT EXISTS investor_export_logs (
+  id            SERIAL PRIMARY KEY,
+  investor_id   INTEGER NOT NULL REFERENCES users(id),
+  report_id     INTEGER REFERENCES investor_reports(id),
+  report_period CHAR(7),
+  exported_at   TIMESTAMP DEFAULT NOW(),
+  ip_address    VARCHAR(45),
+  file_format   VARCHAR(10) DEFAULT 'PDF',
+  watermark_text TEXT
+);
+
+-- 2-F: Indexes for performance (non-breaking)
+CREATE INDEX IF NOT EXISTS idx_users_role         ON users(role);
+CREATE INDEX IF NOT EXISTS idx_users_branch_id    ON users(branch_id);
+CREATE INDEX IF NOT EXISTS idx_investor_reports_period
+  ON investor_reports(tenant_id, period);
+CREATE INDEX IF NOT EXISTS idx_investor_reports_branch
+  ON investor_reports(branch_id, period);
+
+-- ✅ Migration complete. Verify:
+-- SELECT column_name FROM information_schema.columns WHERE table_name = 'users';
+-- SELECT COUNT(*) FROM investor_reports;
+```
+
+---
+
+## STEP 3 — JWT ROLE INJECTION (Non-Breaking Addition)
+
+> ⚠️ Find your existing JWT sign/verify code. Add `role` and `branch_id` to the payload. Do NOT change the secret, algorithm, or expiry.
+
+```javascript
+// ============================================================
+// FILE: wherever you currently generate JWT tokens (e.g., auth.js)
+// ACTION: ADD role and branch_id to token payload
+// ⚠️  Do not change existing fields — only ADD new ones
+// ============================================================
+
+// BEFORE (your existing code looks something like this):
+// const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '24h' });
+
+// AFTER — ADD role, branch_id, investor_branch_scope to payload:
+const tokenPayload = {
+  // ✅ Keep ALL existing fields exactly as they are:
+  id:    user.id,
+  email: user.email,
+  // ... any other fields you already have ...
+
+  // ✅ ADD these new fields:
+  role:                   user.role || 'STAFF',
+  branch_id:              user.branch_id || null,
+  investor_branch_scope:  user.investor_branch_scope || [],
+  tenant_id:              user.tenant_id || null,
+};
+
+const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, {
+  expiresIn: process.env.JWT_EXPIRES_IN || '24h',
+  // ✅ Keep your existing algorithm setting if you have one
+});
+
+// ✅ Login response: add role to response body so frontend can read it
+// Find your existing login response and ADD role to it:
+// res.json({ token, user: { id, email, role, branch_id } });
+```
+
+---
+
+## STEP 4 — ROLE-CHECK MIDDLEWARE (New File — Additive)
+
+Create `/src/middleware/rbac.js`:
+
+```javascript
+// ============================================================
+// KL Project — RBAC Middleware
+// FILE: /src/middleware/rbac.js
+// ACTION: CREATE NEW FILE
+// USAGE: Apply selectively to routes — does NOT auto-apply
+// ⚠️  Never replace existing auth middleware — ADD alongside it
+// ============================================================
+
+const { ROLES, ROLE_LEVEL } = require('../constants/roles');
+
+/**
+ * requireRole(...roles)
+ * Usage: router.get('/admin/report', authMiddleware, requireRole('ADMIN', 'SUPER_ADMIN'), handler)
+ * ⚠️  Always place AFTER your existing authMiddleware, never before
+ */
+const requireRole = (...allowedRoles) => {
+  return (req, res, next) => {
+    try {
+      // If no user on request (authMiddleware didn't run), pass through
+      // to avoid breaking routes that don't use auth
+      if (!req.user) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      const userRole = req.user.role;
+
+      // SUPER_ADMIN always passes
+      if (userRole === ROLES.SUPER_ADMIN) return next();
+
+      if (allowedRoles.includes(userRole)) return next();
+
+      return res.status(403).json({
+        error: 'Access denied',
+        required: allowedRoles,
+        current: userRole,
+      });
+    } catch (err) {
+      // ⚠️ Never crash existing routes — log and return 403
+      console.error('[RBAC] requireRole error:', err.message);
+      return res.status(403).json({ error: 'Permission check failed' });
+    }
+  };
+};
+
+/**
+ * requireMinLevel(level)
+ * Allows any role at or above the specified hierarchy level
+ */
+const requireMinLevel = (minLevel) => {
+  return (req, res, next) => {
+    try {
+      if (!req.user) return res.status(401).json({ error: 'Authentication required' });
+      if (req.user.role === ROLES.SUPER_ADMIN) return next();
+
+      const userLevel = ROLE_LEVEL[req.user.role] || 0;
+      if (userLevel >= minLevel) return next();
+
+      return res.status(403).json({ error: 'Insufficient privilege level' });
+    } catch (err) {
+      console.error('[RBAC] requireMinLevel error:', err.message);
+      return res.status(403).json({ error: 'Permission check failed' });
+    }
+  };
+};
+
+/**
+ * branchScope
+ * Injects branch_id filter into req.query so existing list handlers
+ * automatically filter by branch without code changes
+ * ⚠️  Apply only to routes that support branch_id filtering
+ */
+const branchScope = (req, res, next) => {
+  try {
+    const role = req.user?.role;
+    const branchId = req.user?.branch_id;
+
+    // SUPER_ADMIN and ADMIN see all branches — no filter injected
+    if (role === ROLES.SUPER_ADMIN || role === ROLES.ADMIN) return next();
+
+    // INVESTOR — filter by investor_branch_scope
+    if (role === ROLES.INVESTOR) {
+      const scope = req.user?.investor_branch_scope || [];
+      if (scope.length > 0) {
+        req.rbac_branch_filter = scope; // Array of allowed branch IDs
+      }
+      return next();
+    }
+
+    // All other roles — filter to own branch
+    if (branchId) {
+      req.query.branch_id = branchId; // Inject into query params
+    }
+    next();
+  } catch (err) {
+    console.error('[RBAC] branchScope error:', err.message);
+    next(); // Fail open — don't break existing routes
+  }
+};
+
+/**
+ * investorOnly
+ * Convenience: blocks all non-investor, non-admin access to financial endpoints
+ */
+const investorOnly = requireRole(
+  ROLES.SUPER_ADMIN,
+  ROLES.ADMIN,
+  ROLES.INVESTOR
+);
+
+module.exports = { requireRole, requireMinLevel, branchScope, investorOnly };
+```
+
+---
+
+## STEP 5 — INVESTOR API ROUTES (New Routes — Additive)
+
+Create `/src/routes/investor.js`:
+
+```javascript
+// ============================================================
+// KL Project — Investor Portal API Routes
+// FILE: /src/routes/investor.js
+// ACTION: CREATE NEW FILE
+// Mount in app.js: app.use('/api/investor', investorRoutes)
+// ⚠️  These are NEW routes — no existing routes are modified
+// ============================================================
+
+const express = require('express');
+const router  = express.Router();
+const { requireRole, branchScope } = require('../middleware/rbac');
+const { ROLES } = require('../constants/roles');
+
+// All investor routes require authentication + investor role
+// Replace 'authMiddleware' with your actual auth middleware name
+const auth = require('../middleware/auth'); // ← YOUR existing auth middleware
+const investorAccess = requireRole(ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.INVESTOR);
+
+// ── GET /api/investor/reports ─────────────────────────────
+// Returns pre-aggregated monthly reports (investor_reports table only)
+// NEVER queries live transactional tables
+router.get('/reports', auth, investorAccess, branchScope, async (req, res) => {
+  try {
+    const { period, branch_id } = req.query;
+    const userRole = req.user.role;
+    const tenantId = req.user.tenant_id;
+
+    // Build safe WHERE clause
+    let whereClause = 'WHERE ir.tenant_id = $1';
+    const params = [tenantId];
+    let paramIndex = 2;
+
+    // Period filter
+    if (period) {
+      whereClause += ` AND ir.period = $${paramIndex++}`;
+      params.push(period);
+    }
+
+    // Branch scope for INVESTOR role
+    if (userRole === ROLES.INVESTOR) {
+      const scope = req.user.investor_branch_scope || [];
+      if (scope.length > 0) {
+        whereClause += ` AND ir.branch_id = ANY($${paramIndex++})`;
+        params.push(scope);
+      }
+    } else if (branch_id) {
+      whereClause += ` AND ir.branch_id = $${paramIndex++}`;
+      params.push(branch_id);
+    }
+
+    // ⚠️ SELECT only investor-safe fields — never expose raw cost details
+    const query = `
+      SELECT
+        ir.id,
+        ir.period,
+        ir.branch_name,
+        ir.total_revenue,
+        ir.room_revenue,
+        ir.beverage_revenue,
+        ir.food_revenue,
+        ir.package_revenue,
+        ir.other_revenue,
+        ir.total_commission_expense,
+        ir.gross_profit,
+        ir.net_profit,
+        ir.room_utilization_pct,
+        ir.total_sessions,
+        ir.unique_customers,
+        ir.avg_spend_per_session,
+        ir.notes,
+        ir.currency_code,
+        ir.generated_at
+        -- ❌ cost_breakdown_detail NOT selected
+        -- ❌ staff_salary_total NOT selected
+        -- ❌ hostess_names NOT selected
+      FROM investor_reports ir
+      ${whereClause}
+      ORDER BY ir.period DESC, ir.branch_name ASC
+    `;
+
+    // Replace db.query with your actual DB client
+    const result = await db.query(query, params);
+    res.json({ data: result.rows, count: result.rowCount });
+
+  } catch (err) {
+    console.error('[Investor] GET /reports error:', err);
+    res.status(500).json({ error: 'Failed to fetch investor reports' });
+  }
+});
+
+// ── GET /api/investor/reports/export/:period ──────────────
+// PDF export — watermarked, logged
+router.get('/reports/export/:period', auth, investorAccess, async (req, res) => {
+  try {
+    const { period } = req.params;
+    const investorId = req.user.id;
+    const investorName = req.user.name || req.user.email;
+    const timestamp = new Date().toISOString();
+
+    // 1. Fetch report data (same safe query as above)
+    // 2. Generate PDF with watermark
+    const watermarkText = `CONFIDENTIAL — ${investorName} — ${timestamp}`;
+
+    // Log the export
+    await db.query(
+      `INSERT INTO investor_export_logs
+        (investor_id, report_period, ip_address, file_format, watermark_text)
+       VALUES ($1, $2, $3, 'PDF', $4)`,
+      [investorId, period, req.ip, watermarkText]
+    );
+
+    // TODO: Integrate your PDF generation library here
+    // For MVP: return JSON with watermark note; replace with PDF in Phase 2
+    res.json({
+      message: 'Export logged. PDF generation: connect your PDF library here.',
+      watermark: watermarkText,
+      period,
+    });
+
+  } catch (err) {
+    console.error('[Investor] Export error:', err);
+    res.status(500).json({ error: 'Export failed' });
+  }
+});
+
+// ── GET /api/investor/kpis ───────────────────────────────
+// Aggregated KPI metrics only — no individual records
+router.get('/kpis', auth, investorAccess, branchScope, async (req, res) => {
+  try {
+    const tenantId = req.user.tenant_id;
+    const scope = req.user.investor_branch_scope || [];
+
+    let branchFilter = '';
+    const params = [tenantId];
+
+    if (req.user.role === ROLES.INVESTOR && scope.length > 0) {
+      branchFilter = 'AND branch_id = ANY($2)';
+      params.push(scope);
+    }
+
+    const query = `
+      SELECT
+        period,
+        SUM(total_revenue)         AS total_revenue,
+        AVG(room_utilization_pct)  AS avg_utilization,
+        SUM(total_sessions)        AS total_sessions,
+        SUM(unique_customers)      AS unique_customers,
+        AVG(avg_spend_per_session) AS avg_spend
+      FROM investor_reports
+      WHERE tenant_id = $1 ${branchFilter}
+      GROUP BY period
+      ORDER BY period DESC
+      LIMIT 12
+    `;
+
+    const result = await db.query(query, params);
+    res.json({ data: result.rows });
+
+  } catch (err) {
+    console.error('[Investor] GET /kpis error:', err);
+    res.status(500).json({ error: 'Failed to fetch KPIs' });
+  }
+});
+
+module.exports = router;
+```
+
+---
+
+## STEP 6 — MOUNT NEW ROUTES IN app.js (Additive — One Line Add)
+
+```javascript
+// ============================================================
+// FILE: app.js (or server.js / index.js — your main entry point)
+// ACTION: ADD one line — do not modify any existing app.use() calls
+// ⚠️  Place AFTER your existing routes, not before
+// ============================================================
+
+// ... all your existing code stays exactly as-is ...
+
+// ADD THIS LINE — below your existing route mounts:
+const investorRoutes = require('./src/routes/investor');
+app.use('/api/investor', investorRoutes);
+
+// That's it. No other changes to this file.
+```
+
+---
+
+## STEP 7 — FRONTEND: INVESTOR PORTAL PAGES (New Pages — Additive)
+
+> Create new page files. Do NOT modify existing page components.
+
+```jsx
+// ============================================================
+// FILE: /src/pages/InvestorDashboard.jsx  (NEW FILE)
+// ACTION: CREATE — no existing component modified
+// ============================================================
+
+import React, { useState, useEffect } from 'react';
+
+const InvestorDashboard = () => {
+  const [reports, setReports]   = useState([]);
+  const [kpis, setKpis]         = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [error, setError]       = useState(null);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [reportsRes, kpisRes] = await Promise.all([
+          fetch('/api/investor/reports', {
+            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+          }),
+          fetch('/api/investor/kpis', {
+            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+          }),
+        ]);
+
+        if (!reportsRes.ok) throw new Error('Failed to load reports');
+        if (!kpisRes.ok)    throw new Error('Failed to load KPIs');
+
+        const reportsData = await reportsRes.json();
+        const kpisData    = await kpisRes.json();
+
+        setReports(reportsData.data || []);
+        setKpis(kpisData.data || []);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  if (loading) return <div className="p-8 text-center">Loading investor portal...</div>;
+  if (error)   return <div className="p-8 text-red-500">Error: {error}</div>;
+
+  return (
+    <div className="p-6 max-w-6xl mx-auto">
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-gray-900">Investor Dashboard</h1>
+        <p className="text-sm text-gray-500 mt-1">
+          Financial performance overview — CONFIDENTIAL
+        </p>
+      </div>
+
+      {/* KPI Summary Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        {kpis.slice(0, 1).map(k => (
+          <React.Fragment key={k.period}>
+            <KpiCard label="Total Revenue"    value={`$${Number(k.total_revenue).toLocaleString()}`} />
+            <KpiCard label="Room Utilization" value={`${Number(k.avg_utilization).toFixed(1)}%`} />
+            <KpiCard label="Total Sessions"   value={k.total_sessions} />
+            <KpiCard label="Avg Spend"        value={`$${Number(k.avg_spend).toFixed(0)}`} />
+          </React.Fragment>
+        ))}
+      </div>
+
+      {/* Monthly Reports Table */}
+      <div className="bg-white rounded-lg shadow overflow-hidden">
+        <div className="px-6 py-4 border-b flex justify-between items-center">
+          <h2 className="text-lg font-semibold">Monthly Reports</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                {['Period','Branch','Revenue','Gross Profit','Net Profit','Utilization','Export'].map(h => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {reports.map(r => (
+                <tr key={r.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 font-medium">{r.period}</td>
+                  <td className="px-4 py-3">{r.branch_name || 'All Branches'}</td>
+                  <td className="px-4 py-3">${Number(r.total_revenue).toLocaleString()}</td>
+                  <td className="px-4 py-3">${Number(r.gross_profit).toLocaleString()}</td>
+                  <td className="px-4 py-3">${Number(r.net_profit).toLocaleString()}</td>
+                  <td className="px-4 py-3">{r.room_utilization_pct}%</td>
+                  <td className="px-4 py-3">
+                    <button
+                      onClick={() => window.open(`/api/investor/reports/export/${r.period}`, '_blank')}
+                      className="text-blue-600 hover:underline text-xs"
+                    >
+                      PDF
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const KpiCard = ({ label, value }) => (
+  <div className="bg-white rounded-lg shadow p-4">
+    <p className="text-xs text-gray-500 uppercase tracking-wide">{label}</p>
+    <p className="text-2xl font-bold text-gray-900 mt-1">{value}</p>
+  </div>
+);
+
+export default InvestorDashboard;
+```
+
+---
+
+## STEP 8 — ROUTE GUARD (Add to Existing Router)
+
+```jsx
+// ============================================================
+// FILE: your existing router file (e.g., App.jsx or routes.jsx)
+// ACTION: ADD investor route only — do not touch existing routes
+// ⚠️  Do NOT modify existing <Route> elements
+// ============================================================
+
+// ADD this import at the top (alongside existing imports):
+import InvestorDashboard from './pages/InvestorDashboard';
+
+// ADD this route alongside existing routes (do not replace any):
+// <Route
+//   path="/investor/dashboard"
+//   element={
+//     <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ADMIN', 'INVESTOR']}>
+//       <InvestorDashboard />
+//     </ProtectedRoute>
+//   }
+// />
+
+// If you don't have a ProtectedRoute component yet, create one:
+const ProtectedRoute = ({ allowedRoles, children }) => {
+  const userRole = JSON.parse(atob(localStorage.getItem('token')?.split('.')[1] || 'e30=')).role;
+  if (!allowedRoles.includes(userRole)) {
+    return <Navigate to="/unauthorized" replace />;
+  }
+  return children;
+};
+```
+
+---
+
+## ✅ CHUNK 01 COMPLETION CHECKLIST
+
+Before closing this session and starting Chunk 02, confirm ALL:
+
+```
+DATABASE:
+  □ users.role column added with DEFAULT 'STAFF'
+  □ users.branch_id column added (nullable)
+  □ users.investor_branch_scope column added
+  □ investor_reports table created
+  □ investor_export_logs table created
+  □ All indexes created
+
+BACKEND:
+  □ /src/constants/roles.js created
+  □ /src/middleware/rbac.js created
+  □ /src/routes/investor.js created
+  □ app.js: app.use('/api/investor', ...) added
+
+FRONTEND:
+  □ /src/pages/InvestorDashboard.jsx created
+  □ Route added to router (not replacing any existing route)
+
+EXISTING FUNCTIONALITY (must still work):
+  □ Login works for all existing accounts
+  □ Existing reservation endpoints return correct data
+  □ Room board loads without errors
+  □ POS orders work
+  □ No console errors related to this change
+
+INVESTOR-SPECIFIC:
+  □ GET /api/investor/reports returns data (or empty array)
+  □ GET /api/investor/kpis returns data
+  □ 403 returned when non-investor role hits /api/investor/*
+  □ /investor/dashboard route accessible with INVESTOR token
+```
+
+---
+
+## ⚠️ KNOWN SAFE OMISSIONS IN CHUNK 01
+
+The following are intentionally left for Chunk 02 and 03:
+```
+Chunk 02: Store Manager, Hostess, Staff sub-roles portal + room board RBAC
+Chunk 03: Driver, Customer portal + nightly investor report aggregation job
+           + full nav menu role visibility + field masking middleware
+```
+
+Do NOT attempt to implement these in Chunk 01.
+
+---
+*KL Project RBAC — Chunk 01 of 03 | Version 3.0 | 2026-03-20*

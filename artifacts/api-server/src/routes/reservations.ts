@@ -49,7 +49,7 @@ router.get(
     try {
       const { branch_id, date, status } = req.query as Record<string, string>;
 
-      const isSuperUser = [ROLES.SUPER_ADMIN, ROLES.ADMIN].includes(req.user!.role as typeof ROLES[keyof typeof ROLES]);
+      const isSuperUser = ([ROLES.SUPER_ADMIN, ROLES.ADMIN] as string[]).includes(req.user!.role);
       const effectiveBranchId = branch_id ?? (!isSuperUser ? req.user!.branchId! : undefined);
 
       const conditions: string[] = ["1=1"];

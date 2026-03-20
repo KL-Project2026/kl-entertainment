@@ -44,7 +44,7 @@ router.get(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const branchId = req.query.branch_id as string | undefined;
-      const isSuperUser = [ROLES.SUPER_ADMIN, ROLES.ADMIN].includes(req.user!.role as typeof ROLES[keyof typeof ROLES]);
+      const isSuperUser = ([ROLES.SUPER_ADMIN, ROLES.ADMIN] as string[]).includes(req.user!.role);
       const effectiveBranchId = branchId ?? (!isSuperUser ? req.user!.branchId! : undefined);
 
       const { rows } = effectiveBranchId

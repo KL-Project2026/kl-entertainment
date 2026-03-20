@@ -1,16 +1,61 @@
 export const ROLES = {
-  SUPER_ADMIN: "super_admin",
-  ADMIN: "admin",
-  BRANCH_MANAGER: "branch_manager",
-  MANAGER: "manager",
-  HOSTESS: "hostess",
-  DRIVER: "driver",
-  KITCHEN: "kitchen",
-  HALL: "hall",
-  GENERAL: "general",
+  SUPER_ADMIN:   "super_admin",
+  ADMIN:         "admin",
+  INVESTOR:      "investor",
+  BRANCH_MANAGER:"branch_manager",
+  MANAGER:       "manager",
+  HOSTESS:       "hostess",
+  DRIVER:        "driver",
+  KITCHEN:       "kitchen",
+  HALL:          "hall",
+  GENERAL:       "general",
 } as const;
 
 export type Role = (typeof ROLES)[keyof typeof ROLES];
+
+// Hierarchy level — higher number = more privilege
+export const ROLE_LEVEL: Record<string, number> = {
+  super_admin:   100,
+  admin:          80,
+  investor:       70,
+  branch_manager: 60,
+  manager:        55,
+  hostess:        40,
+  driver:         30,
+  kitchen:        30,
+  hall:           30,
+  general:        20,
+};
+
+// Table-level permission matrix
+export const TABLE_PERMISSIONS: Record<string, Record<string, string>> = {
+  investor: {
+    investor_reports: "READ",
+    branches:         "READ",
+  },
+  admin: {
+    branches:         "FULL",
+    rooms:            "FULL",
+    reservations:     "FULL",
+    customers:        "FULL",
+    staff:            "FULL",
+    agents:           "FULL",
+    payments:         "READ",
+    invoices:         "FULL",
+    audit_logs:       "READ",
+    investor_reports: "FULL",
+  },
+  branch_manager: {
+    rooms:            "FULL",
+    reservations:     "FULL",
+    customers:        "MANAGE",
+    staff:            "MANAGE",
+    attendance:       "FULL",
+    agents:           "READ",
+    payments:         "READ",
+    invoices:         "FULL",
+  },
+};
 
 export const RESERVATION_STATUSES = {
   TENTATIVE: "tentative",

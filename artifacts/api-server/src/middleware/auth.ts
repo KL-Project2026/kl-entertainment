@@ -6,6 +6,8 @@ export interface JwtPayload {
   role: string;
   branchId: string | null;
   userType: string;
+  investorBranchScope?: string[];
+  orgId?: string | null;
 }
 
 declare global {

@@ -12,7 +12,7 @@ router.get(
   authenticate,
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const isSuperUser = [ROLES.SUPER_ADMIN, ROLES.ADMIN].includes(req.user!.role as typeof ROLES[keyof typeof ROLES]);
+      const isSuperUser = ([ROLES.SUPER_ADMIN, ROLES.ADMIN] as string[]).includes(req.user!.role);
 
       const query = isSuperUser
         ? `SELECT b.*, o.name as org_name FROM branches b JOIN organizations o ON o.id = b.org_id WHERE b.deleted_at IS NULL ORDER BY b.name`

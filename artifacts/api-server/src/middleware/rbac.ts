@@ -1,17 +1,26 @@
 import { Request, Response, NextFunction } from "express";
-import { ROLES } from "../config/constants";
+import { ROLES, ROLE_LEVEL } from "../config/constants";
 
 export function requireRole(...allowedRoles: string[]) {
   return (req: Request, res: Response, next: NextFunction): void => {
-    if (!req.user) {
-      res.status(401).json({ error: "UNAUTHORIZED" });
-      return;
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: "UNAUTHORIZED" });
+        return;
+      }
+      if (allowedRoles.includes("*") || req.user.role === ROLES.SUPER_ADMIN || allowedRoles.includes(req.user.role)) {
+        next();
+        return;
+      }
+      res.status(403).json({
+        error: "FORBIDDEN",
+        required: allowedRoles,
+        current: req.user.role,
+      });
+    } catch (err) {
+      console.error("[RBAC] requireRole error:", (err as Error).message);
+      res.status(403).json({ error: "Permission check failed" });
     }
-    if (allowedRoles.includes("*") || allowedRoles.includes(req.user.role)) {
-      next();
-      return;
-    }
-    res.status(403).json({ error: "FORBIDDEN" });
   };
 }
 
@@ -20,8 +29,8 @@ export function requireBranchAccess(req: Request, res: Response, next: NextFunct
     res.status(401).json({ error: "UNAUTHORIZED" });
     return;
   }
-  const superRoles = [ROLES.SUPER_ADMIN, ROLES.ADMIN];
-  if (superRoles.includes(req.user.role as typeof ROLES[keyof typeof ROLES])) {
+  const superRoles = [ROLES.SUPER_ADMIN, ROLES.ADMIN] as string[];
+  if (superRoles.includes(req.user.role)) {
     next();
     return;
   }
@@ -36,3 +45,75 @@ export function requireBranchAccess(req: Request, res: Response, next: NextFunct
   }
   next();
 }
+
+/**
+ * requireMinLevel(level)
+ * Allows any role at or above the specified hierarchy level
+ */
+export function requireMinLevel(minLevel: number) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: "UNAUTHORIZED" });
+        return;
+      }
+      if (req.user.role === ROLES.SUPER_ADMIN) {
+        next();
+        return;
+      }
+      const userLevel = ROLE_LEVEL[req.user.role] ?? 0;
+      if (userLevel >= minLevel) {
+        next();
+        return;
+      }
+      res.status(403).json({ error: "INSUFFICIENT_PRIVILEGE" });
+    } catch (err) {
+      console.error("[RBAC] requireMinLevel error:", (err as Error).message);
+      res.status(403).json({ error: "Permission check failed" });
+    }
+  };
+}
+
+/**
+ * branchScope
+ * Injects branch filter into req so existing list handlers can filter by branch.
+ * SUPER_ADMIN and ADMIN see all. INVESTOR is filtered by investorBranchScope.
+ * Others are filtered to their own branch.
+ */
+export function branchScope(req: Request, res: Response, next: NextFunction): void {
+  try {
+    const role = req.user?.role;
+
+    if (!role || role === ROLES.SUPER_ADMIN || role === ROLES.ADMIN) {
+      next();
+      return;
+    }
+
+    if (role === ROLES.INVESTOR) {
+      const scope = req.user?.investorBranchScope ?? [];
+      if (scope.length > 0) {
+        (req as Request & { rbac_branch_filter?: string[] }).rbac_branch_filter = scope;
+      }
+      next();
+      return;
+    }
+
+    const branchId = req.user?.branchId;
+    if (branchId) {
+      (req.query as Record<string, string>).branch_id = branchId;
+    }
+    next();
+  } catch (err) {
+    console.error("[RBAC] branchScope error:", (err as Error).message);
+    next();
+  }
+}
+
+/**
+ * investorOnly — blocks access for non-investor, non-admin roles
+ */
+export const investorOnly = requireRole(
+  ROLES.SUPER_ADMIN,
+  ROLES.ADMIN,
+  ROLES.INVESTOR,
+);

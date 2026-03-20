@@ -16,13 +16,17 @@ router.post("/auth/login", async (req: Request, res: Response): Promise<void> =>
     }
 
     const { rows } = await pool.query(
-      `SELECT id, full_name AS name, email, password_hash, role, branch_id, 'staff' AS user_type
+      `SELECT id, full_name AS name, email, password_hash, role, branch_id,
+              COALESCE(investor_branch_scope, '[]'::jsonb) AS investor_branch_scope,
+              'staff' AS user_type
        FROM staff WHERE email = $1 AND is_active = true AND deleted_at IS NULL
        UNION ALL
-       SELECT id, full_name AS name, email, password_hash, 'customer' AS role, NULL::uuid, 'customer'
+       SELECT id, full_name AS name, email, password_hash, 'customer' AS role, NULL::uuid,
+              '[]'::jsonb, 'customer'
        FROM customers WHERE email = $1 AND is_active = true AND deleted_at IS NULL
        UNION ALL
-       SELECT id, name, email, password_hash, 'shareholder' AS role, NULL::uuid, 'shareholder'
+       SELECT id, name, email, password_hash, 'shareholder' AS role, NULL::uuid,
+              '[]'::jsonb, 'shareholder'
        FROM shareholders WHERE email = $1 AND is_active = true
        LIMIT 1`,
       [email]
@@ -40,6 +44,7 @@ router.post("/auth/login", async (req: Request, res: Response): Promise<void> =>
       password_hash: string;
       role: string;
       branch_id: string | null;
+      investor_branch_scope: string[];
       user_type: string;
     };
 
@@ -54,16 +59,29 @@ router.post("/auth/login", async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
+    // Update last_login_at (non-blocking)
+    pool.query("UPDATE staff SET last_login_at = NOW() WHERE id = $1", [user.id]).catch(() => {});
+
+    const investorBranchScope: string[] = Array.isArray(user.investor_branch_scope)
+      ? (user.investor_branch_scope as string[])
+      : [];
+
     const accessToken = jwt.sign(
-      { id: user.id, role: user.role, branchId: user.branch_id, userType: user.user_type },
+      {
+        id: user.id,
+        role: user.role,
+        branchId: user.branch_id,
+        userType: user.user_type,
+        investorBranchScope,
+      },
       process.env.JWT_SECRET as string,
-      { expiresIn: process.env.JWT_EXPIRY || "24h" }
+      { expiresIn: (process.env.JWT_EXPIRY || "24h") as string } as import("jsonwebtoken").SignOptions
     );
 
     const refreshToken = jwt.sign(
       { id: user.id },
       process.env.REFRESH_TOKEN_SECRET as string,
-      { expiresIn: process.env.REFRESH_TOKEN_EXPIRY || "30d" }
+      { expiresIn: (process.env.REFRESH_TOKEN_EXPIRY || "30d") as string } as import("jsonwebtoken").SignOptions
     );
 
     res.json({
@@ -76,6 +94,7 @@ router.post("/auth/login", async (req: Request, res: Response): Promise<void> =>
         role: user.role,
         branchId: user.branch_id,
         userType: user.user_type,
+        investorBranchScope,
       },
     });
   } catch (err) {
@@ -121,7 +140,7 @@ router.post("/auth/refresh", async (req: Request, res: Response): Promise<void> 
     const accessToken = jwt.sign(
       { id: user.id, role: user.role, branchId: user.branch_id, userType: user.user_type },
       process.env.JWT_SECRET as string,
-      { expiresIn: process.env.JWT_EXPIRY || "24h" }
+      { expiresIn: (process.env.JWT_EXPIRY || "24h") as string } as import("jsonwebtoken").SignOptions
     );
 
     res.json({ accessToken });

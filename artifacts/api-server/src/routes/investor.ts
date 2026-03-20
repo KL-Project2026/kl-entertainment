@@ -1,6 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
 import { authenticate } from "../middleware/auth";
+import { investorOnly } from "../middleware/rbac";
 import { getInvestorDashboardSnapshot } from "../services/pnl-service";
 import { getRevenueReport } from "../services/reports-service";
 
@@ -238,6 +239,249 @@ router.get(
     } catch (err) {
       console.error("Settlement PDF error:", err);
       res.status(500).json({ error: "INTERNAL_ERROR" });
+    }
+  }
+);
+
+// ── NEW: /investor/reports — uses investor_reports aggregate table ─────────
+// Returns pre-aggregated monthly reports (investor_reports table only)
+// NEVER queries live transactional tables for this endpoint
+router.get(
+  "/investor/reports",
+  authenticate,
+  investorOnly,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const user = req.user!;
+      const role = user.role;
+      const orgId = "00000000-0000-0000-0000-000000000001"; // KL Entertainment Group
+
+      const period = req.query["period"] as string | undefined;
+      const branchId = req.query["branch_id"] as string | undefined;
+
+      const whereParts: string[] = ["ir.org_id = $1"];
+      const params: unknown[] = [orgId];
+      let pIdx = 2;
+
+      if (period) {
+        whereParts.push(`ir.period = $${pIdx++}`);
+        params.push(period);
+      }
+
+      // Investor role: filter by investor_branch_scope
+      if (role === "investor") {
+        const scope = user.investorBranchScope ?? [];
+        if (scope.length > 0) {
+          whereParts.push(`ir.branch_id = ANY($${pIdx++})`);
+          params.push(scope);
+        }
+      } else if (branchId) {
+        whereParts.push(`ir.branch_id = $${pIdx++}`);
+        params.push(branchId);
+      }
+
+      const where = whereParts.join(" AND ");
+      const { rows } = await pool.query(
+        `SELECT
+          ir.id,
+          ir.period,
+          ir.branch_name,
+          ir.report_type,
+          ir.total_revenue,
+          ir.room_revenue,
+          ir.beverage_revenue,
+          ir.food_revenue,
+          ir.package_revenue,
+          ir.other_revenue,
+          ir.total_commission_expense,
+          ir.gross_profit,
+          ir.net_profit,
+          ir.room_utilization_pct,
+          ir.total_sessions,
+          ir.unique_customers,
+          ir.avg_spend_per_session,
+          ir.notes,
+          ir.currency_code,
+          ir.generated_at,
+          b.name AS branch_display_name
+         FROM investor_reports ir
+         LEFT JOIN branches b ON b.id = ir.branch_id
+         WHERE ${where}
+         ORDER BY ir.period DESC, ir.branch_name ASC`,
+        params
+      );
+
+      res.json({ data: rows, count: rows.length });
+    } catch (err) {
+      console.error("[Investor] GET /reports error:", err);
+      res.status(500).json({ error: "Failed to fetch investor reports" });
+    }
+  }
+);
+
+// ── NEW: /investor/reports/export/:period — log and return data ────────────
+router.get(
+  "/investor/reports/export/:period",
+  authenticate,
+  investorOnly,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { period } = req.params as { period: string };
+      const staffId = req.user!.id;
+      const orgId = "00000000-0000-0000-0000-000000000001";
+      const watermarkText = `CONFIDENTIAL — ${req.user!.id} — ${new Date().toISOString()}`;
+
+      const { rows } = await pool.query(
+        `SELECT ir.*, b.name AS branch_display_name
+         FROM investor_reports ir
+         LEFT JOIN branches b ON b.id = ir.branch_id
+         WHERE ir.org_id = $1 AND ir.period = $2
+         ORDER BY ir.branch_name ASC`,
+        [orgId, period]
+      );
+
+      // Log the export
+      await pool.query(
+        `INSERT INTO investor_export_logs
+          (staff_id, report_period, ip_address, file_format, watermark_text)
+         VALUES ($1, $2, $3, 'JSON', $4)`,
+        [staffId, period, req.ip ?? "unknown", watermarkText]
+      );
+
+      res.json({ data: rows, period, watermark: watermarkText });
+    } catch (err) {
+      console.error("[Investor] Export error:", err);
+      res.status(500).json({ error: "Export failed" });
+    }
+  }
+);
+
+// ── NEW: /investor/kpis — aggregated KPI metrics from investor_reports ─────
+router.get(
+  "/investor/kpis",
+  authenticate,
+  investorOnly,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const user = req.user!;
+      const role = user.role;
+      const orgId = "00000000-0000-0000-0000-000000000001";
+
+      const whereParts: string[] = ["org_id = $1"];
+      const params: unknown[] = [orgId];
+      let pIdx = 2;
+
+      if (role === "investor") {
+        const scope = user.investorBranchScope ?? [];
+        if (scope.length > 0) {
+          whereParts.push(`branch_id = ANY($${pIdx++})`);
+          params.push(scope);
+        }
+      }
+
+      const where = whereParts.join(" AND ");
+      const { rows } = await pool.query(
+        `SELECT
+          period,
+          SUM(total_revenue)          AS total_revenue,
+          SUM(gross_profit)           AS gross_profit,
+          SUM(net_profit)             AS net_profit,
+          AVG(room_utilization_pct)   AS avg_utilization,
+          SUM(total_sessions)         AS total_sessions,
+          SUM(unique_customers)       AS unique_customers,
+          AVG(avg_spend_per_session)  AS avg_spend
+         FROM investor_reports
+         WHERE ${where}
+         GROUP BY period
+         ORDER BY period DESC
+         LIMIT 12`,
+        params
+      );
+
+      res.json({ data: rows });
+    } catch (err) {
+      console.error("[Investor] GET /kpis error:", err);
+      res.status(500).json({ error: "Failed to fetch KPIs" });
+    }
+  }
+);
+
+// ── NEW: /investor/reports (POST) — admin creates/upserts monthly report ───
+router.post(
+  "/investor/reports",
+  authenticate,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const role = req.user!.role;
+      if (!["super_admin", "admin", "branch_manager"].includes(role)) {
+        res.status(403).json({ error: "FORBIDDEN" });
+        return;
+      }
+
+      const {
+        branch_id, branch_name, period, report_type,
+        total_revenue, room_revenue, beverage_revenue, food_revenue,
+        package_revenue, other_revenue, total_operating_cost,
+        total_commission_expense, gross_profit, net_profit,
+        room_utilization_pct, total_sessions, unique_customers,
+        avg_spend_per_session, notes, currency_code,
+      } = req.body as Record<string, unknown>;
+
+      const orgId = "00000000-0000-0000-0000-000000000001";
+
+      const { rows } = await pool.query(
+        `INSERT INTO investor_reports (
+          org_id, branch_id, branch_name, period, report_type,
+          total_revenue, room_revenue, beverage_revenue, food_revenue,
+          package_revenue, other_revenue, total_operating_cost,
+          total_commission_expense, gross_profit, net_profit,
+          room_utilization_pct, total_sessions, unique_customers,
+          avg_spend_per_session, notes, generated_by, currency_code
+         ) VALUES (
+          $1, $2, $3, $4, $5,
+          $6, $7, $8, $9,
+          $10, $11, $12,
+          $13, $14, $15,
+          $16, $17, $18,
+          $19, $20, $21, $22
+         )
+         ON CONFLICT (org_id, branch_id, period)
+         DO UPDATE SET
+          branch_name            = EXCLUDED.branch_name,
+          report_type            = EXCLUDED.report_type,
+          total_revenue          = EXCLUDED.total_revenue,
+          room_revenue           = EXCLUDED.room_revenue,
+          beverage_revenue       = EXCLUDED.beverage_revenue,
+          food_revenue           = EXCLUDED.food_revenue,
+          package_revenue        = EXCLUDED.package_revenue,
+          other_revenue          = EXCLUDED.other_revenue,
+          total_operating_cost   = EXCLUDED.total_operating_cost,
+          total_commission_expense = EXCLUDED.total_commission_expense,
+          gross_profit           = EXCLUDED.gross_profit,
+          net_profit             = EXCLUDED.net_profit,
+          room_utilization_pct   = EXCLUDED.room_utilization_pct,
+          total_sessions         = EXCLUDED.total_sessions,
+          unique_customers       = EXCLUDED.unique_customers,
+          avg_spend_per_session  = EXCLUDED.avg_spend_per_session,
+          notes                  = EXCLUDED.notes,
+          generated_by           = EXCLUDED.generated_by,
+          currency_code          = EXCLUDED.currency_code,
+          generated_at           = NOW()
+         RETURNING *`,
+        [
+          orgId, branch_id ?? null, branch_name ?? null, period, report_type ?? "MONTHLY",
+          total_revenue ?? 0, room_revenue ?? 0, beverage_revenue ?? 0, food_revenue ?? 0,
+          package_revenue ?? 0, other_revenue ?? 0, total_operating_cost ?? 0,
+          total_commission_expense ?? 0, gross_profit ?? 0, net_profit ?? 0,
+          room_utilization_pct ?? 0, total_sessions ?? 0, unique_customers ?? 0,
+          avg_spend_per_session ?? 0, notes ?? null, req.user!.id, currency_code ?? "MYR",
+        ]
+      );
+
+      res.status(201).json({ data: rows[0] });
+    } catch (err) {
+      console.error("[Investor] POST /reports error:", err);
+      res.status(500).json({ error: "Failed to create report" });
     }
   }
 );

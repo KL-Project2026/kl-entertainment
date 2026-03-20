@@ -70,3 +70,12 @@ The project is structured as a pnpm monorepo using TypeScript, with distinct `ap
     -   WhatsApp Cloud API (for sending booking confirmations)
     -   Telegram Bot API (optional)
 -   **Financial Data:** ExchangeRate API (for FX rates)
+**RBAC Chunk 01 — Investor Role & Reports Infrastructure (COMPLETE):**
+- DB migrations: `investor_branch_scope JSONB` + `last_login_at` on `staff`; `investor_reports` table (UUID PKs, org_id, branch_id, MYR currency, 20+ metric columns, unique constraint on org_id+branch_id+period); `investor_export_logs` table (UUID PK, staff_id, watermark, format, IP).
+- `config/constants.ts`: Added `INVESTOR` to ROLES; added `ROLE_LEVEL` hierarchy map (super_admin=100 → general=20); added `TABLE_PERMISSIONS` matrix.
+- `middleware/auth.ts`: `JwtPayload` now includes `investorBranchScope?: string[]` and `orgId?: string | null`.
+- `middleware/rbac.ts`: Added `requireMinLevel(level)`, `branchScope`, `investorOnly` helpers. Fixed `.includes()` type-casting to `as string[]`.
+- `routes/auth.ts`: Login now reads `investor_branch_scope` from `staff` table, includes it in JWT payload and login response. Updates `last_login_at` on each login (non-blocking).
+- `routes/investor.ts`: Added `GET /investor/reports` (scope-filtered by investorBranchScope for investor role), `GET /investor/kpis` (monthly aggregates), `GET /investor/reports/export/:period` (with audit log + watermark), `POST /investor/reports` (upsert with ON CONFLICT). All GET routes protected by `investorOnly` (admin + investor only).
+- `pages/investor-reports.tsx` + route `/investor-reports`: KPI summary cards (latest month), expandable report rows (revenue breakdown, profitability, operational KPIs), Add Report form, period filter, export button.
+- Layout + i18n: Nav item `nav.investor_reports` added for en/ms/zh locales.
