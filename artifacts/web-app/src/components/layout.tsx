@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Grid, Building2, Package, LogOut, CalendarDays,
   ShoppingCart, Users, CalendarCheck, Clock, Handshake, PieChart,
   LineChart, BarChart2, Globe, Receipt, Table2, FileBarChart, Menu, X,
-  UserCheck, Briefcase,
+  UserCheck, Briefcase, Settings, ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
@@ -29,7 +29,10 @@ const ADMIN_UP:   NavRole[] = ["super_admin", "admin"];
 const MANAGER_UP: NavRole[] = ["super_admin", "admin", "branch_manager", "manager"];
 const OPS_UP:     NavRole[] = ["super_admin", "admin", "branch_manager", "manager", "kitchen", "hall", "general"];
 
-const NAV_ITEMS: { path: string; key: string; icon: React.ComponentType<{ className?: string }>; roles: NavRole[] }[] = [
+type NavItem = { path: string; key: string; icon: React.ComponentType<{ className?: string }>; roles: NavRole[] };
+
+// ── Keep NAV_ITEMS for header title detection ────────────────────────────────
+const NAV_ITEMS: NavItem[] = [
   { path: "/",                   key: "nav.dashboard",         icon: LayoutDashboard, roles: OPS_UP },
   { path: "/room-board",         key: "nav.room_board",        icon: Grid,            roles: OPS_UP },
   { path: "/reservations",       key: "nav.reservations",      icon: CalendarDays,    roles: MANAGER_UP },
@@ -52,11 +55,133 @@ const NAV_ITEMS: { path: string; key: string; icon: React.ComponentType<{ classN
   { path: "/products",           key: "nav.products",          icon: Package,         roles: MANAGER_UP },
 ];
 
+// ── Category definitions ─────────────────────────────────────────────────────
+type CategoryKey = "operations" | "staff" | "finance" | "investors" | "settings";
+
+interface CategoryDef {
+  key: CategoryKey;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  accent: string;
+  items: NavItem[];
+}
+
+const CATEGORIES: CategoryDef[] = [
+  {
+    key: "operations",
+    label: "Operations",
+    icon: LayoutDashboard,
+    accent: "#F59E0B",
+    items: [
+      { path: "/",             key: "nav.dashboard",    icon: LayoutDashboard, roles: OPS_UP },
+      { path: "/room-board",   key: "nav.room_board",   icon: Grid,            roles: OPS_UP },
+      { path: "/reservations", key: "nav.reservations", icon: CalendarDays,    roles: MANAGER_UP },
+      { path: "/pos",          key: "nav.pos",          icon: ShoppingCart,    roles: OPS_UP },
+    ],
+  },
+  {
+    key: "staff",
+    label: "Staff & Hostess",
+    icon: Users,
+    accent: "#10B981",
+    items: [
+      { path: "/staff",             key: "nav.staff",             icon: Users,        roles: MANAGER_UP },
+      { path: "/staff/hostesses",   key: "nav.hostess_profiles",  icon: UserCheck,    roles: MANAGER_UP },
+      { path: "/agencies",          key: "nav.agencies",          icon: Briefcase,    roles: MANAGER_UP },
+      { path: "/agents",            key: "nav.agents",            icon: Handshake,    roles: ADMIN_UP },
+      { path: "/schedule-builder",  key: "nav.schedules",         icon: CalendarCheck,roles: MANAGER_UP },
+      { path: "/attendance",        key: "nav.attendance",        icon: Clock,        roles: MANAGER_UP },
+    ],
+  },
+  {
+    key: "finance",
+    label: "Finance",
+    icon: Receipt,
+    accent: "#3B82F6",
+    items: [
+      { path: "/invoices",      key: "nav.invoices",     icon: Receipt,     roles: MANAGER_UP },
+      { path: "/tables",        key: "nav.tables",       icon: Table2,      roles: MANAGER_UP },
+      { path: "/reports/daily", key: "nav.daily_report", icon: FileBarChart,roles: MANAGER_UP },
+      { path: "/reports",       key: "nav.reports",      icon: BarChart2,   roles: MANAGER_UP },
+    ],
+  },
+  {
+    key: "investors",
+    label: "Investors",
+    icon: PieChart,
+    accent: "#8B5CF6",
+    items: [
+      { path: "/shareholders",       key: "nav.shareholders",     icon: PieChart,  roles: ADMIN_UP },
+      { path: "/investor-dashboard", key: "nav.investor",         icon: LineChart, roles: ["super_admin", "admin", "investor"] },
+      { path: "/investor-reports",   key: "nav.investor_reports", icon: PieChart,  roles: ["super_admin", "admin", "investor"] },
+    ],
+  },
+  {
+    key: "settings",
+    label: "Settings",
+    icon: Settings,
+    accent: "#6B7280",
+    items: [
+      { path: "/branches",           key: "nav.branches",          icon: Building2, roles: ADMIN_UP },
+      { path: "/products",           key: "nav.products",          icon: Package,   roles: MANAGER_UP },
+      { path: "/hostess-dashboard",  key: "nav.hostess_dashboard", icon: Users,     roles: ["super_admin", "admin", "branch_manager", "manager", "hostess"] },
+    ],
+  },
+];
+
+// ── localStorage helpers ─────────────────────────────────────────────────────
+const LS_KEY = "sidebar_category_state";
+const DEFAULT_OPEN: Record<CategoryKey, boolean> = {
+  operations: true, staff: false, finance: false, investors: false, settings: false,
+};
+
+function loadCategoryState(): Record<CategoryKey, boolean> {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) return { ...DEFAULT_OPEN, ...(JSON.parse(raw) as Record<CategoryKey, boolean>) };
+  } catch { /* ignore */ }
+  return { ...DEFAULT_OPEN };
+}
+
+function saveCategoryState(state: Record<CategoryKey, boolean>) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch { /* ignore */ }
+}
+
+// ── Route → category helper ──────────────────────────────────────────────────
+function findActiveCategoryKey(location: string): CategoryKey | null {
+  for (const cat of CATEGORIES) {
+    for (const item of cat.items) {
+      const match = item.path === "/"
+        ? location === "/"
+        : location === item.path || location.startsWith(item.path + "/");
+      if (match) return cat.key;
+    }
+  }
+  return null;
+}
+
+// ── Main Layout ──────────────────────────────────────────────────────────────
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { user, logout } = useAuthStore();
   const { t, i18n } = useTranslation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Category collapse state — initialised from localStorage
+  const [catOpen, setCatOpen] = useState<Record<CategoryKey, boolean>>(loadCategoryState);
+
+  // Auto-expand the category that contains the current route
+  useEffect(() => {
+    const activeKey = findActiveCategoryKey(location);
+    if (activeKey) {
+      setCatOpen(prev => {
+        if (prev[activeKey]) return prev; // already open — no-op
+        const next = { ...prev, [activeKey]: true };
+        saveCategoryState(next);
+        return next;
+      });
+    }
+  }, [location]);
 
   // Close sidebar automatically on route change (mobile nav tap)
   useEffect(() => {
@@ -65,11 +190,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   // Prevent body scroll when mobile sidebar is open
   useEffect(() => {
-    if (sidebarOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
+    document.body.style.overflow = sidebarOpen ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
   }, [sidebarOpen]);
 
@@ -78,14 +199,18 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     return location === i.path || location.startsWith(i.path + "/");
   });
 
-  const visibleNav = NAV_ITEMS.filter(
-    (item) => !user?.role || item.roles.includes(user.role as NavRole),
-  );
-
   const handleLang = (code: string) => {
     i18n.changeLanguage(code);
     localStorage.setItem("kl_lang", code);
   };
+
+  function toggleCategory(key: CategoryKey) {
+    setCatOpen(prev => {
+      const next = { ...prev, [key]: !prev[key] };
+      saveCategoryState(next);
+      return next;
+    });
+  }
 
   const SidebarContent = () => (
     <>
@@ -111,30 +236,96 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 md:px-4 py-4 space-y-0.5 overflow-y-auto">
-        {visibleNav.map((item) => {
-          const isActive = activeItem?.path === item.path;
-          const Icon = item.icon;
+      <nav className="flex-1 px-3 md:px-4 py-3 overflow-y-auto space-y-0.5">
+        {CATEGORIES.map((cat) => {
+          const isOpen = catOpen[cat.key];
+          const CatIcon = cat.icon;
+
+          // Filter items by role
+          const visibleItems = cat.items.filter(
+            item => !user?.role || item.roles.includes(user.role as NavRole)
+          );
+          if (visibleItems.length === 0) return null;
+
+          // Find if this category has the active route
+          const activeCategoryKey = findActiveCategoryKey(location);
+          const hasActiveChild = activeCategoryKey === cat.key;
+
           return (
-            <Link key={item.path} href={item.path} className="block">
-              <div className={cn(
-                "flex items-center gap-3 px-3 md:px-4 py-2.5 md:py-3 rounded-xl transition-all duration-200 relative group cursor-pointer",
-                isActive ? "text-primary" : "text-muted-foreground hover:text-foreground",
-              )}>
-                {isActive && (
-                  <motion.div
-                    layoutId="sidebar-active"
-                    className="absolute inset-0 bg-primary/10 border border-primary/20 rounded-xl"
-                    transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+            <div key={cat.key} className="mb-0.5">
+              {/* Category Header */}
+              <button
+                onClick={() => toggleCategory(cat.key)}
+                className={cn(
+                  "w-full flex items-center gap-2.5 px-3 md:px-4 py-2 rounded-xl",
+                  "transition-colors duration-150 group",
+                  "text-muted-foreground hover:text-primary hover:bg-white/5"
+                )}
+                style={{
+                  borderLeft: isOpen ? `3px solid ${cat.accent}` : "3px solid transparent",
+                  opacity: isOpen ? 1 : 0.7,
+                }}
+              >
+                <CatIcon
+                  className="w-[18px] h-[18px] md:w-5 md:h-5 flex-shrink-0 transition-colors duration-150 group-hover:text-primary"
+                />
+                <span
+                  className="flex-1 text-left font-semibold tracking-[0.08em] transition-colors duration-150 group-hover:text-primary"
+                  style={{ fontSize: "11px", textTransform: "uppercase" }}
+                >
+                  {cat.label}
+                </span>
+                {/* Dot indicator: collapsed but has active child */}
+                {hasActiveChild && !isOpen && (
+                  <span
+                    className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: cat.accent }}
                   />
                 )}
-                <Icon className="w-[18px] h-[18px] md:w-5 md:h-5 relative z-10 flex-shrink-0" />
-                <span className="font-medium relative z-10 text-sm truncate">{t(item.key)}</span>
-                {!isActive && (
-                  <div className="absolute inset-0 bg-white/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity" />
-                )}
+                <ChevronDown
+                  className="w-[18px] h-[18px] md:w-5 md:h-5 flex-shrink-0 transition-all duration-200 group-hover:text-primary"
+                  style={{ transform: isOpen ? "rotate(180deg)" : "rotate(0deg)" }}
+                />
+              </button>
+
+              {/* Collapsible item list */}
+              <div
+                className="overflow-hidden transition-all duration-300 ease-in-out"
+                style={{
+                  maxHeight: isOpen ? `${visibleItems.length * 56}px` : "0px",
+                }}
+              >
+                <div className="pt-0.5 pb-1 space-y-0.5">
+                  {visibleItems.map((item) => {
+                    const isActive = activeItem?.path === item.path;
+                    const Icon = item.icon;
+                    return (
+                      <Link key={item.path} href={item.path} className="block">
+                        <div className={cn(
+                          "flex items-center gap-3 py-2.5 md:py-3 rounded-xl transition-all duration-200 relative group cursor-pointer",
+                          // Extra 10px indent on top of existing px-3 md:px-4
+                          "pl-[22px] md:pl-[26px] pr-3 md:pr-4",
+                          isActive ? "text-primary" : "text-muted-foreground hover:text-primary",
+                        )}>
+                          {isActive && (
+                            <motion.div
+                              layoutId="sidebar-active"
+                              className="absolute inset-0 bg-primary/10 border border-primary/20 rounded-xl"
+                              transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                            />
+                          )}
+                          <Icon className="w-[18px] h-[18px] md:w-5 md:h-5 relative z-10 flex-shrink-0" />
+                          <span className="font-medium relative z-10 text-sm truncate">{t(item.key)}</span>
+                          {!isActive && (
+                            <div className="absolute inset-0 bg-white/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity" />
+                          )}
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
               </div>
-            </Link>
+            </div>
           );
         })}
       </nav>
@@ -186,7 +377,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       <AnimatePresence>
         {sidebarOpen && (
           <>
-            {/* Backdrop — full screen, tap right side to close */}
+            {/* Backdrop */}
             <motion.div
               key="backdrop"
               initial={{ opacity: 0 }}
@@ -198,7 +389,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               aria-hidden="true"
             />
 
-            {/* Drawer — sits above backdrop */}
+            {/* Drawer */}
             <motion.aside
               key="drawer"
               initial={{ x: "-100%" }}
@@ -234,7 +425,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             </h2>
           </div>
 
-          {/* Date/time — hidden on very small screens */}
+          {/* Date/time */}
           <div className="hidden sm:block text-right flex-shrink-0">
             <p className="text-sm font-medium text-foreground">
               {new Date().toLocaleDateString("en-MY", { weekday: "short", month: "short", day: "numeric" })}

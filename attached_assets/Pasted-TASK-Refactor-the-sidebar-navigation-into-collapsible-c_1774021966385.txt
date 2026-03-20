@@ -1,0 +1,225 @@
+TASK: Refactor the sidebar navigation into collapsible category groups
+with hover color effects.
+Do NOT delete or modify any existing page components or routes.
+Only modify the sidebar/navigation component(s).
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 1 — FIND THE NAVIGATION FILE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Locate the sidebar/navigation component file.
+It likely contains the menu items: Dashboard, Room Board, Reservations,
+Point of Sale, Staff, Hostess Profiles, Agencies, Schedules, Attendance,
+Agents, Shareholders, Investor View, Investor Reports, My Dashboard,
+Invoices, Tables, Daily Report, Reports, Branches, Product Catalog.
+
+Do NOT modify any other file. Only modify the sidebar component.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 2 — ICON & COLOR INSPECTION (DO THIS FIRST)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Before writing any code, inspect the existing sidebar source and identify:
+
+A) ICON LIBRARY
+   - Determine which icon library is already in use
+     (e.g. Lucide, Heroicons, Phosphor, Tabler, etc.)
+   - Note the exact import pattern, icon size, and stroke-width used
+   - You will use ONLY this library for all icons including category headers
+   - DO NOT import any new icon library
+
+B) ACTIVE / GOLD COLOR
+   - Find the gold/yellow color already applied to the currently ACTIVE
+     menu item (text + icon highlight)
+   - It may be defined as a Tailwind class (e.g. text-yellow-400, text-amber-400),
+     a CSS variable (e.g. --color-active), or a hex value (e.g. #F59E0B, #EAB308)
+   - Note the exact class name, variable name, or hex value
+   - You will reuse this EXACT value for all hover states — do NOT define
+     a new color or use a different shade
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 3 — DEFINE THE CATEGORY STRUCTURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Reorganize the menu items into exactly these 5 categories.
+Each category header uses an icon from the EXISTING icon library (Step 2A).
+
+CATEGORY 1: "Operations"
+  Header icon: LayoutDashboard (or closest dashboard/grid icon in existing library)
+  Accent color: #F59E0B
+  Items:
+    - Dashboard        → existing route, existing icon
+    - Room Board       → existing route, existing icon
+    - Reservations     → existing route, existing icon
+    - Point of Sale    → existing route, existing icon
+
+CATEGORY 2: "Staff & Hostess"
+  Header icon: Users (or closest people/group icon in existing library)
+  Accent color: #10B981
+  Items:
+    - Staff            → existing route, existing icon
+    - Hostess Profiles → existing route, existing icon
+    - Agencies         → existing route, existing icon
+    - Agents           → existing route, existing icon
+    - Schedules        → existing route, existing icon
+    - Attendance       → existing route, existing icon
+
+CATEGORY 3: "Finance"
+  Header icon: Receipt (or closest invoice/money icon in existing library)
+  Accent color: #3B82F6
+  Items:
+    - Invoices         → existing route, existing icon
+    - Tables           → existing route, existing icon
+    - Daily Report     → existing route, existing icon
+    - Reports          → existing route, existing icon
+
+CATEGORY 4: "Investors"
+  Header icon: PieChart (or closest chart/analytics icon in existing library)
+  Accent color: #8B5CF6
+  Items:
+    - Shareholders     → existing route, existing icon
+    - Investor View    → existing route, existing icon
+    - Investor Reports → existing route, existing icon
+
+CATEGORY 5: "Settings"
+  Header icon: Settings (or closest gear/config icon in existing library)
+  Accent color: #6B7280
+  Items:
+    - Branches         → existing route, existing icon
+    - Product Catalog  → existing route, existing icon
+    - My Dashboard     → existing route, existing icon
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 4 — COLLAPSIBLE CATEGORY BEHAVIOR
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Each category header must be clickable to expand/collapse its items.
+
+Behavior rules:
+1. Category header layout:
+   [CategoryIcon] [CategoryName] [ChevronDown/Up — pushed to far right]
+   Chevron must use the existing icon library (Step 2A)
+
+2. Click header → toggle items visibility with smooth CSS transition
+   (max-height animation or height transition)
+
+3. Default state on first load:
+   - "Operations" → EXPANDED
+   - All others   → COLLAPSED
+
+4. Persist collapse state to localStorage with key: "sidebar_category_state"
+   - On page reload, restore the last known state from localStorage
+   - If no localStorage entry exists, use the defaults above
+   - State shape:
+     { operations: true, staff: false, finance: false,
+       investors: false, settings: false }
+
+5. If the currently active route belongs to a collapsed category →
+   AUTO-EXPAND that category so the active item is always visible
+
+6. Category header when COLLAPSED:
+   - Opacity: 0.7
+   - Left border: 3px solid transparent
+
+7. Category header when EXPANDED:
+   - Opacity: 1.0
+   - Left border: 3px solid [category accent color]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 5 — HOVER COLOR (GOLD/YELLOW)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Apply the gold/yellow color identified in Step 2B to ALL hover states:
+
+Targets:
+  - Category header: text, icon, and chevron on hover
+  - Menu items: text and icon on hover
+    (only if not already using the gold color on hover)
+
+Transition: add smooth color transition on all hover targets
+  CSS: transition: color 0.15s ease
+
+Implementation by stack type:
+
+  If Tailwind:
+    → Find active class e.g. "text-yellow-400" or "text-amber-400"
+    → Apply same class on hover: "hover:text-yellow-400"
+
+  If CSS variables:
+    → Find e.g. --color-active: #F59E0B
+    → Apply: color: var(--color-active) on :hover
+
+  If plain CSS:
+    → Find e.g. .sidebar-item.active { color: #EAB308 }
+    → Apply: .sidebar-category:hover,
+              .sidebar-category:hover .icon,
+              .sidebar-category:hover .chevron { color: #EAB308 }
+
+❌ DO NOT define a new color value — reuse the exact existing active color
+❌ DO NOT change existing active item styles — only ADD hover behavior
+❌ DO NOT use a different shade — must be pixel-perfect match with active color
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 6 — CATEGORY HEADER DESIGN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Match the overall visual language of the existing sidebar exactly:
+- Same background color as sidebar (no new fills)
+- Same font family as existing menu items
+- Category label: uppercase, font-size 11px, letter-spacing 0.08em
+- Padding: same horizontal padding as existing menu items
+- Hover background: same subtle highlight as existing menu item hover
+- Category icon: same size (width/height) and stroke-width as existing icons
+- Chevron: same size as other icons, flush right, rotates 180deg when expanded
+  CSS: transition: transform 0.2s ease
+
+DO NOT introduce any new colors, fonts, shadows, or border-radius values
+that are not already present in the existing sidebar design.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 7 — MENU ITEM INDENTATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Inside an expanded category, menu items should have:
+- Extra left padding: add 10px indent relative to current menu item padding
+- No other style changes — keep existing active/hover/icon styles exactly as-is
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 8 — ACTIVE CATEGORY INDICATOR
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+When a category is COLLAPSED but contains the currently active route:
+- Show a small filled dot next to the category label
+  (use existing icon library's Circle/Dot icon, or a simple 6px CSS circle
+  — whichever matches the existing design language)
+- This tells the user which section they are in even while collapsed
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 9 — PRESERVATION RULES (CRITICAL)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ DO: Group existing menu items under category headers
+✅ DO: Add collapse/expand toggle behavior with animation
+✅ DO: Add localStorage persistence for open/closed state
+✅ DO: Use the existing icon library for ALL icons including category headers
+✅ DO: Reuse the existing gold/yellow active color for all hover states
+✅ DO: Keep all existing routes, icons, active states, and permissions logic
+✅ DO: Keep existing sidebar width, background color, and scroll behavior
+
+❌ DO NOT: Use emojis anywhere in the sidebar
+❌ DO NOT: Import a new icon library — use only what is already installed
+❌ DO NOT: Define a new color value — reuse the existing active gold/yellow
+❌ DO NOT: Delete any menu item or change any route paths
+❌ DO NOT: Modify any page component files
+❌ DO NOT: Change the existing active item highlight style
+❌ DO NOT: Break RBAC — preserve all conditional role-based visibility
+           logic exactly as-is
+❌ DO NOT: Remove the existing sidebar toggle (mobile hamburger) if present
+❌ DO NOT: Introduce new colors, fonts, or styles not already in the sidebar
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FINAL VERIFICATION CHECKLIST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+After implementation, confirm ALL of the following:
+
+[ ] All 20 menu items are still accessible
+[ ] All icons use the existing icon library — no emojis, no new libraries
+[ ] Category headers and menu items turn gold/yellow on hover
+[ ] Hover gold color is the exact same value as the existing active color
+[ ] Clicking a category header toggles its children with smooth animation
+[ ] Chevron rotates on expand/collapse
+[ ] Refreshing the page restores the last open/closed state (localStorage)
+[ ] Navigating to any page auto-expands its parent category
+[ ] Collapsed category with active child shows a dot indicator
+[ ] RBAC role-based menu visibility is fully preserved
