@@ -130,10 +130,19 @@ function CategoryModal({ open, onClose, onSaved, authH, editing }: CatModalProps
         headers: { "Content-Type": "application/json", ...authH },
         body: JSON.stringify(body),
       });
-      if (!r.ok) throw new Error(await r.text());
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({})) as Record<string, string>;
+        throw Object.assign(new Error(err.message ?? "Failed"), { code: err.error });
+      }
     },
     onSuccess: () => { toast({ title: editing ? "Category updated" : "Category created" }); onSaved(); onClose(); },
-    onError:   () => toast({ title: "Failed to save category", variant: "destructive" }),
+    onError: (err: Error & { code?: string }) => {
+      const msg = err.code === "CATEGORY_NAME_DUPLICATE" ? err.message
+        : err.code === "INVALID_TAX_RATE"    ? err.message
+        : err.code === "INVALID_COMMISSION"  ? err.message
+        : "Failed to save category";
+      toast({ title: msg, variant: "destructive" });
+    },
   });
 
   return (
@@ -233,10 +242,16 @@ function TypeModal({ open, onClose, onSaved, authH, categoryId, editing }: TypeM
         headers: { "Content-Type": "application/json", ...authH },
         body: JSON.stringify(body),
       });
-      if (!r.ok) throw new Error(await r.text());
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({})) as Record<string, string>;
+        throw Object.assign(new Error(err.message ?? "Failed"), { code: err.error });
+      }
     },
     onSuccess: () => { toast({ title: editing ? "Sub-type updated" : "Sub-type created" }); onSaved(); onClose(); },
-    onError:   () => toast({ title: "Failed to save sub-type", variant: "destructive" }),
+    onError: (err: Error & { code?: string }) => {
+      const msg = err.code === "SUBTYPE_NAME_DUPLICATE" ? err.message : "Failed to save sub-type";
+      toast({ title: msg, variant: "destructive" });
+    },
   });
 
   return (
@@ -938,7 +953,10 @@ export default function SettingsMenuConfig() {
   const { mutate: deleteCat } = useMutation({
     mutationFn: async (id: string) => {
       const r = await fetch(`${BASE}/categories/${id}`, { method: "DELETE", headers: authH });
-      if (!r.ok) throw new Error();
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({})) as Record<string, unknown>;
+        throw Object.assign(new Error(String(err.message ?? "Failed")), { code: err.error, itemCount: err.itemCount });
+      }
     },
     onSuccess: () => {
       toast({ title: "Category deactivated" });
@@ -946,20 +964,45 @@ export default function SettingsMenuConfig() {
       if (selectedCatId === deleteConfirm?.id) setSelectedCatId(null);
       setDeleteConfirm(null);
     },
-    onError: () => toast({ title: "Failed to deactivate", variant: "destructive" }),
+    onError: (err: Error & { code?: unknown; itemCount?: number }) => {
+      if (err.code === "CATEGORY_HAS_ITEMS") {
+        toast({
+          title: "Cannot deactivate category",
+          description: `This category has ${err.itemCount ?? "active"} item(s). Move or deactivate items first.`,
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: err.message || "Failed to deactivate", variant: "destructive" });
+      }
+      setDeleteConfirm(null);
+    },
   });
 
   const { mutate: deleteType } = useMutation({
     mutationFn: async (id: string) => {
       const r = await fetch(`${BASE}/types/${id}`, { method: "DELETE", headers: authH });
-      if (!r.ok) throw new Error();
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({})) as Record<string, unknown>;
+        throw Object.assign(new Error(String(err.message ?? "Failed")), { code: err.error, itemCount: err.itemCount });
+      }
     },
     onSuccess: () => {
       toast({ title: "Sub-type deactivated" });
       void qc.invalidateQueries({ queryKey: ["menu-config-types", selectedCatId] });
       setDeleteConfirm(null);
     },
-    onError: () => toast({ title: "Failed to deactivate", variant: "destructive" }),
+    onError: (err: Error & { code?: unknown; itemCount?: number }) => {
+      if (err.code === "SUBTYPE_HAS_ITEMS") {
+        toast({
+          title: "Cannot deactivate sub-type",
+          description: `This sub-type has ${err.itemCount ?? "active"} item(s). Move or deactivate items first.`,
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: err.message || "Failed to deactivate", variant: "destructive" });
+      }
+      setDeleteConfirm(null);
+    },
   });
 
   const { mutate: toggleOverride } = useMutation({

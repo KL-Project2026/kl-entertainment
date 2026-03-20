@@ -98,13 +98,84 @@ router.get("/settings/menu-config/categories",
   }
 );
 
+// ── Shared validation helper ──────────────────────────────────────────────────
+interface CatBody {
+  name?: unknown;
+  icon?: unknown;
+  sortOrder?: unknown;
+  isActive?: unknown;
+  taxRateOverride?: unknown;
+  commissionDefaultRate?: unknown;
+  commissionDefaultFlat?: unknown;
+  notes?: unknown;
+}
+
+async function validateCatBody(
+  b: CatBody,
+  opts: { isUpdate: boolean; existingId?: string; existingName?: unknown }
+): Promise<{ error: string; message: string; status: number } | null> {
+  // Name: required on create, optional on update
+  if (!opts.isUpdate && !b.name) {
+    return { error: "VALIDATION_ERROR", message: "name is required.", status: 400 };
+  }
+
+  // Name uniqueness: compare by English name value (name->>'en') to handle multilingual JSONB
+  if (b.name !== undefined && typeof b.name === "object" && b.name !== null) {
+    const enName = (b.name as Record<string, string>).en;
+    if (enName) {
+      const { rows: dup } = await pool.query(
+        `SELECT id FROM product_groups WHERE name->>'en' ILIKE $1 AND id != $2`,
+        [enName.trim(), opts.existingId ?? "00000000-0000-0000-0000-000000000000"]
+      );
+      if (dup.length) {
+        return {
+          error: "CATEGORY_NAME_DUPLICATE",
+          message: `A category with the name "${enName}" already exists.`,
+          status: 409,
+        };
+      }
+    }
+  }
+
+  // Tax rate: must be 0–1 if provided
+  if (b.taxRateOverride !== null && b.taxRateOverride !== undefined) {
+    const rate = Number(b.taxRateOverride);
+    if (isNaN(rate) || rate < 0 || rate > 1) {
+      return {
+        error: "INVALID_TAX_RATE",
+        message: "Tax rate must be between 0 and 1 (e.g. 0.06 for 6%).",
+        status: 400,
+      };
+    }
+  }
+
+  // Commission: cannot set both rate > 0 AND flat > 0
+  const rate = Number(b.commissionDefaultRate ?? 0);
+  const flat  = Number(b.commissionDefaultFlat  ?? 0);
+  if (rate > 0 && flat > 0) {
+    return {
+      error: "INVALID_COMMISSION",
+      message: "Set either a percentage rate or a flat amount, not both.",
+      status: 400,
+    };
+  }
+
+  return null;
+}
+
 // POST /api/settings/menu-config/categories
 router.post("/settings/menu-config/categories",
   authenticate,
   requireRole(...ADMIN_ONLY),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const b = req.body as Record<string, unknown>;
+      const b = req.body as CatBody;
+      const validationErr = await validateCatBody(b, { isUpdate: false });
+      if (validationErr) {
+        res.status(validationErr.status).json({ error: validationErr.error, message: validationErr.message });
+        return;
+      }
+
       const { rows } = await pool.query(`
         INSERT INTO product_groups
           (org_id, name, icon, sort_order, tax_rate_override,
@@ -144,7 +215,17 @@ router.put("/settings/menu-config/categories/:id",
         `SELECT * FROM product_groups WHERE id=$1`, [id]);
       if (!old.length) { res.status(404).json({ error: "NOT_FOUND" }); return; }
 
-      const b = req.body as Record<string, unknown>;
+      const b = req.body as CatBody;
+      const validationErr = await validateCatBody(b, {
+        isUpdate: true,
+        existingId: id,
+        existingName: old[0].name,
+      });
+      if (validationErr) {
+        res.status(validationErr.status).json({ error: validationErr.error, message: validationErr.message });
+        return;
+      }
+
       const { rows } = await pool.query(`
         UPDATE product_groups SET
           name                   = COALESCE($1::jsonb, name),
@@ -188,17 +269,93 @@ router.delete("/settings/menu-config/categories/:id",
   async (req: Request, res: Response): Promise<void> => {
     try {
       const { id } = req.params;
+
+      // Verify category exists
+      const { rows: existing } = await pool.query(
+        `SELECT * FROM product_groups WHERE id=$1`, [id]);
+      if (!existing.length) { res.status(404).json({ error: "NOT_FOUND" }); return; }
+
+      // Block deactivation if category has active items (direct or via sub-types)
+      const { rows: itemCheck } = await pool.query(`
+        SELECT COUNT(p.id)::int AS item_count
+        FROM products p
+        WHERE p.deleted_at IS NULL
+          AND p.type_id IN (
+            SELECT t.id FROM product_types t WHERE t.group_id = $1
+          )
+      `, [id]);
+      const itemCount = itemCheck[0]?.item_count ?? 0;
+      if (itemCount > 0) {
+        res.status(409).json({
+          error: "CATEGORY_HAS_ITEMS",
+          itemCount,
+          message: `Cannot hide this category — it has ${itemCount} active item(s). Move or deactivate items first.`,
+        });
+        return;
+      }
+
       const { rows } = await pool.query(
         `UPDATE product_groups SET is_active=false, updated_by=$1, updated_at=NOW()
          WHERE id=$2 RETURNING *`,
         [req.user?.id ?? null, id]
       );
-      if (!rows.length) { res.status(404).json({ error: "NOT_FOUND" }); return; }
       void writeAudit("CATEGORY_DEACTIVATED", "product_group", id,
-        req.user?.id ?? null, null, null, { isActive: false }, req);
+        req.user?.id ?? null, null, fmtGroup(existing[0]), { isActive: false }, req);
       res.json({ data: fmtGroup(rows[0]) });
     } catch (err) {
       console.error("menu-config delete category:", err);
+      res.status(500).json({ error: "INTERNAL_ERROR" });
+    }
+  }
+);
+
+// PATCH /api/settings/menu-config/categories/reorder  (bulk)
+// NOTE: registered before /:id/sort to avoid Express param collision on 'reorder'
+// Body: { order: [ { id: UUID, sortOrder: INT }, ... ] }
+router.patch("/settings/menu-config/categories/reorder",
+  authenticate,
+  requireRole(...ADMIN_ONLY),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { order } = req.body as { order: { id: string; sortOrder: number }[] };
+      if (!Array.isArray(order) || !order.length) {
+        res.status(400).json({ error: "VALIDATION_ERROR", message: "order array is required." });
+        return;
+      }
+
+      // Verify all IDs exist
+      const ids = order.map((o) => o.id);
+      const { rows: existing } = await pool.query(
+        `SELECT id FROM product_groups WHERE id = ANY($1::uuid[])`, [ids]);
+      if (existing.length !== ids.length) {
+        res.status(400).json({ error: "INVALID_IDS", message: "One or more category IDs not found." });
+        return;
+      }
+
+      // Apply bulk update in a transaction
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        for (const { id, sortOrder } of order) {
+          await client.query(
+            `UPDATE product_groups SET sort_order=$1, updated_by=$2, updated_at=NOW() WHERE id=$3`,
+            [sortOrder, req.user?.id ?? null, id]
+          );
+        }
+        await client.query("COMMIT");
+      } catch (txErr) {
+        await client.query("ROLLBACK");
+        throw txErr;
+      } finally {
+        client.release();
+      }
+
+      void writeAudit("SORT_ORDER_CHANGED", "product_group", "bulk",
+        req.user?.id ?? null, null, null,
+        { order: order.map((o) => ({ id: o.id, sortOrder: o.sortOrder })) }, req);
+      res.json({ success: true, updated: order.length });
+    } catch (err) {
+      console.error("menu-config bulk reorder:", err);
       res.status(500).json({ error: "INTERNAL_ERROR" });
     }
   }
@@ -262,11 +419,36 @@ router.post("/settings/menu-config/categories/:id/types",
   async (req: Request, res: Response): Promise<void> => {
     try {
       const b = req.body as Record<string, unknown>;
+      const groupId = req.params.id;
+
+      if (!b.name) {
+        res.status(400).json({ error: "VALIDATION_ERROR", message: "name is required." });
+        return;
+      }
+
+      // Sub-type name uniqueness within same group — compare by English name
+      const nameJson = JSON.stringify(b.name);
+      const enName = typeof b.name === "object" && b.name !== null
+        ? (b.name as Record<string, string>).en : null;
+      if (enName) {
+        const { rows: dup } = await pool.query(
+          `SELECT id FROM product_types WHERE group_id=$1 AND name->>'en' ILIKE $2`,
+          [groupId, enName.trim()]
+        );
+        if (dup.length) {
+          res.status(409).json({
+            error: "SUBTYPE_NAME_DUPLICATE",
+            message: `A sub-type named "${enName}" already exists in this category.`,
+          });
+          return;
+        }
+      }
+
       const { rows } = await pool.query(`
         INSERT INTO product_types (group_id, name, sort_order)
         VALUES ($1,$2::jsonb,$3)
         RETURNING *
-      `, [req.params.id, JSON.stringify(b.name), b.sortOrder ?? 0]);
+      `, [groupId, nameJson, b.sortOrder ?? 0]);
       void writeAudit("SUBTYPE_CREATED", "product_type", rows[0].id as string,
         req.user?.id ?? null, null, null, fmtType(rows[0]), req);
       res.status(201).json({ data: { ...fmtType(rows[0]), itemCount: 0 } });
@@ -283,7 +465,34 @@ router.put("/settings/menu-config/types/:id",
   requireRole(...ADMIN_ONLY),
   async (req: Request, res: Response): Promise<void> => {
     try {
+      const { id } = req.params;
       const b = req.body as Record<string, unknown>;
+
+      // Snapshot old value for audit
+      const { rows: old } = await pool.query(
+        `SELECT * FROM product_types WHERE id=$1`, [id]);
+      if (!old.length) { res.status(404).json({ error: "NOT_FOUND" }); return; }
+
+      // Name uniqueness within same group — only if name is changing (compare en key)
+      if (b.name !== undefined) {
+        const newEn = typeof b.name === "object" && b.name !== null
+          ? (b.name as Record<string, string>).en?.trim() : null;
+        const oldEn = old[0].name?.en;
+        if (newEn && newEn.toLowerCase() !== (oldEn ?? "").toLowerCase()) {
+          const { rows: dup } = await pool.query(
+            `SELECT id FROM product_types WHERE group_id=$1 AND name->>'en' ILIKE $2 AND id != $3`,
+            [old[0].group_id, newEn, id]
+          );
+          if (dup.length) {
+            res.status(409).json({
+              error: "SUBTYPE_NAME_DUPLICATE",
+              message: `A sub-type named "${newEn}" already exists in this category.`,
+            });
+            return;
+          }
+        }
+      }
+
       const { rows } = await pool.query(`
         UPDATE product_types SET
           name       = COALESCE($1::jsonb, name),
@@ -295,11 +504,10 @@ router.put("/settings/menu-config/types/:id",
         b.name ? JSON.stringify(b.name) : null,
         b.sortOrder ?? null,
         b.isActive !== undefined ? b.isActive : null,
-        req.params.id,
+        id,
       ]);
-      if (!rows.length) { res.status(404).json({ error: "NOT_FOUND" }); return; }
-      void writeAudit("SUBTYPE_UPDATED", "product_type", req.params.id,
-        req.user?.id ?? null, null, null, fmtType(rows[0]), req);
+      void writeAudit("SUBTYPE_UPDATED", "product_type", id,
+        req.user?.id ?? null, null, fmtType(old[0]), fmtType(rows[0]), req);
       res.json({ data: fmtType(rows[0]) });
     } catch (err) {
       console.error("menu-config update type:", err);
@@ -314,13 +522,33 @@ router.delete("/settings/menu-config/types/:id",
   requireRole(...ADMIN_ONLY),
   async (req: Request, res: Response): Promise<void> => {
     try {
+      const { id } = req.params;
+
+      const { rows: existing } = await pool.query(
+        `SELECT * FROM product_types WHERE id=$1`, [id]);
+      if (!existing.length) { res.status(404).json({ error: "NOT_FOUND" }); return; }
+
+      // Block if active items reference this sub-type
+      const { rows: itemCheck } = await pool.query(
+        `SELECT COUNT(id)::int AS item_count FROM products WHERE type_id=$1 AND deleted_at IS NULL`,
+        [id]
+      );
+      const itemCount = itemCheck[0]?.item_count ?? 0;
+      if (itemCount > 0) {
+        res.status(409).json({
+          error: "SUBTYPE_HAS_ITEMS",
+          itemCount,
+          message: `Cannot deactivate this sub-type — it has ${itemCount} active item(s). Move or deactivate items first.`,
+        });
+        return;
+      }
+
       const { rows } = await pool.query(
         `UPDATE product_types SET is_active=false WHERE id=$1 RETURNING *`,
-        [req.params.id]
+        [id]
       );
-      if (!rows.length) { res.status(404).json({ error: "NOT_FOUND" }); return; }
-      void writeAudit("SUBTYPE_DEACTIVATED", "product_type", req.params.id,
-        req.user?.id ?? null, null, null, { isActive: false }, req);
+      void writeAudit("SUBTYPE_DEACTIVATED", "product_type", id,
+        req.user?.id ?? null, null, fmtType(existing[0]), { isActive: false }, req);
       res.json({ data: fmtType(rows[0]) });
     } catch (err) {
       console.error("menu-config delete type:", err);

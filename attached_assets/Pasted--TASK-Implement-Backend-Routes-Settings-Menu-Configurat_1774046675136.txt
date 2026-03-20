@@ -1,0 +1,244 @@
+## TASK: Implement Backend Routes — Settings › Menu Configuration
+
+### CONTEXT
+Existing Karaoke/Entertainment Venue Management System.
+Stack: Node.js + Express + PostgreSQL + JWT RBAC (7 roles).
+DB migration (Step 1) is already complete. The following tables/columns now exist:
+  - menu_categories (with new columns: parent_id, icon, sort_order, is_visible,
+    tax_rate_override, commission_default_rate, commission_default_flat, notes,
+    updated_by, updated_at)
+  - menu_category_branch_overrides (id, menu_category_id, branch_id, is_visible,
+    sort_order_override, updated_by, updated_at)
+  - menu_config_audit_log (id, action, entity_type, entity_id, branch_id,
+    changed_by, old_value, new_value, ip_address, created_at)
+
+**CRITICAL: Add-Only rule — never delete or modify existing working code.**
+**DO NOT touch menu_items, existing menu_categories routes, or any existing API.**
+
+---
+
+### TASK
+Create new file: `routes/settings-menu-config.js`
+Mount in main app.js or server.js:
+  app.use('/api/v1/settings/menu-config', requireAuth, settingsMenuConfigRouter)
+
+Use existing:
+  - requireAuth middleware (JWT validation)
+  - requireRole(...roles) middleware (RBAC)
+  - db pool / query helper (match the existing pattern in this codebase)
+  - error response helper (match existing { success: false, error, message } shape)
+
+---
+
+### ROUTES TO IMPLEMENT
+
+#### 1. GET /api/v1/settings/menu-config/categories
+Query params:
+  ?branch_id=UUID         optional — if provided, merge branch overrides into response
+  ?include_hidden=true    optional — ADMIN/SUPER_ADMIN only; include is_visible=false rows
+  ?flat=true              optional — return flat array instead of nested tree
+
+Access: ADMIN, SUPER_ADMIN, STORE_MANAGER (own branch only)
+
+Logic:
+  1. Fetch all rows from menu_categories (filter is_visible=true unless include_hidden=true)
+  2. Count item_count per category via JOIN to menu_items (WHERE is_active = true or equivalent)
+  3. If branch_id provided: LEFT JOIN menu_category_branch_overrides on (menu_category_id, branch_id)
+     and include branch_override: { is_visible, sort_order_override } in each row (null if no override)
+  4. Sort by sort_order ASC, then name ASC
+  5. If flat=true: return flat array
+     If flat=false (default): build nested tree (parent categories with children array of sub-types)
+
+Response shape (nested, with branch_id provided):
+[
+  {
+    id, name, icon, sort_order, is_visible, tax_rate_override,
+    commission_default_rate, commission_default_flat, notes,
+    item_count: 12,
+    branch_override: { is_visible: true, sort_order_override: null } | null,
+    children: [
+      { id, name, icon, sort_order, is_visible, item_count: 4, branch_override: null, ... }
+    ]
+  }
+]
+
+---
+
+#### 2. POST /api/v1/settings/menu-config/categories
+Access: ADMIN, SUPER_ADMIN only
+
+Body:
+{
+  name: string (required, max 100),
+  icon: string (optional, default '🍽️'),
+  parent_id: UUID | null (optional),
+  sort_order: int (optional, default 0),
+  is_visible: boolean (optional, default true),
+  tax_rate_override: number | null (optional, 0.0–1.0),
+  commission_default_rate: number | null (optional, 0.0–1.0),
+  commission_default_flat: number | null (optional, >= 0),
+  notes: string | null (optional)
+}
+
+Validation (return errors before DB insert):
+  - name: required, trimmed, max 100 chars
+  - parent_id: if provided, verify it exists AND its own parent_id IS NULL
+    (max 2 levels — sub-type cannot have sub-types)
+    On fail → 400: { error: 'MAX_NESTING_DEPTH', message: 'Categories support max 2 levels only.' }
+  - name uniqueness: within same parent scope (same parent_id value)
+    On fail → 409: { error: 'CATEGORY_NAME_DUPLICATE', message: 'A category with this name already exists at this level.' }
+  - tax_rate_override: if not null, must be between 0 and 1
+    On fail → 400: { error: 'INVALID_TAX_RATE', message: 'Tax rate must be between 0 and 1 (e.g. 0.06 for 6%).' }
+  - commission: if both commission_default_rate > 0 AND commission_default_flat > 0
+    On fail → 400: { error: 'INVALID_COMMISSION', message: 'Set either a percentage rate or a flat amount, not both.' }
+
+On success:
+  - INSERT into menu_categories
+  - INSERT into menu_config_audit_log:
+    { action: 'CATEGORY_CREATED', entity_type: 'menu_category', entity_id: new_id,
+      changed_by: req.user.id, new_value: <inserted row as JSON>, ip_address: req.ip }
+  - Return 201: { success: true, data: <new category row> }
+
+---
+
+#### 3. PUT /api/v1/settings/menu-config/categories/:id
+Access: ADMIN, SUPER_ADMIN only
+
+Body: same fields as POST (all optional — partial update supported)
+
+Logic:
+  1. Fetch existing row → if not found return 404
+  2. Snapshot existing row as old_value for audit log
+  3. Run same validations as POST (skip name uniqueness check if name unchanged)
+  4. Extra check for parent_id change:
+     - If this category has children (other rows with parent_id = this id),
+       do NOT allow setting a new parent_id (would create 3-level nesting)
+       Return 400: { error: 'MAX_NESTING_DEPTH', message: 'Cannot move a category that has sub-types.' }
+  5. UPDATE menu_categories SET ... WHERE id = :id
+  6. INSERT into menu_config_audit_log:
+     { action: 'CATEGORY_UPDATED', old_value: <snapshot>, new_value: <updated row>, ... }
+  7. Return 200: { success: true, data: <updated row> }
+
+---
+
+#### 4. DELETE /api/v1/settings/menu-config/categories/:id
+Access: ADMIN, SUPER_ADMIN only
+SOFT DELETE ONLY — set is_visible = false, never remove the row.
+
+Logic:
+  1. Fetch existing row → if not found return 404
+  2. Count active items in this category (JOIN menu_items WHERE category_id = :id AND active)
+     If count > 0 → return 409:
+     { error: 'CATEGORY_HAS_ITEMS', item_count: N,
+       message: 'Cannot hide this category — it has N active items. Move or deactivate items first in the Menu page.' }
+  3. Also check children: if any sub-types (parent_id = :id) have item_count > 0 → same 409 block
+  4. UPDATE menu_categories SET is_visible = false, updated_by = req.user.id, updated_at = NOW()
+  5. INSERT audit log: { action: 'CATEGORY_SOFT_DELETED', ... }
+  6. Return 200: { success: true, message: 'Category hidden successfully.' }
+
+---
+
+#### 5. PATCH /api/v1/settings/menu-config/categories/reorder
+Access: ADMIN, SUPER_ADMIN only
+NOTE: Register this route BEFORE /:id routes to avoid Express treating 'reorder' as an :id param.
+
+Body:
+{ order: [ { id: UUID, sort_order: INT }, ... ] }
+
+Logic:
+  1. Validate: all IDs in the array must exist in menu_categories
+     Invalid IDs → 400: { error: 'INVALID_IDS', message: 'One or more category IDs not found.' }
+  2. Validate: all IDs must belong to the same parent scope
+     (all top-level together, or all sub-types of the same parent together)
+     Mixed scope → 400: { error: 'MIXED_SCOPE', message: 'Cannot reorder categories from different levels in one request.' }
+  3. Execute bulk UPDATE in a single transaction:
+     For each { id, sort_order }: UPDATE menu_categories SET sort_order = $1 WHERE id = $2
+  4. INSERT single audit log entry:
+     { action: 'SORT_ORDER_CHANGED', entity_type: 'menu_category', entity_id: null,
+       new_value: { order: req.body.order }, changed_by: req.user.id }
+  5. Return 200: { success: true, updated: order.length }
+
+---
+
+#### 6. PATCH /api/v1/settings/menu-config/branch-override
+Access: ADMIN, SUPER_ADMIN, STORE_MANAGER (own branch only)
+
+Body:
+{ menu_category_id: UUID, branch_id: UUID, is_visible: boolean, sort_order_override: INT | null }
+
+Validation:
+  - STORE_MANAGER: verify req.user.branch_id === body.branch_id
+    On fail → 403: { error: 'BRANCH_ACCESS_DENIED', message: 'You can only manage overrides for your own branch.' }
+  - menu_category_id and branch_id must both exist
+
+Logic:
+  1. UPSERT into menu_category_branch_overrides
+     (INSERT ... ON CONFLICT (menu_category_id, branch_id) DO UPDATE SET ...)
+  2. INSERT audit log: { action: 'BRANCH_VISIBILITY_CHANGED', ... }
+  3. Return 200: { success: true, data: <upserted row> }
+
+---
+
+#### 7. GET /api/v1/settings/menu-config/audit-log
+Access: ADMIN, SUPER_ADMIN only
+
+Query params:
+  ?entity_id=UUID    optional — filter by specific category
+  ?limit=50          optional, default 50, max 200
+  ?offset=0          optional, default 0
+
+Logic:
+  SELECT a.*, u.name as changed_by_name, u.role as changed_by_role
+  FROM menu_config_audit_log a
+  LEFT JOIN users u ON u.id = a.changed_by
+  WHERE (:entity_id IS NULL OR a.entity_id = :entity_id)
+  ORDER BY a.created_at DESC
+  LIMIT :limit OFFSET :offset
+
+Return 200: { success: true, data: [...], total: count, limit, offset }
+
+---
+
+### ERROR CODES SUMMARY
+All errors follow existing error response shape: { success: false, error: 'CODE', message: '...' }
+
+| Code                    | HTTP | Trigger                                          |
+|-------------------------|------|--------------------------------------------------|
+| CATEGORY_HAS_ITEMS      | 409  | Soft-delete blocked by active items              |
+| MAX_NESTING_DEPTH       | 400  | parent_id would create 3rd level                 |
+| CATEGORY_NAME_DUPLICATE | 409  | Duplicate name within same parent scope          |
+| BRANCH_ACCESS_DENIED    | 403  | STORE_MANAGER accessing another branch           |
+| INVALID_TAX_RATE        | 400  | tax_rate_override outside 0–1                    |
+| INVALID_COMMISSION      | 400  | Both rate and flat set simultaneously            |
+| INVALID_IDS             | 400  | Reorder array contains non-existent IDs          |
+| MIXED_SCOPE             | 400  | Reorder mixes top-level and sub-type categories  |
+
+---
+
+### RBAC SUMMARY
+Apply using existing requireRole middleware:
+
+GET  /categories       → requireRole('SUPER_ADMIN', 'ADMIN', 'STORE_MANAGER')
+POST /categories       → requireRole('SUPER_ADMIN', 'ADMIN')
+PUT  /categories/:id   → requireRole('SUPER_ADMIN', 'ADMIN')
+DELETE /categories/:id → requireRole('SUPER_ADMIN', 'ADMIN')
+PATCH /categories/reorder → requireRole('SUPER_ADMIN', 'ADMIN')
+PATCH /branch-override → requireRole('SUPER_ADMIN', 'ADMIN', 'STORE_MANAGER')
+GET  /audit-log        → requireRole('SUPER_ADMIN', 'ADMIN')
+
+---
+
+### DELIVERABLES
+- [ ] routes/settings-menu-config.js (all 7 endpoints)
+- [ ] Mounted in app.js / server.js at /api/v1/settings/menu-config
+- [ ] All RBAC middleware applied per the table above
+- [ ] All validation with correct error codes and HTTP status
+- [ ] Audit log written on every mutation (POST, PUT, DELETE, PATCH)
+- [ ] STORE_MANAGER branch scope enforced on branch-override endpoint
+- [ ] 'reorder' route registered before '/:id' to avoid param collision
+
+### DO NOT
+- Do NOT modify any existing routes or middleware
+- Do NOT touch menu_items API or its routes
+- Do NOT hard-delete any menu_categories rows — soft delete only
+- Do NOT add any Socket.io emit — this module is config-only
