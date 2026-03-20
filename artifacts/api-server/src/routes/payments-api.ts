@@ -321,4 +321,53 @@ router.get(
   }
 );
 
+// GET /accounts/customer/:customerId — 고객 계정 요약
+router.get(
+  "/accounts/customer/:customerId",
+  authenticate,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { rows } = await pool.query(
+        `SELECT
+           COUNT(DISTINCT r.id)                                                    AS total_visits,
+           COALESCE(SUM(i.total_amount), 0)                                        AS total_spent,
+           COALESCE(AVG(i.total_amount), 0)                                        AS avg_session,
+           COALESCE(SUM(CASE WHEN i.status != 'paid' AND i.status != 'void'
+             THEN i.balance_due ELSE 0 END), 0)                                    AS outstanding
+         FROM reservations r
+         LEFT JOIN invoices i ON r.id = i.reservation_id
+         WHERE r.customer_id = $1`,
+        [req.params.customerId]
+      );
+      res.json({ data: rows[0] });
+    } catch (err) {
+      console.error("accounts customer error:", err);
+      res.status(500).json({ error: "INTERNAL_ERROR" });
+    }
+  }
+);
+
+// GET /invoices/customer/:customerId — 고객별 인보이스 목록
+router.get(
+  "/invoices/customer/:customerId",
+  authenticate,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { rows } = await pool.query(
+        `SELECT i.*, r.reservation_no
+         FROM invoices i
+         LEFT JOIN reservations r ON i.reservation_id = r.id
+         WHERE i.customer_id = $1
+         ORDER BY i.created_at DESC`,
+        [req.params.customerId]
+      );
+      res.json({ data: rows });
+    } catch (err) {
+      console.error("invoices by customer error:", err);
+      res.status(500).json({ error: "INTERNAL_ERROR" });
+    }
+  }
+);
+
 export default router;
+

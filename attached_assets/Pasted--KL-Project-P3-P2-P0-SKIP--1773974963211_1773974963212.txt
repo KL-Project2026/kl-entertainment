@@ -1,0 +1,1087 @@
+# KL Project — P3: 공통 컴포넌트 생성
+> P2 완료 후 실행하세요.
+> P0에서 이미 존재한다고 확인된 컴포넌트는 SKIP합니다.
+
+---
+
+## 🔒 안전 규칙
+
+```
+[C-1] 파일 생성 전 해당 경로에 파일이 있는지 먼저 확인
+[C-2] 이미 존재하는 파일은 → 없는 함수/export만 끝에 추가
+[C-3] 새 파일은 기존 파일에 영향 없음 → 안전하게 생성 가능
+[C-4] import 경로는 실제 프로젝트 구조에 맞게 수정
+[C-5] 각 파일 저장 후 앱 실행 확인
+```
+
+---
+
+## 생성할 파일 목록 (8개)
+
+```
+① src/utils/constants.js        — 브랜드 색상 상수
+② src/utils/formatters.js       — 날짜/통화/텍스트 포맷
+③src/utils/useHoverRow.js       — hover 상태 관리 Hook
+④ src/components/shared/StatusBadge.jsx     — 상태 뱃지
+⑤ src/components/shared/AttendanceTab.jsx  — 출퇴근 탭
+⑥ src/components/shared/AvailabilityCalendar.jsx — 가용성 관리
+⑦ src/components/shared/AccountTab.jsx     — 회계 탭 (엔티티별)
+⑧ src/components/shared/FolioView.jsx      — 실시간 Folio
+```
+
+⚠️ `src/components/shared/` 폴더가 없으면 생성하세요.
+⚠️ 모든 경로는 P0 결과의 실제 폴더 구조로 조정하세요.
+
+---
+
+## 파일 1: src/utils/constants.js
+
+```javascript
+// KL Project — UI 상수
+// 기존 파일이 있으면 아래 내용만 끝에 추가
+
+export const HOVER_BG         = 'rgba(209, 174, 56, 0.15)';
+export const HOVER_BG_DARK    = 'rgba(209, 174, 56, 0.22)';
+export const HOVER_TRANSITION = 'background-color 0.15s ease, box-shadow 0.15s ease';
+export const BRAND_COLOR      = '#D1AE38';
+export const BRAND_DARK       = '#b8962e';
+```
+
+---
+
+## 파일 2: src/utils/formatters.js
+
+```javascript
+// KL Project — 포맷 유틸리티
+// 기존 파일이 있으면 없는 함수만 끝에 추가
+
+export const formatDate = (v) => {
+  if (!v) return '—';
+  try {
+    return new Date(v).toLocaleDateString('en-GB', {
+      day: '2-digit', month: 'short', year: 'numeric',
+    });
+  } catch { return String(v); }
+};
+
+export const formatDateTime = (v) => {
+  if (!v) return '—';
+  try {
+    return new Date(v).toLocaleString('en-GB', {
+      day: '2-digit', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    });
+  } catch { return String(v); }
+};
+
+export const formatCurrency = (amount, currency = 'THB') => {
+  if (amount == null || amount === '') return '—';
+  try {
+    return new Intl.NumberFormat('th-TH', {
+      style: 'currency', currency,
+      minimumFractionDigits: 0, maximumFractionDigits: 0,
+    }).format(amount);
+  } catch { return `${currency} ${Number(amount).toFixed(0)}`; }
+};
+
+export const display = (v) => {
+  if (v == null || v === '' || v === 'null' || v === 'undefined') return '—';
+  return String(v);
+};
+
+export const truncate = (str, max = 40) => {
+  if (!str) return '—';
+  return str.length > max ? str.slice(0, max) + '…' : str;
+};
+```
+
+---
+
+## 파일 3: src/utils/useHoverRow.js
+
+```javascript
+import { useState, useCallback } from 'react';
+import { HOVER_BG, HOVER_TRANSITION } from './constants';
+// ⚠️ 경로 조정
+
+export function useHoverRow() {
+  const [hoveredId, setHoveredId] = useState(null);
+
+  const hoverProps = useCallback((id) => ({
+    onMouseEnter: () => setHoveredId(id),
+    onMouseLeave: () => setHoveredId(null),
+  }), []);
+
+  // 테이블 행용
+  const rowStyle = useCallback((id, base = {}) => ({
+    ...base,
+    backgroundColor: hoveredId === id
+      ? HOVER_BG
+      : (base.backgroundColor || 'transparent'),
+    transition: HOVER_TRANSITION,
+    cursor: 'pointer',
+  }), [hoveredId]);
+
+  // 카드용
+  const cardStyle = useCallback((id, base = {}) => ({
+    ...base,
+    backgroundColor: hoveredId === id
+      ? HOVER_BG
+      : (base.backgroundColor || '#ffffff'),
+    boxShadow: hoveredId === id
+      ? '0 4px 16px rgba(209,174,56,0.2)'
+      : (base.boxShadow || '0 1px 3px rgba(0,0,0,0.05)'),
+    transform: hoveredId === id ? 'translateY(-1px)' : 'none',
+    transition: HOVER_TRANSITION,
+    cursor: 'pointer',
+  }), [hoveredId]);
+
+  return { hoveredId, hoverProps, rowStyle, cardStyle };
+}
+```
+
+---
+
+## 파일 4: src/components/shared/StatusBadge.jsx
+
+```jsx
+const STATUS_MAP = {
+  // 예약
+  confirmed:       { bg:'#dcfce7', color:'#166534', label:'Confirmed' },
+  checked_in:      { bg:'#dbeafe', color:'#1e40af', label:'Checked In' },
+  checked_out:     { bg:'#f3f4f6', color:'#374151', label:'Checked Out' },
+  cancelled:       { bg:'#fee2e2', color:'#991b1b', label:'Cancelled' },
+  tentative:       { bg:'#fef9c3', color:'#854d0e', label:'Tentative' },
+  no_show:         { bg:'#fde8d8', color:'#9a3412', label:'No Show' },
+  // 하우스키핑
+  clean:           { bg:'#dcfce7', color:'#166534', label:'Clean' },
+  dirty:           { bg:'#fee2e2', color:'#991b1b', label:'Dirty' },
+  inspected:       { bg:'#dbeafe', color:'#1e40af', label:'Inspected' },
+  // 작업
+  in_progress:     { bg:'#fef9c3', color:'#854d0e', label:'In Progress' },
+  pending:         { bg:'#fef9c3', color:'#854d0e', label:'Pending' },
+  completed:       { bg:'#dbeafe', color:'#1e40af', label:'Completed' },
+  // 일반
+  active:          { bg:'#dcfce7', color:'#166534', label:'Active' },
+  inactive:        { bg:'#f3f4f6', color:'#6b7280', label:'Inactive' },
+  // 인보이스/결제
+  paid:            { bg:'#dcfce7', color:'#166534', label:'Paid' },
+  partially_paid:  { bg:'#fef9c3', color:'#854d0e', label:'Part Paid' },
+  issued:          { bg:'#dbeafe', color:'#1e40af', label:'Issued' },
+  draft:           { bg:'#f3f4f6', color:'#6b7280', label:'Draft' },
+  void:            { bg:'#fee2e2', color:'#991b1b', label:'Void' },
+  settled:         { bg:'#dcfce7', color:'#166534', label:'Settled' },
+  // 출퇴근
+  present:         { bg:'#dcfce7', color:'#166534', label:'출근' },
+  absent:          { bg:'#fee2e2', color:'#991b1b', label:'결근' },
+  late:            { bg:'#fef9c3', color:'#854d0e', label:'지각' },
+  half_day:        { bg:'#fde8d8', color:'#9a3412', label:'반차' },
+  day_off:         { bg:'#f3f4f6', color:'#6b7280', label:'휴무' },
+  // 세션 타입
+  incall:          { bg:'#dbeafe', color:'#1e40af', label:'인콜' },
+  outcall:         { bg:'#fef9c3', color:'#854d0e', label:'아웃콜' },
+  // 가용성
+  available:       { bg:'#dcfce7', color:'#166534', label:'가용' },
+  booked:          { bg:'#dbeafe', color:'#1e40af', label:'예약됨' },
+  occupied:        { bg:'#fee2e2', color:'#991b1b', label:'사용중' },
+  maintenance:     { bg:'#fef9c3', color:'#854d0e', label:'점검' },
+  closed:          { bg:'#f3f4f6', color:'#6b7280', label:'마감' },
+  // 수수료
+  percentage:      { bg:'#ede9fe', color:'#5b21b6', label:'비율' },
+  fixed:           { bg:'#fce7f3', color:'#9d174d', label:'고정' },
+};
+
+export const StatusBadge = ({ status, size = 'md' }) => {
+  const key = (status || '').toLowerCase().replace(/[\s\-]+/g, '_');
+  const s   = STATUS_MAP[key] || { bg:'#f3f4f6', color:'#374151', label: status };
+  return (
+    <span style={{
+      background:    s.bg,
+      color:         s.color,
+      padding:       size === 'lg' ? '4px 14px' : '2px 10px',
+      borderRadius:  9999,
+      fontSize:      size === 'lg' ? 13 : 11,
+      fontWeight:    600,
+      whiteSpace:    'nowrap',
+      display:       'inline-block',
+    }}>
+      {s.label || (status||'').replace(/_/g,' ')}
+    </span>
+  );
+};
+
+export default StatusBadge;
+```
+
+---
+
+## 파일 5: src/components/shared/AttendanceTab.jsx
+
+```jsx
+import { useState, useEffect } from 'react';
+
+const fmt = (v) => {
+  if (!v) return '—';
+  return new Date(v).toLocaleString('th-TH', {
+    day:'2-digit', month:'short', year:'numeric',
+    hour:'2-digit', minute:'2-digit',
+  });
+};
+const fmtDate = (v) => {
+  if (!v) return '—';
+  return new Date(v).toLocaleDateString('th-TH', {
+    day:'2-digit', month:'short', year:'numeric',
+  });
+};
+
+const SCard = ({ label, value, color='#111827', sub }) => (
+  <div style={{ background:'#fff', border:'1px solid #e5e7eb',
+    borderRadius:10, padding:'14px 18px', minWidth:110 }}>
+    <div style={{ fontSize:11, color:'#9ca3af', textTransform:'uppercase',
+      letterSpacing:'0.07em', marginBottom:4 }}>{label}</div>
+    <div style={{ fontSize:18, fontWeight:700, color }}>{value}</div>
+    {sub && <div style={{ fontSize:11, color:'#6b7280', marginTop:3 }}>{sub}</div>}
+  </div>
+);
+
+const SBadge = ({ status }) => {
+  const m = {
+    present:{ bg:'#dcfce7', color:'#166534', label:'출근' },
+    absent: { bg:'#fee2e2', color:'#991b1b', label:'결근' },
+    late:   { bg:'#fef9c3', color:'#854d0e', label:'지각' },
+    half_day:{ bg:'#fde8d8',color:'#9a3412', label:'반차' },
+    day_off:{ bg:'#f3f4f6', color:'#6b7280', label:'휴무' },
+  };
+  const s = m[status] || { bg:'#f3f4f6', color:'#374151', label: status };
+  return (
+    <span style={{ background:s.bg, color:s.color, padding:'2px 10px',
+      borderRadius:9999, fontSize:11, fontWeight:600 }}>{s.label}</span>
+  );
+};
+
+export const AttendanceTab = ({ personType, personId }) => {
+  const [records, setRecords]   = useState([]);
+  const [summary, setSummary]   = useState(null);
+  const [loading, setLoading]   = useState(true);
+  const [month, setMonth]       = useState(new Date().toISOString().slice(0,7));
+  const [today, setToday]       = useState(null);
+  const [isClockedIn, setClockedIn] = useState(false);
+  const [busy, setBusy]         = useState(false);
+  const [err, setErr]           = useState(null);
+
+  const load = () => {
+    setLoading(true);
+    const ep = personType==='staff'
+      ? `/api/attendance/staff/${personId}?month=${month}`
+      : `/api/attendance/hostess/${personId}?month=${month}`;
+    const sep = personType==='staff'
+      ? `/api/attendance/summary/staff/${personId}?month=${month}`
+      : `/api/attendance/summary/hostess/${personId}?month=${month}`;
+    Promise.all([fetch(ep).then(r=>r.json()), fetch(sep).then(r=>r.json())])
+      .then(([recs, sum]) => {
+        const list = Array.isArray(recs) ? recs : recs.records || [];
+        setRecords(list);
+        setSummary(sum);
+        const todayStr = new Date().toISOString().split('T')[0];
+        const t = list.find(r => (r.work_date||'').startsWith(todayStr));
+        setToday(t || null);
+        setClockedIn(!!(t?.clock_in && !t?.clock_out));
+        setLoading(false);
+      }).catch(()=>setLoading(false));
+  };
+
+  useEffect(()=>{ load(); }, [personId, personType, month]);
+
+  const clockIn = async () => {
+    setBusy(true); setErr(null);
+    try {
+      const body = { person_type: personType,
+        [personType==='staff'?'staff_id':'hostess_id']: personId };
+      const r = await fetch('/api/attendance/clock-in', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(body),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || '출근 처리 실패');
+      load();
+    } catch(e){ setErr(e.message); } finally { setBusy(false); }
+  };
+
+  const clockOut = async () => {
+    if (!today) return;
+    setBusy(true); setErr(null);
+    try {
+      const r = await fetch(`/api/attendance/${today.id}/clock-out`, {
+        method:'PUT', headers:{'Content-Type':'application/json'}, body:'{}',
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || '퇴근 처리 실패');
+      load();
+    } catch(e){ setErr(e.message); } finally { setBusy(false); }
+  };
+
+  if (loading) return <div style={{padding:40,textAlign:'center',color:'#9ca3af'}}>Loading...</div>;
+
+  return (
+    <div style={{padding:'4px 0'}}>
+      {/* 오늘 출퇴근 상태 */}
+      <div style={{ display:'flex', alignItems:'center', gap:12,
+        background:'#f9fafb', borderRadius:10, padding:'14px 18px',
+        marginBottom:20, border:'1px solid #e5e7eb', flexWrap:'wrap' }}>
+        <div style={{flex:1}}>
+          <div style={{fontSize:13,fontWeight:600,color:'#374151',marginBottom:4}}>
+            오늘 출퇴근
+          </div>
+          {today ? (
+            <div style={{fontSize:12,color:'#6b7280'}}>
+              출근: {fmt(today.clock_in)}
+              {today.clock_out && <> · 퇴근: {fmt(today.clock_out)} · {today.hours_worked}h</>}
+            </div>
+          ) : (
+            <div style={{fontSize:12,color:'#9ca3af'}}>오늘 출근 기록 없음</div>
+          )}
+        </div>
+        {err && <span style={{fontSize:12,color:'#dc2626'}}>⚠ {err}</span>}
+        {!today && (
+          <button onClick={clockIn} disabled={busy} style={{
+            padding:'9px 18px', background:'#D1AE38', color:'#fff',
+            border:'none', borderRadius:8, fontSize:13, fontWeight:600,
+            cursor:busy?'not-allowed':'pointer', opacity:busy?0.6:1,
+          }}>{busy?'처리중...':'▶ 출근'}</button>
+        )}
+        {isClockedIn && (
+          <button onClick={clockOut} disabled={busy} style={{
+            padding:'9px 18px', background:'#374151', color:'#fff',
+            border:'none', borderRadius:8, fontSize:13, fontWeight:600,
+            cursor:busy?'not-allowed':'pointer', opacity:busy?0.6:1,
+          }}>{busy?'처리중...':'■ 퇴근'}</button>
+        )}
+        {today && !isClockedIn && (
+          <span style={{fontSize:12,color:'#166534',fontWeight:600}}>✓ 퇴근 완료</span>
+        )}
+      </div>
+
+      {/* 요약 */}
+      <div style={{display:'flex',alignItems:'center',
+        justifyContent:'space-between',marginBottom:16,flexWrap:'wrap',gap:12}}>
+        <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
+          <SCard label="출근 일수" value={`${summary?.present_days||0}일`} />
+          <SCard label="총 근무" value={`${summary?.total_hours||0}h`} color="#D1AE38"/>
+          <SCard label="지각" value={`${summary?.late_days||0}일`}
+            color={summary?.late_days>0?'#dc2626':'#111827'} />
+          <SCard label="결근" value={`${summary?.absent_days||0}일`}
+            color={summary?.absent_days>0?'#dc2626':'#111827'} />
+        </div>
+        <input type="month" value={month} onChange={e=>setMonth(e.target.value)}
+          style={{padding:'8px 12px',border:'1px solid #e5e7eb',
+            borderRadius:8,fontSize:13,outline:'none'}} />
+      </div>
+
+      {/* 기록 테이블 */}
+      <div style={{overflowX:'auto'}}>
+        <table style={{width:'100%',minWidth:560,borderCollapse:'collapse'}}>
+          <thead>
+            <tr style={{background:'#f9fafb'}}>
+              {['날짜','출근','퇴근','근무시간','지각','상태','비고'].map(h=>(
+                <th key={h} style={{padding:'8px 12px',fontSize:11,color:'#6b7280',
+                  textAlign:'left',textTransform:'uppercase',letterSpacing:'0.06em',
+                  fontWeight:600,borderBottom:'1px solid #e5e7eb',whiteSpace:'nowrap'}}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {records.length===0 ? (
+              <tr><td colSpan={7} style={{padding:32,textAlign:'center',color:'#9ca3af'}}>
+                기록 없음</td></tr>
+            ) : records.map(r=>(
+              <tr key={r.id} style={{borderBottom:'1px solid #f3f4f6'}}>
+                <td style={{padding:'10px 12px',fontSize:13,fontWeight:500}}>{fmtDate(r.work_date)}</td>
+                <td style={{padding:'10px 12px',fontSize:13}}>
+                  {r.clock_in ? new Date(r.clock_in).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}) : '—'}</td>
+                <td style={{padding:'10px 12px',fontSize:13}}>
+                  {r.clock_out
+                    ? new Date(r.clock_out).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})
+                    : r.status==='present'
+                      ? <span style={{color:'#D1AE38',fontWeight:600}}>재직중</span>
+                      : '—'}</td>
+                <td style={{padding:'10px 12px',fontSize:13,fontWeight:600}}>
+                  {r.hours_worked!=null ? `${r.hours_worked}h` : '—'}</td>
+                <td style={{padding:'10px 12px',fontSize:13,
+                  color:r.late_minutes>0?'#dc2626':'#9ca3af'}}>
+                  {r.late_minutes>0 ? `${r.late_minutes}분` : '—'}</td>
+                <td style={{padding:'10px 12px'}}><SBadge status={r.status}/></td>
+                <td style={{padding:'10px 12px',fontSize:12,color:'#6b7280',
+                  maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                  {r.notes||'—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+export default AttendanceTab;
+```
+
+---
+
+## 파일 6: src/components/shared/AvailabilityCalendar.jsx
+
+```jsx
+import { useState, useEffect } from 'react';
+
+const STATUS_COLORS = {
+  available:   { bg:'#dcfce7', color:'#166534', label:'가용' },
+  booked:      { bg:'#dbeafe', color:'#1e40af', label:'예약' },
+  occupied:    { bg:'#fee2e2', color:'#991b1b', label:'사용중' },
+  maintenance: { bg:'#fef9c3', color:'#854d0e', label:'점검' },
+  closed:      { bg:'#f3f4f6', color:'#6b7280', label:'마감' },
+};
+
+const ipt = { width:'100%',padding:'9px 12px',border:'1px solid #d1d5db',
+  borderRadius:8,fontSize:14,color:'#111827',background:'#fff',
+  outline:'none',boxSizing:'border-box' };
+const lbl = { display:'block',fontSize:11,fontWeight:600,color:'#6b7280',
+  textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:5 };
+
+export const AvailabilityCalendar = ({ entityType, entityId }) => {
+  const [date,   setDate]   = useState(new Date().toISOString().split('T')[0]);
+  const [blocks, setBlocks] = useState([]);
+  const [loading,setLoading]= useState(true);
+  const [modal,  setModal]  = useState(false);
+  const [form,   setForm]   = useState({ block_type:'maintenance', start_time:'10:00', end_time:'12:00', notes:'' });
+  const [saving, setSaving] = useState(false);
+  const [saveErr,setSaveErr]= useState(null);
+
+  const load = () => {
+    setLoading(true);
+    fetch(`/api/availability/blocks?entity_type=${entityType}&entity_id=${entityId}&date=${date}`)
+      .then(r=>r.json())
+      .then(d=>{ setBlocks(Array.isArray(d)?d:d.blocks||[]); setLoading(false); })
+      .catch(()=>setLoading(false));
+  };
+  useEffect(()=>{ load(); }, [entityId, entityType, date]);
+
+  const getStatus = (hour) => {
+    const s = new Date(`${date}T${String(hour).padStart(2,'0')}:00:00`);
+    const e = new Date(s.getTime()+3600000);
+    for (const b of blocks) {
+      if (new Date(b.start_dt)<e && new Date(b.end_dt)>s) return b.block_type;
+    }
+    return 'available';
+  };
+
+  const getBlock = (hour) => {
+    const s = new Date(`${date}T${String(hour).padStart(2,'0')}:00:00`);
+    const e = new Date(s.getTime()+3600000);
+    return blocks.find(b=>new Date(b.start_dt)<e && new Date(b.end_dt)>s);
+  };
+
+  const addBlock = async () => {
+    setSaving(true); setSaveErr(null);
+    try {
+      const startDt = `${date}T${form.start_time}:00`;
+      const endDt   = `${date}T${form.end_time}:00`;
+      const ck = await fetch('/api/availability/check',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({entity_type:entityType,entity_id:entityId,start_dt:startDt,end_dt:endDt}),
+      });
+      const ckd = await ck.json();
+      if (!ckd.available) throw new Error('해당 시간에 이미 다른 일정이 있습니다.');
+      const r = await fetch('/api/availability/block',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({entity_type:entityType,entity_id:entityId,
+          block_type:form.block_type,start_dt:startDt,end_dt:endDt,notes:form.notes}),
+      });
+      if (!r.ok) throw new Error((await r.json()).error||'저장 실패');
+      setModal(false); load();
+    } catch(e){ setSaveErr(e.message); } finally { setSaving(false); }
+  };
+
+  const removeBlock = async (id) => {
+    if (!window.confirm('이 차단을 삭제하시겠습니까?')) return;
+    await fetch(`/api/availability/block/${id}`,{method:'DELETE'});
+    load();
+  };
+
+  return (
+    <div style={{padding:'4px 0'}}>
+      {/* 헤더 */}
+      <div style={{display:'flex',alignItems:'center',
+        justifyContent:'space-between',marginBottom:16,flexWrap:'wrap',gap:12}}>
+        <input type="date" value={date} onChange={e=>setDate(e.target.value)}
+          style={{padding:'8px 12px',border:'1px solid #e5e7eb',
+            borderRadius:8,fontSize:13,outline:'none'}} />
+        <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+          {Object.entries(STATUS_COLORS).map(([k,v])=>(
+            <span key={k} style={{background:v.bg,color:v.color,
+              padding:'2px 10px',borderRadius:9999,fontSize:11,fontWeight:600}}>{v.label}</span>
+          ))}
+        </div>
+        <button onClick={()=>setModal(true)}
+          style={{padding:'8px 16px',background:'#374151',color:'#fff',
+            border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'}}>
+          + 차단 추가
+        </button>
+      </div>
+
+      {/* 24시간 그리드 */}
+      {loading ? <div style={{padding:40,textAlign:'center',color:'#9ca3af'}}>Loading...</div> : (
+        <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:6}}>
+          {Array.from({length:24},(_,i)=>{
+            const st = getStatus(i);
+            const sc = STATUS_COLORS[st]||STATUS_COLORS.available;
+            const bl = getBlock(i);
+            return (
+              <div key={i} style={{background:sc.bg,color:sc.color,
+                borderRadius:8,padding:'10px 8px',textAlign:'center',
+                position:'relative',border:`1px solid ${sc.bg}`}}>
+                <div style={{fontSize:13,fontWeight:600}}>
+                  {String(i).padStart(2,'0')}:00
+                </div>
+                <div style={{fontSize:10,marginTop:3,fontWeight:500}}>{sc.label}</div>
+                {bl && bl.block_type!=='booked' && (
+                  <button onClick={()=>removeBlock(bl.id)}
+                    style={{position:'absolute',top:2,right:4,
+                      background:'none',border:'none',color:sc.color,
+                      fontSize:12,cursor:'pointer',padding:0,lineHeight:1}}
+                    title="삭제">✕</button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* 예약 목록 */}
+      {blocks.filter(b=>b.block_type==='booked').length>0 && (
+        <div style={{marginTop:20}}>
+          <div style={{fontSize:13,fontWeight:600,color:'#374151',marginBottom:10}}>예약 목록</div>
+          {blocks.filter(b=>b.block_type==='booked').map(b=>(
+            <div key={b.id} style={{display:'flex',alignItems:'center',gap:12,
+              padding:'10px 14px',background:'#f0f4ff',borderRadius:8,
+              marginBottom:6,fontSize:13}}>
+              <span style={{fontFamily:'monospace',fontWeight:700}}>
+                {new Date(b.start_dt).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})}
+                {' → '}
+                {new Date(b.end_dt).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})}
+              </span>
+              {b.reservation_id && (
+                <a href={`/reservations/${b.reservation_id}`}
+                  style={{color:'#6366f1',fontSize:12}}>예약 #{b.reservation_id}</a>
+              )}
+              {b.notes && <span style={{color:'#6b7280',fontSize:12}}>{b.notes}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 차단 추가 모달 */}
+      {modal && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',
+          display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000}}>
+          <div style={{background:'#fff',borderRadius:12,padding:28,
+            width:360,maxWidth:'90vw'}}>
+            <h3 style={{margin:'0 0 20px',fontSize:16,fontWeight:600}}>시간 차단 추가</h3>
+            <label style={lbl}>차단 유형</label>
+            <select value={form.block_type}
+              onChange={e=>setForm(p=>({...p,block_type:e.target.value}))}
+              style={{...ipt,marginBottom:12}}>
+              <option value="maintenance">점검 / 청소</option>
+              <option value="closed">영업 종료</option>
+            </select>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,margin:'0 0 12px'}}>
+              <div>
+                <label style={lbl}>시작</label>
+                <input type="time" value={form.start_time}
+                  onChange={e=>setForm(p=>({...p,start_time:e.target.value}))} style={ipt}/>
+              </div>
+              <div>
+                <label style={lbl}>종료</label>
+                <input type="time" value={form.end_time}
+                  onChange={e=>setForm(p=>({...p,end_time:e.target.value}))} style={ipt}/>
+              </div>
+            </div>
+            <label style={lbl}>메모</label>
+            <input type="text" value={form.notes}
+              onChange={e=>setForm(p=>({...p,notes:e.target.value}))}
+              placeholder="예: 정기 청소" style={{...ipt,marginBottom:16}}/>
+            {saveErr && <div style={{color:'#dc2626',fontSize:12,marginBottom:12}}>⚠ {saveErr}</div>}
+            <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+              <button onClick={()=>{setModal(false);setSaveErr(null);}}
+                style={{padding:'8px 16px',background:'#fff',color:'#374151',
+                  border:'1px solid #d1d5db',borderRadius:8,fontSize:13,cursor:'pointer'}}>
+                취소
+              </button>
+              <button onClick={addBlock} disabled={saving}
+                style={{padding:'8px 16px',background:saving?'#a5b4fc':'#D1AE38',
+                  color:'#fff',border:'none',borderRadius:8,fontSize:13,
+                  fontWeight:600,cursor:saving?'not-allowed':'pointer'}}>
+                {saving?'저장중...':'저장'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default AvailabilityCalendar;
+```
+
+---
+
+## 파일 7: src/components/shared/AccountTab.jsx
+
+이 파일에 아래 5개 컴포넌트를 모두 포함합니다.
+각 컴포넌트는 `export const` 로 개별 export 합니다.
+
+```jsx
+import { useState, useEffect } from 'react';
+
+// ── 공통 헬퍼 ──────────────────────────────────────────────
+const fmt = (amount, currency='THB') => {
+  if (amount==null) return '—';
+  try {
+    return new Intl.NumberFormat('th-TH',{
+      style:'currency',currency,
+      minimumFractionDigits:0,maximumFractionDigits:0,
+    }).format(amount);
+  } catch { return `${currency} ${Number(amount).toFixed(0)}`; }
+};
+const fmtDate = (v) => {
+  if (!v) return '—';
+  return new Date(v).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'numeric'});
+};
+const SCard = ({label,value,color='#111827',sub}) => (
+  <div style={{background:'#fff',border:'1px solid #e5e7eb',
+    borderRadius:10,padding:'14px 18px',minWidth:120}}>
+    <div style={{fontSize:11,color:'#9ca3af',textTransform:'uppercase',
+      letterSpacing:'0.07em',marginBottom:4}}>{label}</div>
+    <div style={{fontSize:18,fontWeight:700,color}}>{value}</div>
+    {sub && <div style={{fontSize:11,color:'#6b7280',marginTop:3}}>{sub}</div>}
+  </div>
+);
+const IBadge = ({status}) => {
+  const m = {
+    paid:{bg:'#dcfce7',color:'#166534',label:'결제완료'},
+    partially_paid:{bg:'#fef9c3',color:'#854d0e',label:'부분결제'},
+    issued:{bg:'#dbeafe',color:'#1e40af',label:'발행'},
+    draft:{bg:'#f3f4f6',color:'#6b7280',label:'초안'},
+    void:{bg:'#fee2e2',color:'#991b1b',label:'취소'},
+    pending:{bg:'#fef9c3',color:'#854d0e',label:'미지급'},
+    settled:{bg:'#dcfce7',color:'#166534',label:'정산완료'},
+  };
+  const s = m[status]||{bg:'#f3f4f6',color:'#374151',label:status};
+  return <span style={{background:s.bg,color:s.color,padding:'2px 10px',
+    borderRadius:9999,fontSize:11,fontWeight:600}}>{s.label}</span>;
+};
+
+// ── GuestAccountTab ────────────────────────────────────────
+export const GuestAccountTab = ({ guestId }) => {
+  const [data, setData]       = useState(null);
+  const [invoices, setInvs]   = useState([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(()=>{
+    Promise.all([
+      fetch(`/api/accounts/guest/${guestId}`).then(r=>r.json()),
+      fetch(`/api/invoices/guest/${guestId}`).then(r=>r.json()),
+    ]).then(([sum,invs])=>{
+      setData(sum);
+      setInvs(Array.isArray(invs)?invs:invs.invoices||[]);
+      setLoading(false);
+    }).catch(()=>setLoading(false));
+  },[guestId]);
+  if(loading) return <div style={{padding:40,textAlign:'center',color:'#9ca3af'}}>Loading...</div>;
+  return (
+    <div style={{padding:'4px 0'}}>
+      <div style={{display:'flex',gap:12,flexWrap:'wrap',marginBottom:24}}>
+        <SCard label="총 방문" value={data?.total_visits??0} />
+        <SCard label="총 지출" value={fmt(data?.total_spent)} color="#D1AE38" />
+        <SCard label="평균 세션" value={fmt(data?.avg_session)} />
+        <SCard label="미납 잔액" value={fmt(data?.outstanding)}
+          color={data?.outstanding>0?'#dc2626':'#166534'} />
+      </div>
+      <div style={{fontWeight:600,fontSize:14,marginBottom:12,color:'#374151'}}>
+        청구서 내역 ({invoices.length})
+      </div>
+      <div style={{overflowX:'auto'}}>
+        <table style={{width:'100%',minWidth:520,borderCollapse:'collapse'}}>
+          <thead><tr style={{background:'#f9fafb'}}>
+            {['Invoice No','날짜','금액','상태',''].map(h=>(
+              <th key={h} style={{padding:'8px 12px',fontSize:11,color:'#6b7280',
+                textAlign:'left',textTransform:'uppercase',letterSpacing:'0.06em',
+                fontWeight:600,borderBottom:'1px solid #e5e7eb'}}>{h}</th>
+            ))}
+          </tr></thead>
+          <tbody>
+            {invoices.length===0
+              ? <tr><td colSpan={5} style={{padding:24,textAlign:'center',color:'#9ca3af'}}>없음</td></tr>
+              : invoices.map(inv=>(
+                <tr key={inv.id} style={{borderBottom:'1px solid #f3f4f6'}}>
+                  <td style={{padding:'10px 12px',fontWeight:600,fontFamily:'monospace',fontSize:13}}>{inv.invoice_no}</td>
+                  <td style={{padding:'10px 12px',fontSize:13}}>{fmtDate(inv.issued_at)}</td>
+                  <td style={{padding:'10px 12px',fontSize:13,fontWeight:600}}>{fmt(inv.total_amount,inv.currency)}</td>
+                  <td style={{padding:'10px 12px'}}><IBadge status={inv.status}/></td>
+                  <td style={{padding:'10px 12px'}}>
+                    <a href={`/invoices/${inv.id}`} style={{fontSize:12,color:'#6366f1'}}>보기</a>
+                  </td>
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+// ── HostessAccountTab ──────────────────────────────────────
+export const HostessAccountTab = ({ hostessId }) => {
+  const [summary, setSummary] = useState(null);
+  const [sessions, setSess]   = useState([]);
+  const [payouts, setPays]    = useState([]);
+  const [tab, setTab]         = useState('sessions');
+  const [loading,setLoading]  = useState(true);
+  useEffect(()=>{
+    Promise.all([
+      fetch(`/api/accounts/hostess/${hostessId}`).then(r=>r.json()),
+      fetch(`/api/hostess-sessions/hostess/${hostessId}`).then(r=>r.json()),
+      fetch(`/api/hostess-payouts/hostess/${hostessId}`).then(r=>r.json()),
+    ]).then(([sum,sess,pays])=>{
+      setSummary(sum);
+      setSess(Array.isArray(sess)?sess:sess.sessions||[]);
+      setPays(Array.isArray(pays)?pays:pays.payouts||[]);
+      setLoading(false);
+    }).catch(()=>setLoading(false));
+  },[hostessId]);
+  if(loading) return <div style={{padding:40,textAlign:'center',color:'#9ca3af'}}>Loading...</div>;
+  return (
+    <div style={{padding:'4px 0'}}>
+      <div style={{display:'flex',gap:12,flexWrap:'wrap',marginBottom:20}}>
+        <SCard label="이번 달 세션" value={summary?.month_sessions??0} />
+        <SCard label="이번 달 매출" value={fmt(summary?.month_gross)} color="#D1AE38" />
+        <SCard label="이번 달 수령" value={fmt(summary?.month_payout)} color="#166534" />
+        <SCard label="미지급" value={fmt(summary?.pending_payout)}
+          color={summary?.pending_payout>0?'#dc2626':'#166534'} />
+      </div>
+      <div style={{display:'flex',gap:4,borderBottom:'2px solid #e5e7eb',marginBottom:16}}>
+        {[['sessions','세션 내역'],['payouts','정산 이력']].map(([k,l])=>(
+          <button key={k} onClick={()=>setTab(k)} style={{
+            padding:'8px 16px',background:'none',border:'none',
+            borderBottom:`2px solid ${tab===k?'#D1AE38':'transparent'}`,
+            marginBottom:-2,fontSize:13,fontWeight:tab===k?600:400,
+            color:tab===k?'#D1AE38':'#6b7280',cursor:'pointer'}}>
+            {l}
+          </button>
+        ))}
+      </div>
+      {tab==='sessions' && (
+        <div style={{overflowX:'auto'}}>
+          <table style={{width:'100%',minWidth:600,borderCollapse:'collapse'}}>
+            <thead><tr style={{background:'#f9fafb'}}>
+              {['날짜','타입','시간','총 차지','지급율','수령액','수수료'].map(h=>(
+                <th key={h} style={{padding:'8px 10px',fontSize:11,color:'#6b7280',
+                  textAlign:'left',textTransform:'uppercase',fontWeight:600,
+                  borderBottom:'1px solid #e5e7eb',whiteSpace:'nowrap'}}>{h}</th>
+              ))}
+            </tr></thead>
+            <tbody>
+              {sessions.length===0
+                ? <tr><td colSpan={7} style={{padding:24,textAlign:'center',color:'#9ca3af'}}>없음</td></tr>
+                : sessions.map(s=>(
+                  <tr key={s.id} style={{borderBottom:'1px solid #f3f4f6'}}>
+                    <td style={{padding:'10px 10px',fontSize:13}}>{fmtDate(s.start_at)}</td>
+                    <td style={{padding:'10px 10px'}}>
+                      <span style={{background:s.session_type==='outcall'?'#fef9c3':'#dbeafe',
+                        color:s.session_type==='outcall'?'#854d0e':'#1e40af',
+                        padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:600}}>
+                        {s.session_type==='outcall'?'아웃콜':'인콜'}
+                      </span>
+                    </td>
+                    <td style={{padding:'10px 10px',fontSize:13}}>
+                      {s.hours_worked?`${parseFloat(s.hours_worked).toFixed(1)}h`:'—'}</td>
+                    <td style={{padding:'10px 10px',fontSize:13,fontWeight:600}}>{fmt(s.gross_amount)}</td>
+                    <td style={{padding:'10px 10px',fontSize:13,color:'#6b7280'}}>{s.payout_rate}%</td>
+                    <td style={{padding:'10px 10px',fontSize:13,fontWeight:600,color:'#166534'}}>{fmt(s.net_payout)}</td>
+                    <td style={{padding:'10px 10px',fontSize:13,color:'#dc2626'}}>
+                      {s.agent_commission>0?fmt(s.agent_commission):'—'}</td>
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
+        </div>
+      )}
+      {tab==='payouts' && (
+        <div style={{overflowX:'auto'}}>
+          <table style={{width:'100%',minWidth:460,borderCollapse:'collapse'}}>
+            <thead><tr style={{background:'#f9fafb'}}>
+              {['기간','세션','지급액','상태','지급일'].map(h=>(
+                <th key={h} style={{padding:'8px 12px',fontSize:11,color:'#6b7280',
+                  textAlign:'left',textTransform:'uppercase',fontWeight:600,
+                  borderBottom:'1px solid #e5e7eb'}}>{h}</th>
+              ))}
+            </tr></thead>
+            <tbody>
+              {payouts.length===0
+                ? <tr><td colSpan={5} style={{padding:24,textAlign:'center',color:'#9ca3af'}}>없음</td></tr>
+                : payouts.map(p=>(
+                  <tr key={p.id} style={{borderBottom:'1px solid #f3f4f6'}}>
+                    <td style={{padding:'10px 12px',fontSize:13}}>
+                      {fmtDate(p.period_from)} ~ {fmtDate(p.period_to)}</td>
+                    <td style={{padding:'10px 12px',fontSize:13}}>{p.total_sessions}</td>
+                    <td style={{padding:'10px 12px',fontSize:13,fontWeight:600,color:'#166534'}}>
+                      {fmt(p.total_payout)}</td>
+                    <td style={{padding:'10px 12px'}}><IBadge status={p.status}/></td>
+                    <td style={{padding:'10px 12px',fontSize:13,color:'#6b7280'}}>{fmtDate(p.paid_at)}</td>
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── AgentAccountTab ────────────────────────────────────────
+export const AgentAccountTab = ({ agentId }) => {
+  const [summary, setSummary]   = useState(null);
+  const [comms, setComms]       = useState([]);
+  const [loading, setLoading]   = useState(true);
+  useEffect(()=>{
+    Promise.all([
+      fetch(`/api/accounts/agent/${agentId}`).then(r=>r.json()),
+      fetch(`/api/agent-commissions/agent/${agentId}`).then(r=>r.json()),
+    ]).then(([sum,c])=>{
+      setSummary(sum);
+      setComms(Array.isArray(c)?c:c.commissions||[]);
+      setLoading(false);
+    }).catch(()=>setLoading(false));
+  },[agentId]);
+  if(loading) return <div style={{padding:40,textAlign:'center',color:'#9ca3af'}}>Loading...</div>;
+  return (
+    <div style={{padding:'4px 0'}}>
+      <div style={{display:'flex',gap:12,flexWrap:'wrap',marginBottom:24}}>
+        <SCard label="소속 호스티스" value={summary?.hostess_count??0} />
+        <SCard label="이번 달 수수료" value={fmt(summary?.month_commission)} color="#D1AE38" />
+        <SCard label="미정산" value={fmt(summary?.pending_commission)}
+          color={summary?.pending_commission>0?'#dc2626':'#166534'} />
+        <SCard label="누적 수수료" value={fmt(summary?.total_commission)} />
+      </div>
+      <div style={{overflowX:'auto'}}>
+        <table style={{width:'100%',minWidth:500,borderCollapse:'collapse'}}>
+          <thead><tr style={{background:'#f9fafb'}}>
+            {['날짜','호스티스','기준금액','수수료율','수수료','상태'].map(h=>(
+              <th key={h} style={{padding:'8px 12px',fontSize:11,color:'#6b7280',
+                textAlign:'left',textTransform:'uppercase',fontWeight:600,
+                borderBottom:'1px solid #e5e7eb'}}>{h}</th>
+            ))}
+          </tr></thead>
+          <tbody>
+            {comms.length===0
+              ? <tr><td colSpan={6} style={{padding:24,textAlign:'center',color:'#9ca3af'}}>없음</td></tr>
+              : comms.map(c=>(
+                <tr key={c.id} style={{borderBottom:'1px solid #f3f4f6'}}>
+                  <td style={{padding:'10px 12px',fontSize:13}}>{fmtDate(c.created_at)}</td>
+                  <td style={{padding:'10px 12px',fontSize:13}}>{c.hostess_name||c.hostess_id||'—'}</td>
+                  <td style={{padding:'10px 12px',fontSize:13}}>{fmt(c.base_amount)}</td>
+                  <td style={{padding:'10px 12px',fontSize:13}}>
+                    {c.commission_type==='percentage'?`${c.rate_or_amount}%`:fmt(c.rate_or_amount)}</td>
+                  <td style={{padding:'10px 12px',fontSize:13,fontWeight:600,color:'#166534'}}>
+                    {fmt(c.commission_amount)}</td>
+                  <td style={{padding:'10px 12px'}}><IBadge status={c.status}/></td>
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+// ── StaffAccountTab ────────────────────────────────────────
+export const StaffAccountTab = ({ staffId }) => {
+  const [data, setData]     = useState(null);
+  const [loading,setLoading]= useState(true);
+  useEffect(()=>{
+    fetch(`/api/accounts/staff/${staffId||0}`)
+      .then(r=>r.json()).then(d=>{ setData(d); setLoading(false); })
+      .catch(()=>setLoading(false));
+  },[staffId]);
+  if(loading) return <div style={{padding:40,textAlign:'center',color:'#9ca3af'}}>Loading...</div>;
+  return (
+    <div style={{padding:'4px 0'}}>
+      <div style={{display:'flex',gap:12,flexWrap:'wrap',marginBottom:24}}>
+        <SCard label="오늘 세션" value={data?.today_sessions??0} />
+        <SCard label="오늘 현금" value={fmt(data?.today_cash)} color="#166534" />
+        <SCard label="오늘 카드" value={fmt(data?.today_card)} />
+        <SCard label="이번 달" value={fmt(data?.month_total)} color="#D1AE38" />
+      </div>
+      <div style={{color:'#9ca3af',fontSize:13,textAlign:'center',padding:20}}>
+        상세 처리 내역은 결제 기록 메뉴에서 확인하세요.
+      </div>
+    </div>
+  );
+};
+
+// ── RoomAccountTab ─────────────────────────────────────────
+export const RoomAccountTab = ({ roomId }) => {
+  const [data, setData]     = useState(null);
+  const [loading,setLoading]= useState(true);
+  useEffect(()=>{
+    fetch(`/api/accounts/room/${roomId||0}`)
+      .then(r=>r.json()).then(d=>{ setData(d); setLoading(false); })
+      .catch(()=>setLoading(false));
+  },[roomId]);
+  if(loading) return <div style={{padding:40,textAlign:'center',color:'#9ca3af'}}>Loading...</div>;
+  return (
+    <div style={{padding:'4px 0'}}>
+      <div style={{display:'flex',gap:12,flexWrap:'wrap',marginBottom:24}}>
+        <SCard label="오늘 가동" value={`${data?.today_hours??0}h`} />
+        <SCard label="이번 달 가동률" value={`${data?.month_utilization??0}%`} color="#D1AE38" />
+        <SCard label="오늘 매출" value={fmt(data?.today_revenue)} color="#166534" />
+        <SCard label="이번 달 매출" value={fmt(data?.month_revenue)} />
+      </div>
+      <div style={{color:'#9ca3af',fontSize:13,textAlign:'center',padding:20}}>
+        시간대별 상세 리포트는 Reports 메뉴를 이용하세요.
+      </div>
+    </div>
+  );
+};
+```
+
+---
+
+## 파일 8: src/components/shared/FolioView.jsx
+
+```jsx
+import { useState, useEffect } from 'react';
+// ⚠️ formatCurrency, formatDateTime import 경로 조정
+// import { formatCurrency, formatDateTime } from '../../utils/formatters';
+
+const fmt = (amount, currency='THB') => {
+  if (amount==null) return '—';
+  try {
+    return new Intl.NumberFormat('th-TH',{
+      style:'currency',currency,minimumFractionDigits:0,maximumFractionDigits:0,
+    }).format(amount);
+  } catch { return `${currency} ${Number(amount).toFixed(0)}`; }
+};
+
+const ENTRY_LABELS = {
+  room_charge:'룸 차지', pos_item:'POS', hostess_charge:'호스티스',
+  outcall_fee:'아웃콜', late_charge:'연장', tax:'세금', discount:'할인', other:'기타',
+};
+
+export const FolioView = ({ reservationId, currency='THB', isLive=false }) => {
+  const [entries, setEntries] = useState([]);
+  const [total,   setTotal]   = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  const load = () => {
+    fetch(`/api/folio/${reservationId}`)
+      .then(r=>r.json())
+      .then(d=>{ setEntries(d.entries||[]); setTotal(d.total||0); setLoading(false); })
+      .catch(()=>setLoading(false));
+  };
+
+  useEffect(()=>{
+    load();
+    if(isLive){ const t=setInterval(load,30000); return ()=>clearInterval(t); }
+  },[reservationId,isLive]);
+
+  if(loading) return <div style={{padding:24,textAlign:'center',color:'#9ca3af'}}>Loading...</div>;
+
+  return (
+    <div>
+      <div style={{display:'flex',justifyContent:'space-between',
+        alignItems:'center',marginBottom:12}}>
+        <div style={{fontSize:13,fontWeight:600,color:'#374151'}}>
+          Folio 내역 ({entries.length}건)
+          {isLive && <span style={{fontSize:11,color:'#9ca3af',marginLeft:8}}>30초 자동 갱신</span>}
+        </div>
+        <button onClick={load} style={{padding:'6px 12px',background:'#f3f4f6',
+          border:'1px solid #e5e7eb',borderRadius:6,fontSize:12,cursor:'pointer'}}>
+          ↻ 갱신
+        </button>
+      </div>
+      <div style={{overflowX:'auto'}}>
+        <table style={{width:'100%',minWidth:480,borderCollapse:'collapse'}}>
+          <thead>
+            <tr style={{background:'#f9fafb'}}>
+              {['항목','설명','수량','단가','금액'].map(h=>(
+                <th key={h} style={{padding:'8px 10px',fontSize:11,color:'#6b7280',
+                  textAlign:h==='금액'?'right':'left',textTransform:'uppercase',
+                  letterSpacing:'0.06em',fontWeight:600,borderBottom:'1px solid #e5e7eb'}}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {entries.length===0
+              ? <tr><td colSpan={5} style={{padding:20,textAlign:'center',color:'#9ca3af'}}>항목 없음</td></tr>
+              : entries.map(e=>(
+                <tr key={e.id} style={{borderBottom:'1px solid #f3f4f6'}}>
+                  <td style={{padding:'8px 10px'}}>
+                    <span style={{fontSize:11,background:'#f3f4f6',color:'#6b7280',
+                      padding:'1px 6px',borderRadius:4}}>
+                      {ENTRY_LABELS[e.entry_type]||e.entry_type}
+                    </span>
+                  </td>
+                  <td style={{padding:'8px 10px',fontSize:13}}>{e.description||'—'}</td>
+                  <td style={{padding:'8px 10px',fontSize:13,textAlign:'center'}}>{e.quantity}</td>
+                  <td style={{padding:'8px 10px',fontSize:13}}>{fmt(e.unit_price,currency)}</td>
+                  <td style={{padding:'8px 10px',fontSize:13,fontWeight:600,textAlign:'right'}}>
+                    {e.entry_type==='discount'
+                      ? <span style={{color:'#dc2626'}}>-{fmt(e.amount,currency)}</span>
+                      : fmt(e.amount,currency)
+                    }
+                  </td>
+                </tr>
+              ))
+            }
+          </tbody>
+          <tfoot>
+            <tr style={{background:'#f9fafb',borderTop:'2px solid #e5e7eb'}}>
+              <td colSpan={4} style={{padding:'12px 10px',fontWeight:700,
+                fontSize:14,textAlign:'right'}}>합계</td>
+              <td style={{padding:'12px 10px',fontWeight:700,
+                fontSize:16,textAlign:'right',color:'#D1AE38'}}>
+                {fmt(total,currency)}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+export default FolioView;
+```
+
+---
+
+## 완료 보고 형식
+
+```
+P3 완료 보고:
+
+① constants.js        ✅ Created / ⏭ Updated
+② formatters.js       ✅ Created / ⏭ Updated
+③ useHoverRow.js      ✅ Created / ⏭ Existed
+④ StatusBadge.jsx     ✅ Created / ⏭ Existed
+⑤ AttendanceTab.jsx   ✅ Created
+⑥ AvailabilityCalendar.jsx ✅ Created
+⑦ AccountTab.jsx      ✅ Created (5개 컴포넌트 포함)
+⑧ FolioView.jsx       ✅ Created
+
+앱 실행 상태: ✅ 정상
+→ P4 실행 준비 완료
+```
