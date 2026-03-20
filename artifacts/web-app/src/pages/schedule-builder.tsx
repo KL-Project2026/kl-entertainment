@@ -46,46 +46,33 @@ interface StaffMember {
   role: string;
 }
 
-interface ShiftEditorProps {
-  staffId: string;
-  staffName: string;
-  dayOfWeek: number;
-  existing?: Schedule;
-  effectiveFrom: string;
-  onSave: () => void;
-  onDelete?: () => void;
-  onClose: () => void;
-  token: string | null;
-}
-
+// ─── Shift Editor Modal ───────────────────────────────────────────────────────
 function ShiftEditor({
   staffId, staffName, dayOfWeek, existing, effectiveFrom, onSave, onDelete, onClose, token,
-}: ShiftEditorProps) {
+}: {
+  staffId: string; staffName: string; dayOfWeek: number; existing?: Schedule;
+  effectiveFrom: string; onSave: () => void; onDelete?: () => void;
+  onClose: () => void; token: string | null;
+}) {
   const [start, setStart] = useState(existing?.shiftStart?.slice(0, 5) ?? "18:00");
   const [end, setEnd] = useState(existing?.shiftEnd?.slice(0, 5) ?? "02:00");
   const [overnight, setOvernight] = useState(existing?.isOvernight ?? true);
   const [saving, setSaving] = useState(false);
 
-  const handleSave = async () => {
+  const save = async () => {
     setSaving(true);
     await fetch("/api/schedules", {
       method: "POST",
       headers: { "Content-Type": "application/json", ...getAuthHeader(token) },
-      body: JSON.stringify({
-        staffId, dayOfWeek, shiftStart: start, shiftEnd: end,
-        isOvernight: overnight, effectiveFrom,
-      }),
+      body: JSON.stringify({ staffId, dayOfWeek, shiftStart: start, shiftEnd: end, isOvernight: overnight, effectiveFrom }),
     });
     setSaving(false);
     onSave();
   };
 
-  const handleDelete = async () => {
+  const remove = async () => {
     if (!existing?.id) return;
-    await fetch(`/api/schedules/${existing.id}`, {
-      method: "DELETE",
-      headers: getAuthHeader(token),
-    });
+    await fetch(`/api/schedules/${existing.id}`, { method: "DELETE", headers: getAuthHeader(token) });
     onDelete?.();
   };
 
@@ -114,13 +101,9 @@ function ShiftEditor({
           Overnight shift (ends next day)
         </label>
         <div className="flex gap-2">
-          <Button className="flex-1" onClick={handleSave} disabled={saving}>
-            {saving ? "Saving..." : "Save Shift"}
-          </Button>
+          <Button className="flex-1" onClick={save} disabled={saving}>{saving ? "Saving..." : "Save Shift"}</Button>
           {existing && (
-            <Button variant="outline" className="text-red-400 border-red-500/30" onClick={handleDelete}>
-              Clear
-            </Button>
+            <Button variant="outline" className="text-red-400 border-red-500/30" onClick={remove}>Clear</Button>
           )}
         </div>
       </Card>
@@ -128,11 +111,16 @@ function ShiftEditor({
   );
 }
 
-interface DragPayload {
+// ─── Main Component ───────────────────────────────────────────────────────────
+interface DragState {
   staffId: string;
   staffName: string;
   dayOfWeek: number;
   schedule: Schedule;
+  startX: number;
+  startY: number;
+  ghost: HTMLDivElement;
+  isCopy: boolean;
 }
 
 export default function ScheduleBuilder() {
@@ -148,11 +136,11 @@ export default function ScheduleBuilder() {
   } | null>(null);
   const [copyMsg, setCopyMsg] = useState("");
 
-  // Drag state — use refs to avoid stale closures
-  const dragPayload = useRef<DragPayload | null>(null);
-  const didDrag = useRef(false); // prevent click firing after drag
-  const [dropTarget, setDropTarget] = useState<{ staffId: string; dow: number } | null>(null);
-  const [draggingFrom, setDraggingFrom] = useState<{ staffId: string; dow: number } | null>(null);
+  // Mouse-based drag state
+  const drag = useRef<DragState | null>(null);
+  const isDragging = useRef(false);
+  const [activeTarget, setActiveTarget] = useState<{ staffId: string; dow: number } | null>(null);
+  const [draggingKey, setDraggingKey] = useState<string | null>(null); // "staffId:dow"
   const [copyMode, setCopyMode] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -173,10 +161,9 @@ export default function ScheduleBuilder() {
     queryKey: ["schedules", branchId, effectiveFrom],
     queryFn: async () => {
       if (!branchId) return { data: [] as Schedule[] };
-      const r = await fetch(
-        `/api/schedules?branch_id=${branchId}&effective_date=${effectiveFrom}`,
-        { headers: getAuthHeader(token) },
-      );
+      const r = await fetch(`/api/schedules?branch_id=${branchId}&effective_date=${effectiveFrom}`, {
+        headers: getAuthHeader(token),
+      });
       return r.json() as Promise<{ data: Schedule[] }>;
     },
     enabled: !!branchId,
@@ -187,17 +174,14 @@ export default function ScheduleBuilder() {
     queryKey: ["staff", branchId],
     queryFn: async () => {
       if (!branchId) return { data: [] as StaffMember[] };
-      const r = await fetch(
-        `/api/staff?branch_id=${branchId}&active=true`,
-        { headers: getAuthHeader(token) },
-      );
+      const r = await fetch(`/api/staff?branch_id=${branchId}&active=true`, { headers: getAuthHeader(token) });
       return r.json() as Promise<{ data: StaffMember[] }>;
     },
     enabled: !!branchId,
   });
   const allStaff: StaffMember[] = staffData?.data ?? [];
 
-  // Build staff→day map
+  // Build staff map
   const staffMap = new Map<string, { name: string; role: string; days: Map<number, Schedule> }>();
   for (const s of schedules) {
     if (!staffMap.has(s.staffId))
@@ -220,9 +204,7 @@ export default function ScheduleBuilder() {
       await fetch("/api/schedules/copy", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeader(token) },
-        body: JSON.stringify({
-          branchId, fromDate: prev.toISOString().split("T")[0], toDate: effectiveFrom,
-        }),
+        body: JSON.stringify({ branchId, fromDate: prev.toISOString().split("T")[0], toDate: effectiveFrom }),
       });
     },
     onSuccess: () => {
@@ -232,200 +214,248 @@ export default function ScheduleBuilder() {
     },
   });
 
-  // ─── Drag handlers ────────────────────────────────────────────────
+  // ─── Find drop target from point ─────────────────────────────────
+  const findDropCell = (x: number, y: number) => {
+    // Temporarily hide ghost so elementFromPoint sees the actual cell underneath
+    const ghost = drag.current?.ghost;
+    if (ghost) ghost.style.display = "none";
+    const el = document.elementFromPoint(x, y);
+    if (ghost) ghost.style.display = "";
 
-  const onDragStart = useCallback((
-    e: React.DragEvent,
-    payload: DragPayload,
-  ) => {
-    dragPayload.current = payload;
-    didDrag.current = false;
-    // REQUIRED for Firefox — drag won't start without setData
-    e.dataTransfer.setData("text/plain", JSON.stringify({
-      staffId: payload.staffId,
-      dayOfWeek: payload.dayOfWeek,
-    }));
-    e.dataTransfer.effectAllowed = "copyMove";
-    setDraggingFrom({ staffId: payload.staffId, dow: payload.dayOfWeek });
-    setCopyMode(e.altKey);
-  }, []);
+    // Walk up the DOM to find a cell with data-cell attribute
+    let node = el as HTMLElement | null;
+    while (node && node !== document.body) {
+      const staffId = node.dataset.staffid;
+      const dow = node.dataset.dow;
+      if (staffId && dow !== undefined) {
+        return { staffId, dow: parseInt(dow, 10) };
+      }
+      node = node.parentElement;
+    }
+    return null;
+  };
 
-  const onDragEnd = useCallback(() => {
-    didDrag.current = true;
-    dragPayload.current = null;
-    setDraggingFrom(null);
-    setDropTarget(null);
-    setCopyMode(false);
-    // allow click-after-drag guard to reset
-    setTimeout(() => { didDrag.current = false; }, 200);
-  }, []);
+  // ─── Global mouse handlers ────────────────────────────────────────
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    const d = drag.current;
+    if (!d) return;
 
-  const onDragOver = useCallback((e: React.DragEvent, staffId: string, dow: number) => {
-    // Must prevent default to allow dropping
-    e.preventDefault();
-    e.stopPropagation();
+    const dx = e.clientX - d.startX;
+    const dy = e.clientY - d.startY;
+
+    // Start drag after 5px threshold
+    if (!isDragging.current && Math.sqrt(dx * dx + dy * dy) > 5) {
+      isDragging.current = true;
+      setDraggingKey(`${d.staffId}:${d.dayOfWeek}`);
+      document.body.style.cursor = "grabbing";
+      document.body.style.userSelect = "none";
+    }
+
+    if (!isDragging.current) return;
+
+    // Move ghost
+    d.ghost.style.left = `${e.clientX + 12}px`;
+    d.ghost.style.top = `${e.clientY - 16}px`;
+
+    // Detect copy mode (Alt key)
     const cm = e.altKey;
-    setCopyMode(cm);
-    e.dataTransfer.dropEffect = cm ? "copy" : "move";
-    setDropTarget({ staffId, dow });
-  }, []);
+    if (cm !== d.isCopy) {
+      d.isCopy = cm;
+      setCopyMode(cm);
+      d.ghost.textContent = cm
+        ? `📋 ${d.schedule.shiftStart?.slice(0, 5)} → ${d.schedule.shiftEnd?.slice(0, 5)}`
+        : `${d.schedule.shiftStart?.slice(0, 5)} → ${d.schedule.shiftEnd?.slice(0, 5)}`;
+      d.ghost.style.background = cm ? "#3b82f6" : "hsl(var(--primary))";
+    }
 
-  const onDragLeave = useCallback((e: React.DragEvent) => {
-    // Only clear if leaving the cell entirely (not entering a child)
-    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-      setDropTarget(null);
+    // Find cell under cursor
+    const cell = findDropCell(e.clientX, e.clientY);
+    if (cell && !(cell.staffId === d.staffId && cell.dow === d.dayOfWeek)) {
+      setActiveTarget(cell);
+    } else {
+      setActiveTarget(null);
     }
   }, []);
 
-  const onDrop = useCallback(async (
-    e: React.DragEvent,
-    targetStaffId: string,
-    targetDow: number,
-  ) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const drag = dragPayload.current;
-    if (!drag || busy) return;
+  const handleMouseUp = useCallback(async (e: MouseEvent) => {
+    const d = drag.current;
+    const wasDragging = isDragging.current;
 
-    setDropTarget(null);
-    setDraggingFrom(null);
+    // Cleanup ghost & cursor
+    if (d?.ghost && document.body.contains(d.ghost)) document.body.removeChild(d.ghost);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    isDragging.current = false;
+    drag.current = null;
+    setDraggingKey(null);
+    setActiveTarget(null);
+    setCopyMode(false);
 
-    // Same cell — no-op
-    if (drag.staffId === targetStaffId && drag.dayOfWeek === targetDow) return;
+    document.removeEventListener("mousemove", handleMouseMove);
+    document.removeEventListener("mouseup", handleMouseUp);
 
-    const isCopy = e.altKey;
+    if (!wasDragging || !d || busy) return;
+
+    const cell = findDropCell(e.clientX, e.clientY);
+    if (!cell || (cell.staffId === d.staffId && cell.dow === d.dayOfWeek)) return;
+
+    const isCopy = e.altKey || d.isCopy;
     setBusy(true);
-    dragPayload.current = null;
-
     try {
-      // 1. Save shift at target cell
       const res = await fetch("/api/schedules", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeader(token) },
         body: JSON.stringify({
-          staffId: targetStaffId,
-          dayOfWeek: targetDow,
-          shiftStart: drag.schedule.shiftStart,
-          shiftEnd: drag.schedule.shiftEnd,
-          isOvernight: drag.schedule.isOvernight,
+          staffId: cell.staffId,
+          dayOfWeek: cell.dow,
+          shiftStart: d.schedule.shiftStart,
+          shiftEnd: d.schedule.shiftEnd,
+          isOvernight: d.schedule.isOvernight,
           effectiveFrom,
         }),
       });
-      if (!res.ok) throw new Error("Failed to save");
+      if (!res.ok) throw new Error("Save failed");
 
-      // 2. Delete source if moving (not copying)
-      if (!isCopy && drag.schedule.id) {
-        await fetch(`/api/schedules/${drag.schedule.id}`, {
+      if (!isCopy && d.schedule.id) {
+        await fetch(`/api/schedules/${d.schedule.id}`, {
           method: "DELETE",
           headers: getAuthHeader(token),
         });
       }
-
       await refetch();
     } catch (err) {
-      console.error("[schedule] drag drop failed:", err);
+      console.error("[schedule drag] error:", err);
     } finally {
       setBusy(false);
     }
-  }, [token, effectiveFrom, refetch, busy]);
+  }, [handleMouseMove, token, effectiveFrom, refetch, busy]);
 
-  // Track Alt key globally while dragging
+  // ─── Start drag on mousedown ──────────────────────────────────────
+  const startDrag = useCallback((
+    e: React.MouseEvent,
+    staffId: string,
+    staffName: string,
+    dayOfWeek: number,
+    schedule: Schedule,
+  ) => {
+    // Only left-button
+    if (e.button !== 0) return;
+
+    // Create ghost element
+    const ghost = document.createElement("div");
+    ghost.textContent = `${schedule.shiftStart?.slice(0, 5)} → ${schedule.shiftEnd?.slice(0, 5)}`;
+    ghost.style.cssText = `
+      position: fixed;
+      left: ${e.clientX + 12}px;
+      top: ${e.clientY - 16}px;
+      background: hsl(var(--primary));
+      color: #000;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 8px;
+      border-radius: 6px;
+      pointer-events: none;
+      z-index: 9999;
+      white-space: nowrap;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      display: none;
+    `;
+    document.body.appendChild(ghost);
+
+    drag.current = {
+      staffId, staffName, dayOfWeek, schedule,
+      startX: e.clientX, startY: e.clientY,
+      ghost, isCopy: false,
+    };
+    isDragging.current = false;
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+  }, [handleMouseMove, handleMouseUp]);
+
+  // Cleanup on unmount
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (draggingFrom) setCopyMode(e.altKey);
-    };
-    window.addEventListener("keydown", handler);
-    window.addEventListener("keyup", handler);
     return () => {
-      window.removeEventListener("keydown", handler);
-      window.removeEventListener("keyup", handler);
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      if (drag.current?.ghost && document.body.contains(drag.current.ghost)) {
+        document.body.removeChild(drag.current.ghost);
+      }
     };
-  }, [draggingFrom]);
+  }, [handleMouseMove, handleMouseUp]);
 
-  // ─── Cell render helper ───────────────────────────────────────────
-
+  // ─── Cell renderer ────────────────────────────────────────────────
   const renderCell = (staffId: string, staffName: string, dow: number, sched: Schedule | undefined) => {
-    const isSource = draggingFrom?.staffId === staffId && draggingFrom?.dow === dow;
-    const isTarget = dropTarget?.staffId === staffId && dropTarget?.dow === dow;
-    const isActiveTarget = isTarget && dragPayload.current &&
-      !(dragPayload.current.staffId === staffId && dragPayload.current.dayOfWeek === dow);
+    const key = `${staffId}:${dow}`;
+    const isSource = draggingKey === key;
+    const isTarget = activeTarget?.staffId === staffId && activeTarget?.dow === dow;
 
-    const cellDragHandlers = {
-      onDragOver: (e: React.DragEvent) => onDragOver(e, staffId, dow),
-      onDragLeave,
-      onDrop: (e: React.DragEvent) => onDrop(e, staffId, dow),
-    };
+    return (
+      <div
+        data-staffid={staffId}
+        data-dow={String(dow)}
+        className={`relative w-full rounded-lg transition-all duration-100 ${
+          isTarget
+            ? copyMode
+              ? "ring-2 ring-blue-400 ring-offset-1 ring-offset-background bg-blue-500/10"
+              : "ring-2 ring-primary ring-offset-1 ring-offset-background bg-primary/10"
+            : ""
+        }`}
+      >
+        {/* Target label */}
+        {isTarget && (
+          <span className={`absolute -top-2 -right-1 z-10 text-[9px] rounded px-1 font-bold leading-4 pointer-events-none ${
+            copyMode ? "bg-blue-500 text-white" : "bg-primary text-black"
+          }`}>
+            {copyMode ? "COPY" : "MOVE"}
+          </span>
+        )}
 
-    const targetRingClass = isActiveTarget
-      ? copyMode
-        ? "ring-2 ring-blue-400 ring-offset-1 ring-offset-background bg-blue-500/10"
-        : "ring-2 ring-primary ring-offset-1 ring-offset-background bg-primary/10"
-      : "";
-
-    if (sched) {
-      return (
-        <div
-          {...cellDragHandlers}
-          className={`relative w-full rounded-lg transition-all duration-150 ${targetRingClass}`}
-        >
-          {isActiveTarget && copyMode && (
-            <span className="absolute -top-2 -right-1 z-10 text-[9px] bg-blue-500 text-white rounded px-1 font-bold leading-4 pointer-events-none">
-              COPY
-            </span>
-          )}
+        {sched ? (
           <div
-            draggable
-            onDragStart={(e) => onDragStart(e, { staffId, staffName, dayOfWeek: dow, schedule: sched })}
-            onDragEnd={onDragEnd}
+            data-staffid={staffId}
+            data-dow={String(dow)}
+            onMouseDown={(e) => startDrag(e, staffId, staffName, dow, sched)}
             onClick={() => {
-              if (didDrag.current || busy) return;
+              // Don't open editor if we just finished a drag
+              if (isDragging.current || busy) return;
               setEditing({ staffId, staffName, dayOfWeek: dow, existing: sched });
             }}
             className={`
-              w-full rounded-lg px-2 py-2 text-xs border cursor-grab active:cursor-grabbing
-              transition-all duration-150
+              w-full rounded-lg px-2 py-2 text-xs border select-none
+              transition-all duration-100 cursor-grab active:cursor-grabbing
               ${isSource
-                ? "opacity-30 bg-primary/10 border-primary/20"
+                ? "opacity-25 bg-primary/5 border-primary/10"
                 : "bg-primary/15 border-primary/30 text-primary hover:bg-primary/25"
               }
             `}
           >
-            <span className="block leading-tight">
+            <span className="block leading-tight pointer-events-none">
               {sched.shiftStart?.slice(0, 5)}<br />
               <span className="text-muted-foreground">→ {sched.shiftEnd?.slice(0, 5)}</span>
             </span>
           </div>
-        </div>
-      );
-    }
-
-    return (
-      <div
-        {...cellDragHandlers}
-        className={`relative w-full rounded-lg transition-all duration-150 ${targetRingClass}`}
-      >
-        {isActiveTarget && !copyMode && (
-          <span className="absolute -top-2 -right-1 z-10 text-[9px] bg-primary text-black rounded px-1 font-bold leading-4 pointer-events-none">
-            MOVE
-          </span>
+        ) : (
+          <button
+            data-staffid={staffId}
+            data-dow={String(dow)}
+            onClick={() => {
+              if (busy) return;
+              setEditing({ staffId, staffName, dayOfWeek: dow, existing: undefined });
+            }}
+            className={`
+              w-full rounded-lg px-2 py-2.5 text-xs border transition-all duration-100
+              ${isTarget
+                ? copyMode
+                  ? "border-blue-400/50 text-blue-400"
+                  : "border-primary/50 text-primary"
+                : "border-dashed border-white/10 text-muted-foreground/40 hover:border-white/20 hover:text-muted-foreground"
+              }
+            `}
+          >
+            +
+          </button>
         )}
-        <button
-          onClick={() => {
-            if (didDrag.current || busy) return;
-            setEditing({ staffId, staffName, dayOfWeek: dow, existing: undefined });
-          }}
-          className={`
-            w-full rounded-lg px-2 py-2.5 text-xs border transition-all duration-150
-            ${isActiveTarget
-              ? copyMode
-                ? "border-blue-400/50 text-blue-400"
-                : "border-primary/50 text-primary"
-              : "border-dashed border-white/10 text-muted-foreground/40 hover:border-white/20 hover:text-muted-foreground"
-            }
-          `}
-        >
-          +
-        </button>
       </div>
     );
   };
@@ -452,11 +482,7 @@ export default function ScheduleBuilder() {
             </Select>
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4 text-muted-foreground" />
-              <Input
-                type="date" value={effectiveFrom}
-                onChange={(e) => setEffectiveFrom(e.target.value)}
-                className="w-40"
-              />
+              <Input type="date" value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} className="w-40" />
             </div>
             <Button
               variant="outline"
@@ -464,21 +490,17 @@ export default function ScheduleBuilder() {
               disabled={copyFromLastWeek.isPending}
               className="gap-2"
             >
-              {copyMsg
-                ? <><Check className="w-4 h-4" /> {copyMsg}</>
-                : <><Copy className="w-4 h-4" /> Copy Last Week</>}
+              {copyMsg ? <><Check className="w-4 h-4" /> {copyMsg}</> : <><Copy className="w-4 h-4" /> Copy Last Week</>}
             </Button>
           </div>
         </div>
 
-        {/* Drag mode banner */}
-        {draggingFrom && (
-          <div className={`text-xs px-3 py-1.5 rounded-lg border w-fit transition-all ${
-            copyMode
-              ? "bg-blue-500/10 text-blue-300 border-blue-500/30"
-              : "bg-primary/10 text-primary border-primary/30"
+        {/* Mode banner */}
+        {draggingKey && (
+          <div className={`text-xs px-3 py-1.5 rounded-lg border w-fit ${
+            copyMode ? "bg-blue-500/10 text-blue-300 border-blue-500/30" : "bg-primary/10 text-primary border-primary/30"
           }`}>
-            {copyMode ? "📋 Copy mode — release to copy" : "↔ Move mode — hold Alt to copy instead"}
+            {copyMode ? "📋 Copy mode — release to copy" : "↔ Move mode — hold Alt to copy"}
           </div>
         )}
 
