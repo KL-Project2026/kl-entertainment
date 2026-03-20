@@ -1,0 +1,356 @@
+# KL Project — P4: 기존 페이지 탭 + Hover + Click 추가
+> P3 완료 후 실행하세요.
+> **기존 파일을 먼저 읽고, 없는 기능만 추가합니다.**
+
+---
+
+## 🔒 안전 규칙
+
+```
+[P4-1] 각 파일 수정 전 전체 내용 읽기 필수
+[P4-2] 기존 코드 삭제 절대 금지 — 추가/감싸기만
+[P4-3] import는 파일 상단에 기존 import 아래에 추가
+[P4-4] 이미 구현된 기능은 SKIP
+[P4-5] 파일 저장 후 앱 실행 확인
+[P4-6] 에러 시 즉시 해당 파일 원복
+```
+
+---
+
+## 작업 순서
+
+```
+① StaffDetail.jsx      — 출퇴근 탭 + Account 탭
+② HostessDetail.jsx    — 출퇴근 탭 + Account 탭
+③ RoomDetail.jsx       — 가용성 탭 + Account 탭
+④ GuestDetail.jsx      — Account 탭
+⑤ AgentDetail.jsx      — Account 탭
+⑥ ReservationDetail.jsx — Folio 탭
+⑦ 모든 리스트 페이지   — Hover + Click
+```
+
+---
+
+## 작업 ① — StaffDetail.jsx
+
+파일 전체를 읽은 후 아래를 적용하세요.
+
+### Step A: import 추가 (파일 상단 기존 import 아래에)
+```jsx
+// 기존 import 아래에 추가 — 중복이면 추가하지 말 것
+import { AttendanceTab }  from '../components/shared/AttendanceTab';
+import { StaffAccountTab } from '../components/shared/AccountTab';
+// ⚠️ 경로는 실제 구조에 맞게 조정
+```
+
+### Step B: 탭 상태 추가 (기존 state 아래에)
+```jsx
+// 탭 상태가 이미 있으면 SKIP
+const [activeTab, setActiveTab] = useState('info');
+```
+
+### Step C: 탭 버튼 UI 추가 (헤더 바로 아래, 기존 콘텐츠 위)
+```jsx
+{/* 탭 버튼 — 기존 헤더 JSX 아래에 삽입 */}
+<div style={{display:'flex',gap:4,borderBottom:'2px solid #e5e7eb',
+  marginBottom:24,flexWrap:'wrap'}}>
+  {[
+    ['info',       '기본 정보'],
+    ['attendance', '출퇴근'],
+    ['account',    'Account'],
+  ].map(([key,label])=>(
+    <button key={key} onClick={()=>setActiveTab(key)} style={{
+      padding:'10px 18px',background:'none',border:'none',
+      borderBottom:`2px solid ${activeTab===key?'#D1AE38':'transparent'}`,
+      marginBottom:-2,fontSize:14,
+      fontWeight:activeTab===key?600:400,
+      color:activeTab===key?'#D1AE38':'#6b7280',
+      cursor:'pointer',
+    }}>{label}</button>
+  ))}
+</div>
+```
+
+### Step D: 기존 콘텐츠를 탭으로 감싸기
+```jsx
+{/* 기존 상세 내용을 아래로 감싸기 */}
+{activeTab === 'info' && (
+  <div>
+    {/* 기존 상세 내용 JSX 그대로 유지 */}
+  </div>
+)}
+
+{activeTab === 'attendance' && (
+  <AttendanceTab personType="staff" personId={Number(id)} />
+)}
+
+{activeTab === 'account' && (
+  <StaffAccountTab staffId={Number(id)} />
+)}
+```
+
+---
+
+## 작업 ② — HostessDetail.jsx
+
+```jsx
+// import 추가
+import { AttendanceTab }     from '../components/shared/AttendanceTab';
+import { HostessAccountTab } from '../components/shared/AccountTab';
+
+// 탭 상태
+const [activeTab, setActiveTab] = useState('info');
+
+// 탭 버튼 (기존 헤더 아래)
+{[
+  ['info',       '기본 정보'],
+  ['sessions',   '세션 내역'],   // 기존 세션 탭이 있으면 'sessions'로 연결
+  ['attendance', '출퇴근'],
+  ['account',    'Account'],
+].map(([key,label])=>(
+  <button key={key} onClick={()=>setActiveTab(key)} style={{
+    padding:'10px 18px',background:'none',border:'none',
+    borderBottom:`2px solid ${activeTab===key?'#D1AE38':'transparent'}`,
+    marginBottom:-2,fontSize:14,
+    fontWeight:activeTab===key?600:400,
+    color:activeTab===key?'#D1AE38':'#6b7280',cursor:'pointer',
+  }}>{label}</button>
+))}
+
+// 탭 콘텐츠
+{activeTab === 'info'       && <div>{/* 기존 상세 내용 */}</div>}
+{activeTab === 'sessions'   && <div>{/* 기존 세션 콘텐츠 또는 빈 div */}</div>}
+{activeTab === 'attendance' && <AttendanceTab personType="hostess" personId={Number(id)} />}
+{activeTab === 'account'    && <HostessAccountTab hostessId={Number(id)} />}
+```
+
+---
+
+## 작업 ③ — RoomDetail.jsx
+
+```jsx
+// import 추가
+import { AvailabilityCalendar } from '../components/shared/AvailabilityCalendar';
+import { FolioView }            from '../components/shared/FolioView';
+import { RoomAccountTab }       from '../components/shared/AccountTab';
+
+// 탭 버튼
+{[
+  ['info',         '기본 정보'],
+  ['availability', '가용성 관리'],
+  ['account',      'Account'],
+].map(([key,label])=>(...))}
+
+// 탭 콘텐츠
+{activeTab === 'info'         && <div>{/* 기존 내용 */}</div>}
+{activeTab === 'availability' && <AvailabilityCalendar entityType="room" entityId={Number(id)} />}
+{activeTab === 'account'      && <RoomAccountTab roomId={Number(id)} />}
+```
+
+---
+
+## 작업 ④ — GuestDetail.jsx
+
+```jsx
+// import 추가
+import { GuestAccountTab } from '../components/shared/AccountTab';
+
+// 탭 버튼에 추가
+['account', 'Account']
+
+// 탭 콘텐츠 추가
+{activeTab === 'account' && <GuestAccountTab guestId={Number(id)} />}
+```
+
+---
+
+## 작업 ⑤ — AgentDetail.jsx
+
+```jsx
+import { AgentAccountTab } from '../components/shared/AccountTab';
+// 탭에 ['account', 'Account'] 추가
+{activeTab === 'account' && <AgentAccountTab agentId={Number(id)} />}
+```
+
+---
+
+## 작업 ⑥ — ReservationDetail.jsx
+
+```jsx
+import { FolioView } from '../components/shared/FolioView';
+// 탭에 추가:
+['folio', 'Folio (실시간)']
+
+// 탭 콘텐츠:
+{activeTab === 'folio' && (
+  <FolioView
+    reservationId={Number(id)}
+    currency={record?.currency || 'THB'}
+    isLive={record?.status === 'checked_in'}
+  />
+)}
+```
+
+---
+
+## 작업 ⑦ — 모든 리스트 페이지 Hover + Click
+
+아래 패턴을 각 리스트 페이지에 적용하세요.
+**각 파일을 읽은 후, 이미 구현된 항목은 SKIP합니다.**
+
+### 적용 대상 페이지 목록
+P0 결과에서 확인한 파일 경로를 여기에 대입하세요:
+```
+□ Reservations.jsx   (또는 ReservationList.jsx)
+□ Guests.jsx
+□ Rooms.jsx
+□ Tables.jsx
+□ Staff.jsx
+□ Hostesses.jsx
+□ Agents.jsx
+□ RoomBoard.jsx
+```
+
+### 공통 적용 패턴
+
+**① import 추가 (파일 상단)**
+```jsx
+// 기존 import 아래에 추가
+import { useNavigate } from 'react-router-dom'; // 이미 있으면 SKIP
+import { useHoverRow } from '../utils/useHoverRow'; // ⚠️ 경로 조정
+```
+
+**② hook 추가 (컴포넌트 내 기존 state 아래)**
+```jsx
+const navigate = useNavigate();   // 이미 있으면 SKIP
+const { hoveredId, hoverProps, rowStyle, cardStyle } = useHoverRow();
+```
+
+**③-A 테이블 뷰 `<tr>` 수정**
+```jsx
+// BEFORE
+<tr key={item.id}>
+
+// AFTER — 기존 속성(className 등) 유지하면서 추가
+<tr
+  key={item.id}
+  {...hoverProps(item.id)}
+  style={rowStyle(item.id)}
+  onClick={() => navigate(`/[엔티티]/${item.id}`)}
+>
+```
+
+**③-B 카드 뷰 `<div>` 수정**
+```jsx
+// BEFORE
+<div key={item.id} style={{ 기존스타일 }}>
+
+// AFTER — 기존 스타일을 cardStyle 두 번째 인자로 이동
+<div
+  key={item.id}
+  {...hoverProps(item.id)}
+  style={cardStyle(item.id, {
+    // 기존 style 속성들을 여기에 그대로 복사
+  })}
+  onClick={() => navigate(`/[엔티티]/${item.id}`)}
+>
+```
+
+### 엔티티별 navigate 경로
+
+| 파일 | navigate 경로 |
+|------|-------------|
+| Reservations | `/reservations/${item.id}` |
+| Guests | `/guests/${item.id}` |
+| Rooms | `/rooms/${item.id}` |
+| Tables | `/tables/${item.id}` |
+| Staff | `/staff/${item.id}` |
+| Hostesses | `/hostesses/${item.id}` |
+| Agents | `/agents/${item.id}` |
+| RoomBoard (셀) | `/rooms/${room.id}` |
+
+⚠️ 해당 라우트가 라우터에 없으면 navigate 추가하지 말고 보고하세요.
+
+---
+
+## 탭이 없는 상세 페이지에 탭 시스템 추가하는 방법
+
+현재 탭이 없는 상세 페이지라면, 아래 패턴으로 탭을 추가합니다.
+기존 콘텐츠는 첫 번째 탭('info')에 그대로 유지됩니다.
+
+```jsx
+// 1. 상태 추가 (기존 state 아래)
+const [activeTab, setActiveTab] = useState('info');
+
+// 2. 탭 버튼 컨테이너 (헤더 아래, 기존 콘텐츠 위에 삽입)
+const TAB_ITEMS = [
+  ['info', '기본 정보'],
+  // 엔티티에 맞게 추가
+];
+
+<div style={{
+  display:'flex', gap:4,
+  borderBottom:'2px solid #e5e7eb',
+  marginBottom:24, flexWrap:'wrap',
+}}>
+  {TAB_ITEMS.map(([key, label]) => (
+    <button
+      key={key}
+      onClick={() => setActiveTab(key)}
+      style={{
+        padding:'10px 18px',
+        background:'none',
+        border:'none',
+        borderBottom: `2px solid ${activeTab===key ? '#D1AE38' : 'transparent'}`,
+        marginBottom: -2,
+        fontSize: 14,
+        fontWeight: activeTab===key ? 600 : 400,
+        color: activeTab===key ? '#D1AE38' : '#6b7280',
+        cursor: 'pointer',
+        transition: 'all 0.15s',
+      }}
+    >
+      {label}
+    </button>
+  ))}
+</div>
+
+// 3. 기존 콘텐츠 전체를 아래로 감싸기
+{activeTab === 'info' && (
+  <div>
+    {/* 기존 상세 내용 JSX 그대로 */}
+  </div>
+)}
+```
+
+---
+
+## 완료 보고 형식
+
+```
+P4 완료 보고:
+
+탭 추가
+────────────────────────────────────────
+StaffDetail    → 출퇴근, Account 탭  ✅ / ⏭ 이미 있음
+HostessDetail  → 출퇴근, Account 탭  ✅ / ⏭
+RoomDetail     → 가용성, Account 탭  ✅ / ⏭
+GuestDetail    → Account 탭          ✅ / ⏭
+AgentDetail    → Account 탭          ✅ / ⏭
+ReservDetail   → Folio 탭            ✅ / ⏭
+
+Hover + Click
+────────────────────────────────────────
+Reservations   → hover ✅, click ✅
+Guests         → hover ✅, click ✅
+Rooms          → hover ✅, click ✅
+Tables         → hover ✅, click ✅
+Staff          → hover ✅, click ✅
+Hostesses      → hover ✅, click ✅
+Agents         → hover ✅, click ✅
+RoomBoard      → hover ✅, click ✅
+
+누락된 라우트: [목록]
+앱 실행 상태: ✅ 정상
+→ P5 실행 준비 완료
+```

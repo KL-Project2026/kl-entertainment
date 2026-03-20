@@ -13,6 +13,7 @@ import {
   Phone, CreditCard, MessageSquare, BadgeCheck, User,
 } from "lucide-react";
 import { formatDate, formatCurrency } from "@/lib/utils";
+import { FolioView } from "@/components/shared/FolioView";
 
 // ─── Status configuration ─────────────────────────────────────────────────────
 const STATUS_COLORS: Record<string, string> = {
@@ -256,6 +257,7 @@ export default function ReservationDetail() {
   const [showCancel, setShowCancel] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
+  const [activeTab, setActiveTab] = useState("info");
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["reservation", id],
@@ -423,6 +425,21 @@ export default function ReservationDetail() {
           <StatusTimeline status={status} />
         </Card>
 
+        {/* ── Tabs ── */}
+        <div style={{ display: "flex", gap: 4, borderBottom: "2px solid #e5e7eb", flexWrap: "wrap" }}>
+          {([ ["info", "예약 정보"], ["folio", "Folio (실시간)"] ] as const).map(([key, label]) => (
+            <button key={key} onClick={() => setActiveTab(key)} style={{
+              padding: "10px 18px", background: "none", border: "none",
+              borderBottom: `2px solid ${activeTab === key ? "#D1AE38" : "transparent"}`,
+              marginBottom: -2, fontSize: 14,
+              fontWeight: activeTab === key ? 600 : 400,
+              color: activeTab === key ? "#D1AE38" : "#6b7280",
+              cursor: "pointer", transition: "all 0.15s",
+            }}>{label}</button>
+          ))}
+        </div>
+
+        {activeTab === "info" && (<>
         {/* ── Info grid ── */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {/* Booking Info */}
@@ -548,6 +565,15 @@ export default function ReservationDetail() {
               ))}
             </div>
           </Card>
+        )}
+        </>)}
+
+        {activeTab === "folio" && (
+          <FolioView
+            reservationId={id!}
+            currency="MYR"
+            isLive={status === "checked_in"}
+          />
         )}
       </div>
 

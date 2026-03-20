@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Handshake, Users, CreditCard, Edit2, X, Save } from "lucide-react";
 import { formatDate, formatCurrency } from "@/lib/utils";
+import { AgentAccountTab } from "@/components/shared/AccountTab";
 
 function DetailRow({ label, value }: { label: string; value?: string | null | number }) {
   return (
@@ -24,6 +25,7 @@ export default function AgentDetail() {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState<Record<string, string>>({});
+  const [activeTab, setActiveTab] = useState("info");
 
   const { data: agent, isLoading, error } = useQuery({
     queryKey: ["agent", id],
@@ -142,6 +144,21 @@ export default function AgentDetail() {
           </div>
         </div>
 
+        {/* ── Tabs ── */}
+        <div style={{ display: "flex", gap: 4, borderBottom: "2px solid #e5e7eb", marginBottom: 24, flexWrap: "wrap" }}>
+          {([ ["info", "기본 정보"], ["account", "Account"] ] as const).map(([key, label]) => (
+            <button key={key} onClick={() => setActiveTab(key)} style={{
+              padding: "10px 18px", background: "none", border: "none",
+              borderBottom: `2px solid ${activeTab === key ? "#D1AE38" : "transparent"}`,
+              marginBottom: -2, fontSize: 14,
+              fontWeight: activeTab === key ? 600 : 400,
+              color: activeTab === key ? "#D1AE38" : "#6b7280",
+              cursor: "pointer", transition: "all 0.15s",
+            }}>{label}</button>
+          ))}
+        </div>
+
+        {activeTab === "info" && (<div className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Agent Info */}
           <Card className="p-5 bg-black/40 border-white/5">
@@ -227,6 +244,11 @@ export default function AgentDetail() {
               ))}
             </div>
           </Card>
+        )}
+        </div>)}
+
+        {activeTab === "account" && (
+          <AgentAccountTab agentId={id!} />
         )}
       </div>
     </DashboardLayout>
