@@ -1,0 +1,478 @@
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TASK: Add "Agents" Management Tab with Hostess Commission Integration
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+You are working on a Multinational Karaoke Business Management System 
+(Node.js + Express + PostgreSQL + Socket.io on Replit).
+The system already has: branches, rooms, reservations, hostess profiles, 
+POS/folio, commission engine, RBAC (7 roles), and investor dashboard.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## OBJECTIVE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Add a new "Agents" tab to the existing navigation. 
+This feature manages talent agencies (에이전시) that supply hostesses to 
+the venue, tracks per-agent hostess assignments, commission splits, 
+account summaries, and full revenue drill-downs per hostess.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## PART 1 — DATABASE SCHEMA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Add these tables to the existing PostgreSQL schema (ADDITIVE ONLY — do 
+NOT modify existing tables):
+```sql
+-- 에이전트(에이전시) 프로파일
+CREATE TABLE agents (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  branch_id       UUID REFERENCES branches(id),
+  agent_code      VARCHAR(20) UNIQUE NOT NULL,   -- e.g. AGT-001
+  company_name    VARCHAR(200) NOT NULL,
+  contact_person  VARCHAR(100),
+  phone           VARCHAR(30),
+  email           VARCHAR(150),
+  profile_image_url TEXT,                        -- photo or logo URL
+  address         TEXT,
+  notes           TEXT,
+  is_active       BOOLEAN DEFAULT true,
+  
+  -- Bank Information (결제/정산 은행 정보)
+  bank_name       VARCHAR(100),
+  bank_account_number VARCHAR(50),
+  bank_account_name   VARCHAR(100),
+  bank_swift_code VARCHAR(30),
+  bank_country    VARCHAR(10) DEFAULT 'MY',
+  
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 호스티스↔에이전트 연결 + 커미션 비율 계약
+CREATE TABLE agent_hostess_contracts (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agent_id        UUID REFERENCES agents(id) ON DELETE CASCADE,
+  hostess_id      UUID REFERENCES hostesses(id) ON DELETE CASCADE,
+  
+  -- Commission Split (커미션 분배율)
+  venue_commission_rate   DECIMAL(5,2) NOT NULL,  -- 호스티스가 받는 % (e.g. 60.00)
+  agent_commission_rate   DECIMAL(5,2) NOT NULL,  -- 에이전시가 받는 % (e.g. 40.00)
+  -- NOTE: venue_rate + agent_rate = 100.00 always
+  
+  session_fee_split       DECIMAL(5,2) DEFAULT 60.00, -- 세션피 기준 호스티스 몫
+  drink_commission_split  DECIMAL(5,2) DEFAULT 50.00, -- 음료 커미션 기준 호스티스 몫
+  package_commission_split DECIMAL(5,2) DEFAULT 55.00,
+  
+  contract_start  DATE NOT NULL,
+  contract_end    DATE,                           -- NULL = indefinite
+  is_active       BOOLEAN DEFAULT true,
+  
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(agent_id, hostess_id, contract_start)
+);
+
+-- 에이전트별 정산 인보이스 (매월/격주 정산)
+CREATE TABLE agent_invoices (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agent_id        UUID REFERENCES agents(id),
+  invoice_number  VARCHAR(50) UNIQUE NOT NULL,
+  period_start    DATE NOT NULL,
+  period_end      DATE NOT NULL,
+  total_sessions  INT DEFAULT 0,
+  gross_revenue   DECIMAL(12,2) DEFAULT 0,
+  agent_cut_amount DECIMAL(12,2) DEFAULT 0,
+  status          VARCHAR(20) DEFAULT 'pending', -- pending / approved / paid / disputed
+  paid_at         TIMESTAMPTZ,
+  notes           TEXT,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+After adding tables, run a SEED script:
+- Randomly assign agents to ~80% of existing hostesses 
+  (use random() < 0.8 in SQL or JS shuffle logic)
+- Create 4–6 sample agents with realistic Malaysian/Thai/Korean company names
+- Generate sample agent_hostess_contracts with varied commission splits:
+  e.g. 60/40, 65/35, 55/45, 70/30
+- Update hostesses.agent_id (add column if not exists) for easy lookup
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## PART 2 — BACKEND API ROUTES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Create file: routes/agents.js
+Add to server.js: app.use('/api/agents', agentsRouter)
+
+Required endpoints:
+
+### Agent CRUD
+GET    /api/agents                     → list all agents (branch-scoped)
+GET    /api/agents/:id                 → single agent detail
+POST   /api/agents                     → create agent
+PUT    /api/agents/:id                 → update agent (profile + bank info)
+DELETE /api/agents/:id                 → soft delete (set is_active=false)
+
+### Agent ↔ Hostess
+GET    /api/agents/:id/hostesses       
+  → returns all hostesses under this agent
+  → include per-hostess: 
+     name, photo, status (active/inactive), 
+     venue_commission_rate, agent_commission_rate,
+     contract_start, contract_end,
+     total_sessions_ytd, total_revenue_ytd, 
+     agent_cut_ytd, hostess_earnings_ytd
+
+POST   /api/agents/:id/hostesses       → assign hostess to agent with contract terms
+PUT    /api/agents/:id/hostesses/:hostessId → update commission split
+DELETE /api/agents/:id/hostesses/:hostessId → remove hostess from agent (end contract)
+
+### Account Summary (Accounts tab within Agent detail)
+GET    /api/agents/:id/account-summary?from=YYYY-MM-DD&to=YYYY-MM-DD
+  → returns:
+  {
+    agent: { name, code, profile_image_url },
+    period: { from, to },
+    summary: {
+      total_hostesses: 8,
+      total_sessions: 142,
+      gross_revenue: 48500.00,       -- all hostess revenue in period
+      agent_total_cut: 18250.00,     -- sum of agent commission
+      hostess_total_earnings: 30250.00
+    },
+    hostess_breakdown: [             -- PER HOSTESS LINE ITEMS
+      {
+        hostess_id, name, photo_url,
+        sessions_count: 18,
+        gross_revenue: 6200.00,
+        agent_cut: 2480.00,          -- gross_revenue × agent_commission_rate
+        hostess_earnings: 3720.00,   -- gross_revenue × venue_commission_rate
+        commission_rate: "60% / 40%" -- display string
+      }
+    ]
+  }
+
+### Full Revenue Drill-Down (for action button)
+GET    /api/agents/:id/hostesses/:hostessId/revenue-detail
+  ?from=YYYY-MM-DD&to=YYYY-MM-DD
+  → returns full session-level breakdown:
+  {
+    hostess: { name, photo_url },
+    sessions: [
+      {
+        session_date, room_name, 
+        session_hours, session_fee,
+        drinks_revenue, package_revenue,
+        total_revenue, agent_cut, hostess_earnings,
+        notes
+      }
+    ],
+    totals: { ... }
+  }
+
+### Profile Image Upload
+POST   /api/agents/:id/upload-image
+  → multipart/form-data with field "image"
+  → store in /public/uploads/agents/ 
+  → update agents.profile_image_url in DB
+  → return { image_url: '/uploads/agents/filename.jpg' }
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## PART 3 — SEED: SAMPLE AGENTS WITH IMAGES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+In seeds/agents_seed.js, create 5 sample agents:
+
+1. **Seoul Star Agency** (Korean-style)
+   - contact: Kim Ji-young | +60-11-2345-6789
+   - bank: Maybank | 5141-2345-6789 | MY
+   - profile_image_url: generate a placeholder with initials "SSA"
+
+2. **Golden Talent Management** (Malaysian)
+   - contact: Tan Wei Ling | +60-12-9876-5432
+   - bank: CIMB Bank | 8000-1234-5678 | MY
+
+3. **Bangkok VIP Staffing** (Thai)
+   - contact: Somchai Panya | +66-89-123-4567  
+   - bank: Bangkok Bank | 123-4-56789-0 | TH
+
+4. **Elite Entertainment Group** (Singapore)
+   - contact: Rachel Lim | +65-9123-4567
+   - bank: DBS Bank | 001-12345-6 | SG
+
+5. **Pearl River Talent** (Chinese)
+   - contact: Wang Fang | +60-16-8888-9999
+   - bank: Hong Leong Bank | 2600-1234-5678 | MY
+
+For profile images: use placeholder image service:
+  https://ui-avatars.com/api/?name=SSA&size=200&background=1a1a2e&color=d4af37&bold=true
+  (generate per agent with their initials, dark background, gold text)
+  Store these URLs as the profile_image_url in seed data.
+
+Then RANDOMLY assign agents to 80% of existing hostesses:
+```javascript
+const hostesses = await db.query('SELECT id FROM hostesses');
+const shuffled = hostesses.rows.sort(() => Math.random() - 0.5);
+const toAssign = shuffled.slice(0, Math.floor(shuffled.length * 0.8));
+// assign random agent from agents list with random commission split
+const splits = [
+  { venue: 60, agent: 40 },
+  { venue: 65, agent: 35 },
+  { venue: 55, agent: 45 },
+  { venue: 70, agent: 30 },
+  { venue: 62, agent: 38 },
+];
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## PART 4 — FRONTEND: AGENTS TAB
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Add "Agents" to the existing sidebar/nav menu.
+Icon: 🤝 or use briefcase icon from existing icon library.
+Position: after "Hostess" in the nav order.
+Access: STORE_MANAGER, ADMIN, SUPER_ADMIN only (RBAC guard).
+
+### Page Layout: /agents
+
+[PAGE HEADER]
+  Title: "Agents Management" | Subtitle: "에이전시 및 호스티스 커미션 관리"
+  [+ Add Agent] button (right aligned)
+
+[AGENTS GRID — card layout, 3 columns]
+  Each Agent Card contains:
+  ┌─────────────────────────────────────┐
+  │  [LOGO/PHOTO — 80px circle]         │
+  │  Seoul Star Agency          [ACTIVE]│
+  │  AGT-001                           │
+  │  Kim Ji-young  |  +60-11-2345-6789 │
+  │  ─────────────────────────────────  │
+  │  👥 8 Hostesses   📊 142 Sessions  │
+  │  💰 MYR 18,250 (Agent Cut MTD)     │
+  │  ─────────────────────────────────  │
+  │  [View Detail]   [Edit]  [⋮]       │
+  └─────────────────────────────────────┘
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## PART 5 — AGENT DETAIL PAGE (2 TABS)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Route: /agents/:id
+Two inner tabs: [Hostesses] [Account]
+
+### TAB 1: Hostesses
+
+Header row:
+  [Date Range Picker: From ____ To ____]  [🔍 Search hostess name]
+
+Table columns:
+  Photo | Name | Status | Commission Split | Contract Period | 
+  Sessions (period) | Revenue (period) | Agent Cut | [Actions]
+
+Commission Split display: 
+  → "60% / 40%" with tooltip: 
+    "Hostess receives 60% | Agent receives 40%"
+  → Color code: green if split ≥ 60% for hostess, amber if < 60%
+
+[Actions] column per hostess row:
+  [Edit Contract]  [Remove]
+
+[+ Assign Hostess] button opens modal:
+  - Hostess selector (dropdown, shows unassigned hostesses only)
+  - Commission split inputs: Hostess % | Agent % (auto-calculates to 100%)
+  - Session fee split, Drink split, Package split (individual sliders)
+  - Contract start date / end date (optional)
+  - [Save Contract]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### TAB 2: Account
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Header:
+  [Date Range Picker]  [Apply]
+  
+  Toggle switch: [Show Full Revenue Detail: OFF ●○ / ON ○●]
+  ^ When OFF: shows only summary amounts per hostess
+  ^ When ON: expands to show full session-level breakdown
+
+─── SUMMARY CARD ───
+  ┌──────────────────────────────────────────────┐
+  │  Seoul Star Agency — Account Summary          │
+  │  Period: 1 Mar 2026 – 31 Mar 2026            │
+  │                                               │
+  │  Total Hostesses Active:        8             │
+  │  Total Sessions:                142           │
+  │  Gross Revenue:        MYR 48,500.00          │
+  │  Agent Commission Cut: MYR 18,250.00 (37.6%) │
+  │  Hostess Earnings:     MYR 30,250.00 (62.4%) │
+  └──────────────────────────────────────────────┘
+
+─── PER-HOSTESS BREAKDOWN TABLE ───
+
+[When Toggle = OFF — Summary mode]
+  Columns:
+  Photo | Hostess Name | Sessions | Gross Revenue | Agent Cut | Hostess Earnings | Split | [▶ Detail]
+  
+  Example row:
+  🖼️ | Mei Ling | 18 sessions | MYR 6,200 | MYR 2,480 | MYR 3,720 | 60/40 | [▶]
+
+[When Toggle = ON — Full Revenue mode]
+  Same table + clicking [▶] expands inline accordion:
+  ┌─ Expanded: Mei Ling — Full Revenue Detail ──────────┐
+  │  Date       Room    Hours  Session  Drinks  Package  Total  Agent  Hostess │
+  │  01/03/26  Rm 5    3hr    300      450     -        750    300    450      │
+  │  03/03/26  VIP 2   4hr    400      800     500     1700    680    1020     │
+  │  ...                                                                       │
+  │  ─────────────────────────────────────────────────── │
+  │  TOTAL                    6,200    2,480   3,720    │
+  └─────────────────────────────────────────────────────┘
+
+[▶ Detail] button:
+  → Also opens a MODAL with full detail view (alternative to accordion)
+  → Modal has [Export CSV] button
+  → RBAC: Only STORE_MANAGER, ADMIN, SUPER_ADMIN can see this modal
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## PART 6 — ADD/EDIT AGENT MODAL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Two-section modal:
+
+### Section A: Profile
+  - [Upload Photo/Logo] — shows preview circle (80px)
+    Accept: jpg, png, webp. Max 2MB.
+    On select: preview immediately, upload on Save
+    Placeholder if no upload: initials avatar (gold on dark)
+  - Company Name * (required)
+  - Agent Code * (auto-generate or manual)
+  - Contact Person
+  - Phone | Email
+  - Address (textarea)
+  - Status toggle: Active / Inactive
+  - Notes (textarea)
+
+### Section B: Bank Information (결제 정보)
+  - Bank Name *
+  - Account Number *
+  - Account Holder Name *
+  - SWIFT / BIC Code
+  - Country (dropdown: MY / SG / TH / KR / CN / JP / Other)
+  
+  [Cancel]  [Save Agent]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## PART 7 — UI/UX REQUIREMENTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Match existing app theme exactly:
+- Same sidebar style, same card components, same color palette
+- Dark theme: background #0f0f1a, cards #1a1a2e, accent gold #d4af37
+- Table styles: same as existing hostess/reservation tables
+- Loading states: skeleton loaders (same pattern as existing pages)
+- Toast notifications: success/error using existing toast component
+
+Commission Split visual indicator:
+- Progress bar split: [████████░░] 80% hostess / 20% agent
+- Green for hostess portion, amber for agent portion
+- Show exact % numbers on hover
+
+Toggle animation (Show Full Revenue):
+- Smooth CSS transition when expanding/collapsing rows
+- Remember toggle state in localStorage per agent page
+
+Responsive:
+- Cards grid: 3-col desktop → 2-col tablet → 1-col mobile
+- Tables: horizontal scroll on mobile
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## PART 8 — RBAC ENFORCEMENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Apply existing RBAC middleware to ALL new routes:
+
+| Action                      | Allowed Roles                              |
+|-----------------------------|--------------------------------------------|
+| View agents list            | STORE_MANAGER, ADMIN, SUPER_ADMIN          |
+| View account summary        | STORE_MANAGER, ADMIN, SUPER_ADMIN          |
+| View full revenue detail    | ADMIN, SUPER_ADMIN (not STORE_MANAGER)     |
+| Create / Edit agent         | ADMIN, SUPER_ADMIN                         |
+| Assign / Remove hostess     | ADMIN, SUPER_ADMIN                         |
+| Upload agent photo/logo     | ADMIN, SUPER_ADMIN                         |
+| Export revenue CSV          | ADMIN, SUPER_ADMIN                         |
+
+STORE_MANAGER can see account summary amounts but NOT full session drill-down.
+If STORE_MANAGER clicks [▶ Detail], show: "Access restricted. Contact Admin."
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## PART 9 — AUDIT LOGGING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Log these events to existing audit_logs table:
+
+- agent.created → { agent_id, agent_code, created_by }
+- agent.updated → { agent_id, changed_fields[], updated_by }
+- agent.contract_assigned → { agent_id, hostess_id, commission_split, assigned_by }
+- agent.contract_updated → { agent_id, hostess_id, old_split, new_split, updated_by }
+- agent.revenue_detail_viewed → { agent_id, hostess_id, period, viewed_by }
+  ^ Privacy log: track who viewed hostess revenue data
+- agent.image_uploaded → { agent_id, filename, uploaded_by }
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## PART 10 — FILE STRUCTURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Create/modify these files (ADDITIVE only):
+
+NEW FILES:
+  routes/agents.js              ← all agent API routes
+  seeds/agents_seed.js          ← sample agent + contract data
+  public/js/agents.js           ← frontend agents page JS
+  public/css/agents.css         ← agents-specific styles (if needed)
+  public/uploads/agents/        ← directory for uploaded agent images
+    .gitkeep                    ← keep directory in git
+
+MODIFIED FILES:
+  server.js                     ← add: require('./routes/agents') 
+  public/index.html (or layout) ← add Agents nav item
+  migrations/add_agents.sql     ← migration file for new tables
+
+DO NOT MODIFY:
+  Any existing route files
+  Any existing DB tables (only ADD new tables)
+  Any existing auth/RBAC middleware
+  Any currently working features
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## MIGRATION NOTES (for future .NET migration)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Add these comments throughout the new code:
+
+// MIGRATION: agents.js → AgentsController.cs (ASP.NET Core Minimal API)
+// MIGRATION: agent_hostess_contracts → AgentHostessContract entity (EF Core)
+// MIGRATION: File upload → Azure Blob Storage or AWS S3 in production
+// MIGRATION: Commission split validation → FluentValidation rule: rate1 + rate2 == 100
+// TODO: Replace placeholder avatars with proper CDN-hosted fallback images
+// TODO: Add SignalR notification when new hostess contract is assigned
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## IMPLEMENTATION ORDER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Build in this sequence:
+1. DB migration (add_agents.sql) → run migration
+2. agents_seed.js → seed sample data + assign 80% hostesses
+3. routes/agents.js → all API endpoints with RBAC
+4. Agents list page (card grid)
+5. Agent detail page → Hostesses tab
+6. Agent detail page → Account tab (summary + toggle)
+7. Full revenue drill-down modal
+8. Add/Edit agent modal with image upload
+9. Nav integration
+10. Test RBAC for all 3 allowed roles
+11. Verify audit logging fires correctly
+12. Verify commission split totals always = 100% (add validation)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+START IMPLEMENTATION NOW.
+Build step by step. Confirm each part before moving to next.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

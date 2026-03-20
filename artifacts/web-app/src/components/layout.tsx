@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Grid, Building2, Package, LogOut, CalendarDays,
   ShoppingCart, Users, CalendarCheck, Clock, Handshake, PieChart,
   LineChart, BarChart2, Globe, Receipt, Table2, FileBarChart, Menu, X,
-  UserCheck,
+  UserCheck, Briefcase,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
@@ -36,6 +36,7 @@ const NAV_ITEMS: { path: string; key: string; icon: React.ComponentType<{ classN
   { path: "/pos",                key: "nav.pos",               icon: ShoppingCart,    roles: OPS_UP },
   { path: "/staff",              key: "nav.staff",             icon: Users,           roles: MANAGER_UP },
   { path: "/staff/hostesses",    key: "nav.hostess_profiles",  icon: UserCheck,       roles: MANAGER_UP },
+  { path: "/agencies",           key: "nav.agencies",          icon: Briefcase,       roles: MANAGER_UP },
   { path: "/schedule-builder",   key: "nav.schedules",         icon: CalendarCheck,   roles: MANAGER_UP },
   { path: "/attendance",         key: "nav.attendance",        icon: Clock,           roles: MANAGER_UP },
   { path: "/agents",             key: "nav.agents",            icon: Handshake,       roles: ADMIN_UP },

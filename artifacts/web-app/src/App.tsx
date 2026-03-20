@@ -19,6 +19,8 @@ import Staff from "@/pages/staff";
 import StaffDetail from "@/pages/staff-detail";
 import HostessProfiles from "@/pages/hostess-profiles";
 import HostessProfileDetail from "@/pages/hostess-profile-detail";
+import AgencyManagement from "@/pages/agency-management";
+import AgencyDetail from "@/pages/agency-detail";
 import ScheduleBuilder from "@/pages/schedule-builder";
 import Attendance from "@/pages/attendance";
 import Agents from "@/pages/agents";
@@ -134,6 +136,8 @@ function Router() {
       <Route path="/staff" component={() => <AuthRoute component={Staff} />} />
       <Route path="/staff/hostesses" component={() => <AuthRoute component={HostessProfiles} />} />
       <Route path="/staff/hostesses/:id" component={() => <AuthRoute component={HostessProfileDetail} />} />
+      <Route path="/agencies" component={() => <AuthRoute component={AgencyManagement} />} />
+      <Route path="/agencies/:id" component={() => <AuthRoute component={AgencyDetail} />} />
       <Route path="/staff/:id" component={() => <AuthRoute component={StaffDetail} />} />
       <Route path="/schedule-builder" component={() => <AuthRoute component={ScheduleBuilder} />} />
       <Route path="/attendance" component={() => <AuthRoute component={Attendance} />} />
