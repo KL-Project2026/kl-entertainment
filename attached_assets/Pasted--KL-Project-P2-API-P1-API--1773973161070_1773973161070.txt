@@ -1,0 +1,576 @@
+# KL Project — P2: 백엔드 API 추가
+> P1 완료 후 실행하세요.
+> 기존 API 라우트 파일을 읽고 **끝부분에만 추가**합니다.
+
+---
+
+## 실행 전 확인
+
+```
+P0 결과에서 확인:
+- 백엔드 라우터 파일 경로: ___________
+- DB 연결 객체 변수명: ___________ (예: db, pool, client)
+- 기존 API 패턴: ___________ (예: router.get / app.get)
+```
+
+---
+
+## 🔒 안전 규칙
+
+```
+[API-1] 라우터 파일 전체 읽기 후 수정 시작
+[API-2] 기존 라우트 수정/삭제 절대 금지
+[API-3] 파일 끝부분에만 추가
+[API-4] 저장 전 문법(중괄호, 세미콜론) 검증
+[API-5] 추가 후 앱 재시작 → 기존 API 정상 여부 확인
+[API-6] 에러 발생 시 즉시 STOP → 해당 블록 롤백
+```
+
+---
+
+## 추가할 API 그룹 (4개 파일 또는 1개 파일에 분리 추가)
+
+### 그룹 A — 출퇴근 API
+
+```javascript
+// ═══════════════════════════════════════
+// ATTENDANCE API — 출퇴근 관리
+// ═══════════════════════════════════════
+
+// GET /api/attendance/staff/:id
+router.get('/api/attendance/staff/:id', async (req, res) => {
+  const { id } = req.params;
+  const { month } = req.query;
+  try {
+    let q = `SELECT * FROM attendance
+             WHERE person_type = 'staff' AND staff_id = $1`;
+    const params = [id];
+    if (month) { q += ` AND TO_CHAR(work_date,'YYYY-MM') = $2`; params.push(month); }
+    q += ' ORDER BY work_date DESC LIMIT 100';
+    const result = await db.query(q, params);
+    // ⚠️ db → P0에서 확인한 실제 DB 객체명으로 교체
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/attendance/hostess/:id
+router.get('/api/attendance/hostess/:id', async (req, res) => {
+  const { id } = req.params;
+  const { month } = req.query;
+  try {
+    let q = `SELECT * FROM attendance
+             WHERE person_type = 'hostess' AND hostess_id = $1`;
+    const params = [id];
+    if (month) { q += ` AND TO_CHAR(work_date,'YYYY-MM') = $2`; params.push(month); }
+    q += ' ORDER BY work_date DESC LIMIT 100';
+    const result = await db.query(q, params);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/attendance/summary/staff/:id
+router.get('/api/attendance/summary/staff/:id', async (req, res) => {
+  const { id } = req.params;
+  const month = req.query.month || new Date().toISOString().slice(0,7);
+  try {
+    const r = await db.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE status='present')  AS present_days,
+        COUNT(*) FILTER (WHERE status='absent')   AS absent_days,
+        COUNT(*) FILTER (WHERE status='late')     AS late_days,
+        COALESCE(SUM(hours_worked),0)             AS total_hours
+      FROM attendance
+      WHERE person_type='staff' AND staff_id=$1
+        AND TO_CHAR(work_date,'YYYY-MM')=$2
+    `, [id, month]);
+    res.json(r.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/attendance/summary/hostess/:id
+router.get('/api/attendance/summary/hostess/:id', async (req, res) => {
+  const { id } = req.params;
+  const month = req.query.month || new Date().toISOString().slice(0,7);
+  try {
+    const r = await db.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE status='present')  AS present_days,
+        COUNT(*) FILTER (WHERE status='absent')   AS absent_days,
+        COUNT(*) FILTER (WHERE status='late')     AS late_days,
+        COALESCE(SUM(hours_worked),0)             AS total_hours
+      FROM attendance
+      WHERE person_type='hostess' AND hostess_id=$1
+        AND TO_CHAR(work_date,'YYYY-MM')=$2
+    `, [id, month]);
+    res.json(r.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/attendance/clock-in
+router.post('/api/attendance/clock-in', async (req, res) => {
+  const { person_type, staff_id, hostess_id, recorded_by, notes } = req.body;
+  const today = new Date().toISOString().split('T')[0];
+  try {
+    const existing = await db.query(`
+      SELECT id FROM attendance
+      WHERE person_type=$1
+        AND ($2::integer IS NULL OR staff_id=$2)
+        AND ($3::integer IS NULL OR hostess_id=$3)
+        AND work_date=$4
+    `, [person_type, staff_id||null, hostess_id||null, today]);
+    if (existing.rows.length > 0) {
+      return res.status(409).json({
+        error: '이미 오늘 출근 기록이 있습니다.',
+        attendance_id: existing.rows[0].id,
+      });
+    }
+    const r = await db.query(`
+      INSERT INTO attendance
+        (person_type, staff_id, hostess_id, work_date, clock_in, status, recorded_by, notes)
+      VALUES ($1,$2,$3,$4,NOW(),'present',$5,$6) RETURNING *
+    `, [person_type, staff_id||null, hostess_id||null, today, recorded_by||null, notes||null]);
+    res.json({ success: true, attendance: r.rows[0] });
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: '중복 출근 기록입니다.' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/attendance/:id/clock-out
+router.put('/api/attendance/:id/clock-out', async (req, res) => {
+  try {
+    const r = await db.query(`
+      UPDATE attendance SET clock_out=NOW(), updated_at=NOW()
+      WHERE id=$1 AND clock_out IS NULL RETURNING *
+    `, [req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ error: '출근 기록 없거나 이미 퇴근 처리됨' });
+    res.json({ success: true, attendance: r.rows[0] });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+```
+
+### 그룹 B — 가용성 & 더블부킹 방지 API
+
+```javascript
+// ═══════════════════════════════════════
+// AVAILABILITY API — 룸/테이블 가용성
+// ═══════════════════════════════════════
+
+// GET /api/availability/rooms?start_dt=...&end_dt=...
+router.get('/api/availability/rooms', async (req, res) => {
+  const { start_dt, end_dt } = req.query;
+  try {
+    const r = await db.query(`
+      SELECT r.*,
+        CASE WHEN EXISTS (
+          SELECT 1 FROM availability_blocks ab
+          WHERE ab.entity_type='room' AND ab.entity_id=r.id
+            AND ab.is_active=true
+            AND ab.block_type IN ('booked','occupied','maintenance','closed')
+            AND ab.start_dt < $2 AND ab.end_dt > $1
+        ) THEN false ELSE true END AS is_available
+      FROM rooms r
+      WHERE r.is_active=true
+      ORDER BY r.room_number
+    `, [start_dt, end_dt]);
+    res.json(r.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/availability/blocks?entity_type=room&entity_id=1&date=YYYY-MM-DD
+router.get('/api/availability/blocks', async (req, res) => {
+  const { entity_type, entity_id, date } = req.query;
+  try {
+    const r = await db.query(`
+      SELECT ab.*, res.booking_ref
+      FROM availability_blocks ab
+      LEFT JOIN reservations res ON ab.reservation_id = res.id
+      WHERE ab.entity_type=$1 AND ab.entity_id=$2
+        AND ab.is_active=true AND DATE(ab.start_dt)=$3
+      ORDER BY ab.start_dt
+    `, [entity_type, entity_id, date]);
+    res.json(r.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/availability/check — 더블부킹 사전 체크
+router.post('/api/availability/check', async (req, res) => {
+  const { entity_type, entity_id, start_dt, end_dt, exclude_reservation_id } = req.body;
+  try {
+    let q = `
+      SELECT id, block_type, start_dt, end_dt
+      FROM availability_blocks
+      WHERE entity_type=$1 AND entity_id=$2
+        AND is_active=true
+        AND block_type IN ('booked','occupied','maintenance','closed')
+        AND start_dt < $4 AND end_dt > $3
+    `;
+    const params = [entity_type, entity_id, start_dt, end_dt];
+    if (exclude_reservation_id) {
+      q += ` AND (reservation_id IS NULL OR reservation_id != $5)`;
+      params.push(exclude_reservation_id);
+    }
+    const conflicts = await db.query(q, params);
+    res.json({
+      available: conflicts.rows.length === 0,
+      conflicts: conflicts.rows,
+      message: conflicts.rows.length > 0 ? '해당 시간에 이미 예약/차단이 있습니다.' : null,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/availability/block
+router.post('/api/availability/block', async (req, res) => {
+  const { entity_type, entity_id, block_type, start_dt, end_dt, notes, created_by } = req.body;
+  try {
+    const conflict = await db.query(`
+      SELECT id FROM availability_blocks
+      WHERE entity_type=$1 AND entity_id=$2 AND is_active=true
+        AND block_type IN ('booked','occupied','maintenance','closed')
+        AND start_dt < $4 AND end_dt > $3
+    `, [entity_type, entity_id, start_dt, end_dt]);
+    if (conflict.rows.length > 0) return res.status(409).json({ error: '해당 시간에 이미 다른 일정이 있습니다.' });
+    const r = await db.query(`
+      INSERT INTO availability_blocks
+        (entity_type, entity_id, block_type, start_dt, end_dt, notes, created_by)
+      VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *
+    `, [entity_type, entity_id, block_type, start_dt, end_dt, notes||null, created_by||null]);
+    res.json({ success: true, block: r.rows[0] });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// DELETE /api/availability/block/:id
+router.delete('/api/availability/block/:id', async (req, res) => {
+  try {
+    await db.query(`UPDATE availability_blocks SET is_active=false WHERE id=$1`, [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// PUT /api/reservations/:id/assign-room
+router.put('/api/reservations/:id/assign-room', async (req, res) => {
+  const { room_id, assigned_by } = req.body;
+  const client = await db.connect();
+  // ⚠️ db.connect()가 없으면 트랜잭션 방식 변경 필요
+  try {
+    await client.query('BEGIN');
+    const resv = await client.query('SELECT * FROM reservations WHERE id=$1', [req.params.id]);
+    if (!resv.rows.length) throw new Error('예약을 찾을 수 없습니다.');
+    const r = resv.rows[0];
+    const start = r.checkin_dt || r.checkin_at || r.start_dt;
+    const end   = r.checkout_dt || r.checkout_at || r.end_dt;
+    // ⚠️ 컬럼명을 P0 결과로 확인 후 위 변수 수정
+    const conflict = await client.query(`
+      SELECT id FROM availability_blocks
+      WHERE entity_type='room' AND entity_id=$1 AND is_active=true
+        AND block_type IN ('booked','occupied','maintenance','closed')
+        AND start_dt < $3 AND end_dt > $2
+        AND (reservation_id IS NULL OR reservation_id != $4)
+    `, [room_id, start, end, req.params.id]);
+    if (conflict.rows.length > 0) throw new Error('해당 룸은 선택 시간에 이미 예약되어 있습니다.');
+    await client.query(
+      `UPDATE reservations SET room_id=$1, assigned_at=NOW(), assigned_by=$2 WHERE id=$3`,
+      [room_id, assigned_by, req.params.id]
+    );
+    await client.query(`
+      INSERT INTO availability_blocks
+        (entity_type, entity_id, block_type, reservation_id, start_dt, end_dt, created_by)
+      VALUES ('room',$1,'booked',$2,$3,$4,$5) ON CONFLICT DO NOTHING
+    `, [room_id, req.params.id, start, end, assigned_by]);
+    await client.query('COMMIT');
+    res.json({ success: true, message: '룸이 배정되었습니다.' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(400).json({ error: err.message });
+  } finally { client.release(); }
+});
+```
+
+### 그룹 C — Folio & Invoice API
+
+```javascript
+// ═══════════════════════════════════════
+// FOLIO & INVOICE API — 회계
+// ═══════════════════════════════════════
+
+// GET /api/folio/:reservationId
+router.get('/api/folio/:reservationId', async (req, res) => {
+  try {
+    const r = await db.query(`
+      SELECT fe.*
+      FROM folio_entries fe
+      WHERE fe.reservation_id=$1 AND fe.is_void=false
+      ORDER BY fe.posted_at ASC
+    `, [req.params.reservationId]);
+    const total = r.rows.reduce((s,e) => s + parseFloat(e.amount||0), 0);
+    res.json({ entries: r.rows, total });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/folio/entry
+router.post('/api/folio/entry', async (req, res) => {
+  const { reservation_id, entry_type, description, quantity,
+          unit_price, amount, currency, posted_by, notes } = req.body;
+  try {
+    const r = await db.query(`
+      INSERT INTO folio_entries
+        (reservation_id, entry_type, description, quantity,
+         unit_price, amount, currency, posted_by, notes)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *
+    `, [reservation_id, entry_type, description, quantity||1,
+        unit_price, amount, currency||'THB', posted_by||null, notes||null]);
+    res.json({ success: true, entry: r.rows[0] });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/invoices
+router.get('/api/invoices', async (req, res) => {
+  try {
+    const r = await db.query(`
+      SELECT i.*, r.booking_ref
+      FROM invoices i
+      LEFT JOIN reservations r ON i.reservation_id=r.id
+      ORDER BY i.created_at DESC LIMIT 100
+    `);
+    res.json(r.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/invoices/guest/:guestId
+router.get('/api/invoices/guest/:guestId', async (req, res) => {
+  try {
+    const r = await db.query(
+      `SELECT * FROM invoices WHERE guest_id=$1 ORDER BY created_at DESC`,
+      [req.params.guestId]
+    );
+    res.json(r.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/invoices/:id
+router.get('/api/invoices/:id', async (req, res) => {
+  try {
+    const inv = await db.query(`
+      SELECT i.*, r.booking_ref FROM invoices i
+      LEFT JOIN reservations r ON i.reservation_id=r.id WHERE i.id=$1
+    `, [req.params.id]);
+    if (!inv.rows.length) return res.status(404).json({ error: 'Not found' });
+    const entries  = await db.query(
+      `SELECT * FROM folio_entries WHERE reservation_id=$1 AND is_void=false`,
+      [inv.rows[0].reservation_id]
+    );
+    const payments = await db.query(
+      `SELECT * FROM payments WHERE invoice_id=$1 AND is_void=false`,
+      [req.params.id]
+    );
+    res.json({ invoice: inv.rows[0], entries: entries.rows, payments: payments.rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/invoices — Folio → Invoice 생성
+router.post('/api/invoices', async (req, res) => {
+  const { reservation_id, issued_by } = req.body;
+  try {
+    const entries = await db.query(
+      `SELECT * FROM folio_entries WHERE reservation_id=$1 AND is_void=false`,
+      [reservation_id]
+    );
+    const subtotal = entries.rows.reduce((s,e) =>
+      !['tax','discount'].includes(e.entry_type) ? s+parseFloat(e.amount) : s, 0);
+    const tax      = entries.rows.reduce((s,e) =>
+      e.entry_type==='tax'      ? s+parseFloat(e.amount) : s, 0);
+    const discount = entries.rows.reduce((s,e) =>
+      e.entry_type==='discount' ? s+parseFloat(e.amount) : s, 0);
+    const total = subtotal + tax - discount;
+    const no = await db.query('SELECT generate_invoice_no() AS no');
+    const r  = await db.query(`
+      INSERT INTO invoices
+        (invoice_no, reservation_id, subtotal, tax_amount,
+         discount_amount, total_amount, status, issued_at, issued_by)
+      VALUES ($1,$2,$3,$4,$5,$6,'issued',NOW(),$7) RETURNING *
+    `, [no.rows[0].no, reservation_id, subtotal, tax, discount, total, issued_by||null]);
+    res.json({ success: true, invoice: r.rows[0] });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+```
+
+### 그룹 D — Payment & Account Summary API
+
+```javascript
+// ═══════════════════════════════════════
+// PAYMENT & ACCOUNT API
+// ═══════════════════════════════════════
+
+// POST /api/payments — 결제 처리 + 영수증 자동 발행
+router.post('/api/payments', async (req, res) => {
+  const { invoice_id, amount, method, ref_no, received_by, notes } = req.body;
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    const payment = await client.query(`
+      INSERT INTO payments (invoice_id, amount, method, ref_no, received_by, notes)
+      VALUES ($1,$2,$3,$4,$5,$6) RETURNING *
+    `, [invoice_id, amount, method, ref_no||null, received_by||null, notes||null]);
+    const totalPaid = await client.query(
+      `SELECT COALESCE(SUM(amount),0) AS paid FROM payments
+       WHERE invoice_id=$1 AND is_void=false`, [invoice_id]
+    );
+    const invoice = await client.query('SELECT * FROM invoices WHERE id=$1', [invoice_id]);
+    const paid    = parseFloat(totalPaid.rows[0].paid);
+    const due     = parseFloat(invoice.rows[0].total_amount);
+    const status  = paid >= due ? 'paid' : 'partially_paid';
+    await client.query('UPDATE invoices SET status=$1 WHERE id=$2', [status, invoice_id]);
+    let receipt = null;
+    if (paid >= due) {
+      const rNo = await client.query('SELECT generate_receipt_no() AS no');
+      receipt = await client.query(`
+        INSERT INTO receipts
+          (receipt_no, invoice_id, payment_id, guest_id, total_paid, issued_by)
+        SELECT $1, i.id, $2, i.guest_id, $3, $4
+        FROM invoices i WHERE i.id=$5 RETURNING *
+      `, [rNo.rows[0].no, payment.rows[0].id, paid, received_by||null, invoice_id]);
+    }
+    await client.query('COMMIT');
+    res.json({
+      success: true,
+      payment: payment.rows[0],
+      invoice_status: status,
+      receipt: receipt?.rows[0] || null,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally { client.release(); }
+});
+
+// GET /api/accounts/guest/:id
+router.get('/api/accounts/guest/:id', async (req, res) => {
+  try {
+    const r = await db.query(`
+      SELECT
+        COUNT(DISTINCT r.id)              AS total_visits,
+        COALESCE(SUM(i.total_amount),0)   AS total_spent,
+        COALESCE(AVG(i.total_amount),0)   AS avg_session,
+        COALESCE(SUM(
+          CASE WHEN i.status!='paid' THEN i.total_amount ELSE 0 END
+        ),0)                              AS outstanding
+      FROM reservations r
+      LEFT JOIN invoices i ON r.id=i.reservation_id
+      WHERE r.guest_id=$1
+    `, [req.params.id]);
+    res.json(r.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/accounts/hostess/:id
+router.get('/api/accounts/hostess/:id', async (req, res) => {
+  const month = req.query.month || new Date().toISOString().slice(0,7);
+  try {
+    const r = await db.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE TO_CHAR(start_at,'YYYY-MM')=$2)             AS month_sessions,
+        COALESCE(SUM(gross_amount) FILTER (WHERE TO_CHAR(start_at,'YYYY-MM')=$2),0) AS month_gross,
+        COALESCE(SUM(net_payout)   FILTER (WHERE TO_CHAR(start_at,'YYYY-MM')=$2),0) AS month_payout,
+        COALESCE((
+          SELECT SUM(total_payout) FROM hostess_payouts
+          WHERE hostess_id=$1 AND status='pending'
+        ),0) AS pending_payout
+      FROM hostess_sessions WHERE hostess_id=$1 AND status='completed'
+    `, [req.params.id, month]);
+    res.json(r.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/accounts/agent/:id
+router.get('/api/accounts/agent/:id', async (req, res) => {
+  const month = req.query.month || new Date().toISOString().slice(0,7);
+  try {
+    const r = await db.query(`
+      SELECT
+        (SELECT COUNT(*) FROM hostesses WHERE agent_id=$1) AS hostess_count,
+        COALESCE(SUM(commission_amount) FILTER (WHERE TO_CHAR(created_at,'YYYY-MM')=$2),0) AS month_commission,
+        COALESCE(SUM(commission_amount) FILTER (WHERE status='pending'),0)                  AS pending_commission,
+        COALESCE(SUM(commission_amount),0)                                                  AS total_commission
+      FROM agent_commissions WHERE agent_id=$1
+    `, [req.params.id, month]);
+    res.json(r.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/accounts/daily?date=YYYY-MM-DD
+router.get('/api/accounts/daily', async (req, res) => {
+  const date = req.query.date || new Date().toISOString().split('T')[0];
+  try {
+    const rev = await db.query(`
+      SELECT
+        COALESCE(SUM(amount) FILTER (WHERE entry_type='room_charge'),0)    AS room_revenue,
+        COALESCE(SUM(amount) FILTER (WHERE entry_type='pos_item'),0)       AS pos_revenue,
+        COALESCE(SUM(amount) FILTER (WHERE entry_type='hostess_charge'),0) AS hostess_revenue,
+        COALESCE(SUM(amount) FILTER (WHERE entry_type='outcall_fee'),0)    AS outcall_revenue,
+        COALESCE(SUM(amount),0)                                            AS total_revenue
+      FROM folio_entries
+      WHERE DATE(posted_at)=$1 AND is_void=false
+    `, [date]);
+    const pay = await db.query(`
+      SELECT
+        COALESCE(SUM(amount) FILTER (WHERE method='cash'),0)                              AS cash_received,
+        COALESCE(SUM(amount) FILTER (WHERE method IN ('credit_card','debit_card')),0)     AS card_received,
+        COALESCE(SUM(amount),0)                                                           AS total_received
+      FROM payments WHERE DATE(paid_at)=$1 AND is_void=false
+    `, [date]);
+    res.json({ date, revenue: rev.rows[0], payments: pay.rows[0] });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/hostess-sessions/hostess/:id
+router.get('/api/hostess-sessions/hostess/:id', async (req, res) => {
+  try {
+    const r = await db.query(
+      `SELECT * FROM hostess_sessions WHERE hostess_id=$1 ORDER BY start_at DESC LIMIT 100`,
+      [req.params.id]
+    );
+    res.json(r.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/hostess-payouts/hostess/:id
+router.get('/api/hostess-payouts/hostess/:id', async (req, res) => {
+  try {
+    const r = await db.query(
+      `SELECT * FROM hostess_payouts WHERE hostess_id=$1 ORDER BY created_at DESC`,
+      [req.params.id]
+    );
+    res.json(r.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/agent-commissions/agent/:id
+router.get('/api/agent-commissions/agent/:id', async (req, res) => {
+  try {
+    const r = await db.query(
+      `SELECT * FROM agent_commissions WHERE agent_id=$1 ORDER BY created_at DESC`,
+      [req.params.id]
+    );
+    res.json(r.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+```
+
+---
+
+## 완료 보고 형식
+
+```
+P2 완료 보고:
+
+그룹 A (출퇴근)   ✅ 6개 엔드포인트 추가
+그룹 B (가용성)   ✅ 6개 엔드포인트 추가
+그룹 C (Folio)   ✅ 6개 엔드포인트 추가
+그룹 D (결제/계정) ✅ 9개 엔드포인트 추가
+
+기존 API 정상 여부: ✅ 확인
+앱 실행 상태: ✅ 정상
+
+에러: 없음
+→ P3 실행 준비 완료
+```

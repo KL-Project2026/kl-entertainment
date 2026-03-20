@@ -18,6 +18,10 @@ import currencyRouter from "./currency";
 import customerAuthRouter from "./customer-auth";
 import customerBookingsRouter from "./customer-bookings";
 import webhooksRouter from "./webhooks";
+import attendanceApiRouter from "./attendance-api";
+import availabilityRouter from "./availability";
+import folioRouter from "./folio";
+import paymentsApiRouter from "./payments-api";
 
 const router: IRouter = Router();
 
@@ -40,5 +44,9 @@ router.use(currencyRouter);
 router.use(customerAuthRouter);
 router.use(customerBookingsRouter);
 router.use(webhooksRouter);
+router.use(attendanceApiRouter);
+router.use(availabilityRouter);
+router.use(folioRouter);
+router.use(paymentsApiRouter);
 
 export default router;
