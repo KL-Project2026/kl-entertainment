@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select";
 import { useAuthStore } from "@/lib/auth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Calendar, Copy, X, Check } from "lucide-react";
+import { Calendar, Copy, X, Check, GripHorizontal } from "lucide-react";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const ROLE_COLORS: Record<string, string> = {
@@ -24,7 +24,7 @@ const ROLE_COLORS: Record<string, string> = {
   general: "bg-slate-500/20 text-slate-300 border-slate-500/30",
 };
 
-function getAuthHeader(token: string | null) {
+function getAuthHeader(token: string | null): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
@@ -128,6 +128,19 @@ function ShiftEditor({
   );
 }
 
+interface DragState {
+  staffId: string;
+  staffName: string;
+  staffRole: string;
+  dayOfWeek: number;
+  schedule: Schedule;
+}
+
+interface DropTarget {
+  staffId: string;
+  dow: number;
+}
+
 export default function ScheduleBuilder() {
   const { token, user } = useAuthStore();
   const queryClient = useQueryClient();
@@ -139,6 +152,13 @@ export default function ScheduleBuilder() {
   });
   const [editing, setEditing] = useState<{ staffId: string; staffName: string; dayOfWeek: number; existing?: Schedule } | null>(null);
   const [copyMsg, setCopyMsg] = useState("");
+
+  // Drag state
+  const dragRef = useRef<DragState | null>(null);
+  const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
+  const [isCopyMode, setIsCopyMode] = useState(false);
+  const [draggingCell, setDraggingCell] = useState<{ staffId: string; dow: number } | null>(null);
+  const [isDropping, setIsDropping] = useState(false);
 
   const { data: branchesData } = useQuery({
     queryKey: ["branches"],
@@ -168,7 +188,6 @@ export default function ScheduleBuilder() {
 
   const schedules: Schedule[] = scheduleData?.data ?? [];
 
-  // Group schedules by staff
   const staffMap = new Map<string, { name: string; role: string; days: Map<number, Schedule> }>();
   for (const s of schedules) {
     if (!staffMap.has(s.staffId)) {
@@ -177,7 +196,6 @@ export default function ScheduleBuilder() {
     staffMap.get(s.staffId)!.days.set(s.dayOfWeek, s);
   }
 
-  // Also load all staff for the branch (even those without schedules)
   const { data: staffData } = useQuery({
     queryKey: ["staff", branchId],
     queryFn: async () => {
@@ -191,7 +209,6 @@ export default function ScheduleBuilder() {
   });
 
   const allStaff: StaffMember[] = staffData?.data ?? [];
-  // Add any staff not in schedule map
   for (const s of allStaff) {
     if (!staffMap.has(s.id)) {
       staffMap.set(s.id, { name: s.fullName, role: s.role, days: new Map() });
@@ -222,13 +239,130 @@ export default function ScheduleBuilder() {
     },
   });
 
+  // ─── Drag handlers ───────────────────────────────────────────────
+  const handleDragStart = useCallback((
+    e: React.DragEvent,
+    staffId: string,
+    staffName: string,
+    staffRole: string,
+    dow: number,
+    schedule: Schedule,
+  ) => {
+    dragRef.current = { staffId, staffName, staffRole, dayOfWeek: dow, schedule };
+    setDraggingCell({ staffId, dow });
+    setIsCopyMode(e.altKey);
+    e.dataTransfer.effectAllowed = "copyMove";
+    // Ghost image: small transparent element
+    const ghost = document.createElement("div");
+    ghost.style.cssText = `
+      position: fixed; top: -1000px;
+      background: hsl(var(--primary));
+      color: white; font-size: 11px;
+      padding: 4px 8px; border-radius: 6px;
+      white-space: nowrap; pointer-events: none;
+    `;
+    ghost.textContent = `${schedule.shiftStart?.slice(0, 5)} → ${schedule.shiftEnd?.slice(0, 5)}`;
+    document.body.appendChild(ghost);
+    e.dataTransfer.setDragImage(ghost, 0, 0);
+    setTimeout(() => document.body.removeChild(ghost), 0);
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent, staffId: string, dow: number) => {
+    e.preventDefault();
+    const copyMode = e.altKey;
+    setIsCopyMode(copyMode);
+    e.dataTransfer.dropEffect = copyMode ? "copy" : "move";
+    setDropTarget({ staffId, dow });
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setDropTarget(null);
+    }
+  }, []);
+
+  const handleDrop = useCallback(async (
+    e: React.DragEvent,
+    targetStaffId: string,
+    targetStaffName: string,
+    targetDow: number,
+    existingTargetSchedule?: Schedule,
+  ) => {
+    e.preventDefault();
+    const drag = dragRef.current;
+    if (!drag) return;
+
+    // Same cell — do nothing
+    if (drag.staffId === targetStaffId && drag.dayOfWeek === targetDow) {
+      setDraggingCell(null);
+      setDropTarget(null);
+      return;
+    }
+
+    const copyMode = e.altKey;
+    setIsDropping(true);
+
+    try {
+      // If there's already a schedule at target and we're moving — need to swap or overwrite
+      // 1. Create/update at target
+      await fetch("/api/schedules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getAuthHeader(token) },
+        body: JSON.stringify({
+          staffId: targetStaffId,
+          dayOfWeek: targetDow,
+          shiftStart: drag.schedule.shiftStart,
+          shiftEnd: drag.schedule.shiftEnd,
+          isOvernight: drag.schedule.isOvernight,
+          effectiveFrom,
+        }),
+      });
+
+      // 2. If MOVE (not copy) — delete the source
+      if (!copyMode && drag.schedule.id) {
+        await fetch(`/api/schedules/${drag.schedule.id}`, {
+          method: "DELETE",
+          headers: getAuthHeader(token),
+        });
+      }
+
+      await refetch();
+    } finally {
+      setIsDropping(false);
+      setDraggingCell(null);
+      setDropTarget(null);
+      dragRef.current = null;
+    }
+  }, [token, effectiveFrom, refetch]);
+
+  const handleDragEnd = useCallback(() => {
+    setDraggingCell(null);
+    setDropTarget(null);
+    dragRef.current = null;
+  }, []);
+
+  // Track Alt key globally during drag
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (dragRef.current) setIsCopyMode(e.altKey);
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKey);
+    };
+  }, []);
+
   return (
     <DashboardLayout>
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-display font-bold">Schedule Builder</h1>
-            <p className="text-muted-foreground text-sm mt-1">Weekly shift schedule — click any cell to edit</p>
+            <p className="text-muted-foreground text-sm mt-1">
+              Drag to move · <kbd className="text-[10px] bg-white/10 px-1 py-0.5 rounded border border-white/20">Alt</kbd> + drag to copy · click to edit
+            </p>
           </div>
           <div className="flex items-center gap-3">
             <Select value={branchId} onValueChange={setBranchId}>
@@ -256,6 +390,17 @@ export default function ScheduleBuilder() {
             </Button>
           </div>
         </div>
+
+        {/* Drop mode indicator */}
+        {draggingCell && (
+          <div className={`text-xs px-3 py-1.5 rounded-lg border w-fit transition-all ${
+            isCopyMode
+              ? "bg-blue-500/10 text-blue-300 border-blue-500/30"
+              : "bg-primary/10 text-primary border-primary/30"
+          }`}>
+            {isCopyMode ? "📋 Copy mode — release to copy shift" : "↔ Move mode — hold Alt to copy instead"}
+          </div>
+        )}
 
         {/* Grid */}
         <div className="overflow-x-auto rounded-xl border border-white/10">
@@ -289,25 +434,72 @@ export default function ScheduleBuilder() {
                   </td>
                   {[0, 1, 2, 3, 4, 5, 6].map((dow) => {
                     const sched = info.days.get(dow);
+                    const isDragging = draggingCell?.staffId === staffId && draggingCell?.dow === dow;
+                    const isDropZone = dropTarget?.staffId === staffId && dropTarget?.dow === dow;
+                    const isDropZoneActive = isDropZone && dragRef.current && !(dragRef.current.staffId === staffId && dragRef.current.dayOfWeek === dow);
+
                     return (
-                      <td key={dow} className="px-1.5 py-2 text-center">
-                        <button
-                          onClick={() => setEditing({ staffId, staffName: info.name, dayOfWeek: dow, existing: sched })}
-                          className={`w-full rounded-lg px-2 py-2 text-xs transition-all border ${
-                            sched
-                              ? "bg-primary/15 border-primary/30 text-primary hover:bg-primary/25"
-                              : "border-dashed border-white/10 text-muted-foreground/40 hover:border-white/20 hover:text-muted-foreground"
+                      <td
+                        key={dow}
+                        className="px-1.5 py-2 text-center"
+                        onDragOver={(e) => handleDragOver(e, staffId, dow)}
+                        onDragLeave={handleDragLeave}
+                        onDrop={(e) => handleDrop(e, staffId, info.name, dow, sched)}
+                      >
+                        <div
+                          className={`relative w-full rounded-lg transition-all ${
+                            isDropZoneActive
+                              ? isCopyMode
+                                ? "ring-2 ring-blue-400 ring-offset-1 ring-offset-black bg-blue-500/10"
+                                : "ring-2 ring-primary ring-offset-1 ring-offset-black bg-primary/10"
+                              : ""
                           }`}
                         >
-                          {sched ? (
-                            <span>
-                              {sched.shiftStart?.slice(0, 5)}<br />
-                              <span className="text-muted-foreground">→ {sched.shiftEnd?.slice(0, 5)}</span>
-                            </span>
-                          ) : (
-                            <span>+</span>
+                          {/* Copy badge on drop target */}
+                          {isDropZoneActive && isCopyMode && (
+                            <div className="absolute -top-2 -right-1 z-10 text-[9px] bg-blue-500 text-white rounded px-1 font-bold leading-4">
+                              COPY
+                            </div>
                           )}
-                        </button>
+
+                          {sched ? (
+                            <div
+                              draggable
+                              onDragStart={(e) => handleDragStart(e, staffId, info.name, info.role, dow, sched)}
+                              onDragEnd={handleDragEnd}
+                              onClick={() => !isDragging && !isDropping && setEditing({ staffId, staffName: info.name, dayOfWeek: dow, existing: sched })}
+                              className={`w-full rounded-lg px-2 py-2 text-xs border select-none
+                                bg-primary/15 border-primary/30 text-primary
+                                transition-all group
+                                ${isDragging ? "opacity-30 scale-95" : "hover:bg-primary/25 cursor-grab active:cursor-grabbing"}
+                                ${isDropZoneActive ? "pointer-events-none" : ""}
+                              `}
+                            >
+                              <div className="flex items-center justify-center gap-0.5 mb-0.5 opacity-0 group-hover:opacity-40 transition-opacity">
+                                <GripHorizontal className="w-3 h-3" />
+                              </div>
+                              <span>
+                                {sched.shiftStart?.slice(0, 5)}<br />
+                                <span className="text-muted-foreground">→ {sched.shiftEnd?.slice(0, 5)}</span>
+                              </span>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => !isDropping && setEditing({ staffId, staffName: info.name, dayOfWeek: dow, existing: sched })}
+                              className={`w-full rounded-lg px-2 py-2 text-xs transition-all border
+                                border-dashed border-white/10 text-muted-foreground/40
+                                hover:border-white/20 hover:text-muted-foreground
+                                ${isDropZoneActive ? "border-solid pointer-events-none" : ""}
+                              `}
+                            >
+                              {isDropZoneActive ? (
+                                <span className={isCopyMode ? "text-blue-400" : "text-primary"}>+</span>
+                              ) : (
+                                <span>+</span>
+                              )}
+                            </button>
+                          )}
+                        </div>
                       </td>
                     );
                   })}
