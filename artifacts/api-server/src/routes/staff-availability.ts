@@ -22,7 +22,7 @@ router.get(
            AND s.is_active = true
            AND s.deleted_at IS NULL
            AND s.id NOT IN (
-             SELECT rh.staff_id FROM reservation_hostesses rh
+             SELECT rh.hostess_id FROM reservation_hostesses rh
              JOIN reservations r ON r.id = rh.reservation_id
              WHERE r.branch_id = $1
                AND r.reservation_date = $2

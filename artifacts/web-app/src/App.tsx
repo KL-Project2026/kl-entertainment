@@ -59,13 +59,22 @@ window.fetch = async (...args) => {
   }
 
   const resourceStr = resource.toString();
-  const existingAuth = (config?.headers as Record<string, string> | undefined)?.Authorization;
+
+  // Support both plain objects and Headers instances when checking for existing auth
+  const rawHeaders = config?.headers;
+  const existingAuth =
+    rawHeaders instanceof Headers
+      ? rawHeaders.get("Authorization")
+      : (rawHeaders as Record<string, string> | undefined)?.Authorization;
+
   if (token && resourceStr.startsWith("/api") && !existingAuth) {
-    config = config || {};
-    config.headers = {
-      ...config.headers,
-      Authorization: `Bearer ${token}`,
-    };
+    config = config ? { ...config } : {};
+    // Preserve existing headers regardless of type (Headers instance or plain object)
+    const base: Record<string, string> =
+      rawHeaders instanceof Headers
+        ? Object.fromEntries(rawHeaders.entries())
+        : { ...(rawHeaders as Record<string, string> | undefined) };
+    config.headers = { ...base, Authorization: `Bearer ${token}` };
   }
 
   const response = await originalFetch(resource, config);

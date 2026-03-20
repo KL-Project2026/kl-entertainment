@@ -146,6 +146,36 @@ router.post(
   }
 );
 
+// Availability check — must be BEFORE /reservations/:id to avoid route collision
+router.get(
+  "/reservations/availability",
+  authenticate,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { branch_id, date } = req.query as Record<string, string>;
+
+      const { rows } = await pool.query(
+        `SELECT rm.* FROM rooms rm
+         WHERE rm.branch_id = $1 AND rm.is_active = true AND rm.deleted_at IS NULL
+         AND rm.id NOT IN (
+           SELECT r.room_id FROM reservations r
+           WHERE r.branch_id = $1
+             AND r.reservation_date = $2
+             AND r.status NOT IN ('cancelled', 'no_show')
+             AND r.room_id IS NOT NULL
+         )
+         ORDER BY rm.sort_order, rm.name`,
+        [branch_id, date]
+      );
+
+      res.json({ data: rows });
+    } catch (err) {
+      console.error("Availability error:", err);
+      res.status(500).json({ error: "INTERNAL_ERROR" });
+    }
+  }
+);
+
 // Get reservation
 router.get(
   "/reservations/:id",
@@ -331,36 +361,6 @@ router.put(
       const msg = (err as Error).message;
       if (msg.startsWith("INVALID_TRANSITION")) res.status(422).json({ error: msg });
       else { console.error(err); res.status(500).json({ error: "INTERNAL_ERROR" }); }
-    }
-  }
-);
-
-// Availability check
-router.get(
-  "/reservations/availability",
-  authenticate,
-  async (req: Request, res: Response): Promise<void> => {
-    try {
-      const { branch_id, date, duration_hours } = req.query as Record<string, string>;
-
-      const { rows } = await pool.query(
-        `SELECT rm.* FROM rooms rm
-         WHERE rm.branch_id = $1 AND rm.is_active = true AND rm.deleted_at IS NULL
-         AND rm.id NOT IN (
-           SELECT r.room_id FROM reservations r
-           WHERE r.branch_id = $1
-             AND r.reservation_date = $2
-             AND r.status NOT IN ('cancelled', 'no_show')
-             AND r.room_id IS NOT NULL
-         )
-         ORDER BY rm.sort_order, rm.name`,
-        [branch_id, date]
-      );
-
-      res.json({ data: rows });
-    } catch (err) {
-      console.error("Availability error:", err);
-      res.status(500).json({ error: "INTERNAL_ERROR" });
     }
   }
 );
