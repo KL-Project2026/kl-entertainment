@@ -10,10 +10,14 @@ import { Card } from "@/components/ui/card";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { motion, AnimatePresence } from "framer-motion";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { motion } from "framer-motion";
 import {
   Plus, Pencil, Trash2, ChevronUp, ChevronDown, Tag,
   ToggleLeft, ToggleRight, Eye, EyeOff, Settings2, Layers, BookOpen,
+  GitBranch, RotateCcw, Shield, ShieldOff,
 } from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { cn } from "@/lib/utils";
@@ -50,6 +54,25 @@ interface BranchOverride {
   overrideId: string | null;
 }
 
+interface BranchCatOverride {
+  id: string;
+  name: { en?: string; zh?: string };
+  icon: string;
+  sortOrder: number;
+  globalIsActive: boolean;
+  effectiveVisible: boolean;
+  overrideIsVisible: boolean | null;
+  hasOverride: boolean;
+  overrideId: string | null;
+  typeCount: number;
+  itemCount: number;
+}
+
+interface Branch {
+  id: string;
+  name: string;
+}
+
 // ── API base url ──────────────────────────────────────────────────────────────
 const BASE = "/api/settings/menu-config";
 
@@ -77,8 +100,8 @@ function CategoryModal({ open, onClose, onSaved, authH, editing }: CatModalProps
       setNameEn(editing.name?.en ?? "");
       setNameZh(editing.name?.zh ?? "");
       setIcon(editing.icon ?? "🍽️");
-      setTaxRate(editing.taxRateOverride != null ? String(Math.round(editing.taxRateOverride * 100)) : "");
-      setCommRate(editing.commissionDefaultRate ? String(Math.round(editing.commissionDefaultRate * 100)) : "");
+      setTaxRate(editing.taxRateOverride != null ? String(Math.round(editing.taxRateOverride * 100 * 10) / 10) : "");
+      setCommRate(editing.commissionDefaultRate ? String(Math.round(editing.commissionDefaultRate * 100 * 10) / 10) : "");
       setCommFlat(editing.commissionDefaultFlat ? String(editing.commissionDefaultFlat) : "");
       setNotes(editing.notes ?? "");
     } else {
@@ -98,20 +121,15 @@ function CategoryModal({ open, onClose, onSaved, authH, editing }: CatModalProps
         notes: notes.trim() || null,
       };
       const url = editing ? `${BASE}/categories/${editing.id}` : `${BASE}/categories`;
-      const method = editing ? "PUT" : "POST";
       const r = await fetch(url, {
-        method,
+        method: editing ? "PUT" : "POST",
         headers: { "Content-Type": "application/json", ...authH },
         body: JSON.stringify(body),
       });
       if (!r.ok) throw new Error(await r.text());
     },
-    onSuccess: () => {
-      toast({ title: editing ? "Category updated" : "Category created" });
-      onSaved();
-      onClose();
-    },
-    onError: () => toast({ title: "Failed to save category", variant: "destructive" }),
+    onSuccess: () => { toast({ title: editing ? "Category updated" : "Category created" }); onSaved(); onClose(); },
+    onError:   () => toast({ title: "Failed to save category", variant: "destructive" }),
   });
 
   return (
@@ -120,7 +138,6 @@ function CategoryModal({ open, onClose, onSaved, authH, editing }: CatModalProps
         <DialogHeader>
           <DialogTitle>{editing ? "Edit Category" : "New Category"}</DialogTitle>
         </DialogHeader>
-
         <div className="space-y-4 py-2">
           <div className="grid grid-cols-[60px_1fr] gap-3">
             <div className="space-y-1.5">
@@ -134,13 +151,11 @@ function CategoryModal({ open, onClose, onSaved, authH, editing }: CatModalProps
                 placeholder="e.g. Beverages" className="bg-black/30 border-white/10" />
             </div>
           </div>
-
           <div className="space-y-1.5">
             <Label htmlFor="cat-name-zh">Name (ZH)</Label>
             <Input id="cat-name-zh" value={nameZh} onChange={(e) => setNameZh(e.target.value)}
               placeholder="e.g. 饮料" className="bg-black/30 border-white/10" />
           </div>
-
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="cat-tax">Tax Override (%)</Label>
@@ -151,24 +166,22 @@ function CategoryModal({ open, onClose, onSaved, authH, editing }: CatModalProps
             <div className="space-y-1.5">
               <Label htmlFor="cat-comm-r">Commission (%)</Label>
               <Input id="cat-comm-r" type="number" min="0" max="100" step="0.1"
-                value={commRate} onChange={(e) => setCommRate(e.target.value)}
+                value={commRate} onChange={(e) => { setCommRate(e.target.value); setCommFlat(""); }}
                 placeholder="e.g. 10" className="bg-black/30 border-white/10" />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="cat-comm-f">Comm. Flat (MYR)</Label>
               <Input id="cat-comm-f" type="number" min="0" step="0.01"
-                value={commFlat} onChange={(e) => setCommFlat(e.target.value)}
+                value={commFlat} onChange={(e) => { setCommFlat(e.target.value); setCommRate(""); }}
                 placeholder="0.00" className="bg-black/30 border-white/10" />
             </div>
           </div>
-
           <div className="space-y-1.5">
             <Label htmlFor="cat-notes">Notes</Label>
             <Input id="cat-notes" value={notes} onChange={(e) => setNotes(e.target.value)}
               placeholder="Internal notes (optional)" className="bg-black/30 border-white/10" />
           </div>
         </div>
-
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={onClose} disabled={isPending}>Cancel</Button>
           <Button onClick={() => mutate()} disabled={isPending || !nameEn.trim()}>
@@ -201,9 +214,7 @@ function TypeModal({ open, onClose, onSaved, authH, categoryId, editing }: TypeM
       setNameEn(editing.name?.en ?? "");
       setNameZh(editing.name?.zh ?? "");
       setSortOrder(String(editing.sortOrder));
-    } else {
-      setNameEn(""); setNameZh(""); setSortOrder("0");
-    }
+    } else { setNameEn(""); setNameZh(""); setSortOrder("0"); }
   }, [editing, open]);
 
   const { mutate, isPending } = useMutation({
@@ -212,23 +223,16 @@ function TypeModal({ open, onClose, onSaved, authH, categoryId, editing }: TypeM
         name: { en: nameEn.trim(), ...(nameZh.trim() ? { zh: nameZh.trim() } : {}) },
         sortOrder: parseInt(sortOrder) || 0,
       };
-      const url = editing
-        ? `${BASE}/types/${editing.id}`
-        : `${BASE}/categories/${categoryId}/types`;
-      const method = editing ? "PUT" : "POST";
+      const url = editing ? `${BASE}/types/${editing.id}` : `${BASE}/categories/${categoryId}/types`;
       const r = await fetch(url, {
-        method,
+        method: editing ? "PUT" : "POST",
         headers: { "Content-Type": "application/json", ...authH },
         body: JSON.stringify(body),
       });
       if (!r.ok) throw new Error(await r.text());
     },
-    onSuccess: () => {
-      toast({ title: editing ? "Sub-type updated" : "Sub-type created" });
-      onSaved();
-      onClose();
-    },
-    onError: () => toast({ title: "Failed to save sub-type", variant: "destructive" }),
+    onSuccess: () => { toast({ title: editing ? "Sub-type updated" : "Sub-type created" }); onSaved(); onClose(); },
+    onError:   () => toast({ title: "Failed to save sub-type", variant: "destructive" }),
   });
 
   return (
@@ -237,7 +241,6 @@ function TypeModal({ open, onClose, onSaved, authH, categoryId, editing }: TypeM
         <DialogHeader>
           <DialogTitle>{editing ? "Edit Sub-type" : "New Sub-type"}</DialogTitle>
         </DialogHeader>
-
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
             <Label htmlFor="type-name-en">Name (EN) <span className="text-destructive">*</span></Label>
@@ -255,7 +258,6 @@ function TypeModal({ open, onClose, onSaved, authH, categoryId, editing }: TypeM
               onChange={(e) => setSortOrder(e.target.value)} className="bg-black/30 border-white/10" />
           </div>
         </div>
-
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={onClose} disabled={isPending}>Cancel</Button>
           <Button onClick={() => mutate()} disabled={isPending || !nameEn.trim()}>
@@ -267,6 +269,259 @@ function TypeModal({ open, onClose, onSaved, authH, categoryId, editing }: TypeM
   );
 }
 
+// ── Branch Overrides View ─────────────────────────────────────────────────────
+interface BranchOverridesViewProps {
+  authH: Record<string, string>;
+  isAdmin: boolean;
+  userBranchId: string | null;
+  userRole: string;
+}
+
+function BranchOverridesView({ authH, isAdmin, userBranchId, userRole }: BranchOverridesViewProps) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const isBranchManager = userRole === "branch_manager";
+
+  // Branch manager is locked to their own branch
+  const [selectedBranchId, setSelectedBranchId] = useState<string>(
+    isBranchManager && userBranchId ? userBranchId : "__none__"
+  );
+
+  // Fetch branches (admin sees all; branch_manager locked to own)
+  const { data: branchesData } = useQuery<{ data?: Branch[] }>({
+    queryKey: ["branches-list"],
+    queryFn: async () => {
+      const r = await fetch("/api/branches", { headers: authH });
+      return r.json() as Promise<{ data?: Branch[] }>;
+    },
+    enabled: isAdmin,
+  });
+  const branches: Branch[] = (branchesData?.data ?? (branchesData as unknown as Branch[]) ?? []);
+
+  // Fetch category overrides for selected branch
+  const { data: overrideData, isLoading } = useQuery<{ data: BranchCatOverride[] }>({
+    queryKey: ["branch-cat-overrides", selectedBranchId],
+    queryFn: async () => {
+      const r = await fetch(`${BASE}/branch-overrides?branch_id=${selectedBranchId}`, { headers: authH });
+      return r.json() as Promise<{ data: BranchCatOverride[] }>;
+    },
+    enabled: selectedBranchId !== "__none__",
+  });
+  const rows = overrideData?.data ?? [];
+
+  const selectedBranchName = isBranchManager
+    ? "Your Branch"
+    : branches.find((b) => b.id === selectedBranchId)?.name ?? "";
+
+  // Toggle visibility
+  const { mutate: toggleVisibility } = useMutation({
+    mutationFn: async (row: BranchCatOverride) => {
+      const r = await fetch(`${BASE}/branch-override`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authH },
+        body: JSON.stringify({
+          productGroupId: row.id,
+          branchId: selectedBranchId,
+          isVisible: !row.effectiveVisible,
+        }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["branch-cat-overrides", selectedBranchId] }),
+    onError: () => toast({ title: "Failed to update visibility", variant: "destructive" }),
+  });
+
+  // Reset override to global default
+  const { mutate: resetOverride } = useMutation({
+    mutationFn: async (row: BranchCatOverride) => {
+      const r = await fetch(`${BASE}/branch-override`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json", ...authH },
+        body: JSON.stringify({ productGroupId: row.id, branchId: selectedBranchId }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+    },
+    onSuccess: () => {
+      toast({ title: "Override reset to global default" });
+      void qc.invalidateQueries({ queryKey: ["branch-cat-overrides", selectedBranchId] });
+    },
+    onError: () => toast({ title: "Failed to reset override", variant: "destructive" }),
+  });
+
+  const overrideCount = rows.filter((r) => r.hasOverride).length;
+  const hiddenCount   = rows.filter((r) => !r.effectiveVisible).length;
+
+  return (
+    <div className="space-y-5">
+      {/* Branch selector */}
+      <Card className="p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex items-center gap-2.5 flex-1">
+            <GitBranch className="w-5 h-5 text-primary flex-shrink-0" />
+            <div>
+              <p className="text-sm font-semibold">Select Branch</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                View and manage category visibility for a specific branch
+              </p>
+            </div>
+          </div>
+          {isBranchManager ? (
+            <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border border-primary/20 rounded-lg">
+              <Shield className="w-4 h-4 text-primary" />
+              <span className="text-sm font-medium text-primary">Your Branch Only</span>
+            </div>
+          ) : (
+            <Select value={selectedBranchId} onValueChange={setSelectedBranchId}>
+              <SelectTrigger className="w-64 bg-black/30 border-white/10">
+                <SelectValue placeholder="Choose a branch…" />
+              </SelectTrigger>
+              <SelectContent className="bg-[#0c0c10] border-white/10">
+                <SelectItem value="__none__">— Choose a branch —</SelectItem>
+                {branches.map((b) => (
+                  <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+      </Card>
+
+      {/* Stats strip */}
+      {selectedBranchId !== "__none__" && rows.length > 0 && (
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: "Total Categories", value: rows.length, color: "text-foreground" },
+            { label: "With Override", value: overrideCount, color: "text-amber-400" },
+            { label: "Hidden", value: hiddenCount, color: "text-red-400" },
+          ].map((s) => (
+            <Card key={s.label} className="p-4 text-center">
+              <p className={cn("text-2xl font-bold", s.color)}>{s.value}</p>
+              <p className="text-xs text-muted-foreground mt-1">{s.label}</p>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Category override table */}
+      {selectedBranchId === "__none__" ? (
+        <Card className="p-12 text-center text-muted-foreground">
+          Select a branch above to manage its category overrides
+        </Card>
+      ) : isLoading ? (
+        <Card className="p-12 text-center text-muted-foreground text-sm">Loading…</Card>
+      ) : rows.length === 0 ? (
+        <Card className="p-12 text-center text-muted-foreground text-sm">No categories found.</Card>
+      ) : (
+        <Card className="overflow-hidden">
+          <div className="px-5 py-3 border-b border-white/5 flex items-center justify-between">
+            <div>
+              <p className="font-semibold text-sm">{selectedBranchName}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Toggles apply only to this branch. Global defaults shown in grey.
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="w-2 h-2 rounded-full bg-amber-400/70 inline-block" /> = has override
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-white/3 text-left text-xs text-muted-foreground border-b border-white/5">
+                  <th className="px-5 py-3 font-medium">Category</th>
+                  <th className="px-4 py-3 font-medium text-center">Types</th>
+                  <th className="px-4 py-3 font-medium text-center">Items</th>
+                  <th className="px-4 py-3 font-medium text-center">Global</th>
+                  <th className="px-4 py-3 font-medium text-center">This Branch</th>
+                  <th className="px-4 py-3 font-medium text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {rows.map((row) => (
+                  <tr key={row.id} className={cn(
+                    "text-sm transition-colors hover:bg-white/3",
+                    !row.effectiveVisible && "opacity-60"
+                  )}>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-lg">{row.icon}</span>
+                        <div>
+                          <p className="font-medium">{row.name?.en ?? "—"}</p>
+                          {row.name?.zh && (
+                            <p className="text-xs text-muted-foreground">{row.name.zh}</p>
+                          )}
+                        </div>
+                        {row.hasOverride && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" title="Has branch override" />
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-center text-muted-foreground">{row.typeCount}</td>
+                    <td className="px-4 py-3 text-center text-muted-foreground">{row.itemCount}</td>
+                    <td className="px-4 py-3 text-center">
+                      {row.globalIsActive ? (
+                        <span className="text-green-400 text-xs">Visible</span>
+                      ) : (
+                        <span className="text-gray-500 text-xs">Inactive</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-center">
+                        <button
+                          role="switch"
+                          aria-checked={row.effectiveVisible}
+                          aria-label={`Toggle ${row.name?.en ?? ""} for ${selectedBranchName}`}
+                          onClick={() => toggleVisibility(row)}
+                          className="flex items-center gap-1.5 text-xs transition-colors"
+                          disabled={!isAdmin && !isBranchManager}
+                        >
+                          {row.effectiveVisible ? (
+                            <><ToggleRight className="w-6 h-6 text-green-400" />
+                              <span className="text-green-400 font-medium">On</span></>
+                          ) : (
+                            <><ToggleLeft className="w-6 h-6 text-gray-500" />
+                              <span className="text-muted-foreground">Off</span></>
+                          )}
+                        </button>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {row.hasOverride && (isAdmin || isBranchManager) && (
+                        <button
+                          onClick={() => resetOverride(row)}
+                          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground ml-auto transition-colors"
+                          title="Reset to global default"
+                        >
+                          <RotateCcw className="w-3 h-3" /> Reset
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {/* Legend */}
+          <div className="px-5 py-3 border-t border-white/5 bg-white/2 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <ToggleRight className="w-4 h-4 text-green-400" /> Visible for this branch
+            </span>
+            <span className="flex items-center gap-1.5">
+              <ToggleLeft className="w-4 h-4 text-gray-500" /> Hidden for this branch
+            </span>
+            <span className="flex items-center gap-1.5">
+              <RotateCcw className="w-3 h-3" /> Reset removes override — reverts to global setting
+            </span>
+            <span className="flex items-center gap-1.5 ml-auto">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" /> Amber dot = override active
+            </span>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function SettingsMenuConfig() {
   const { token, user } = useAuthStore();
@@ -274,16 +529,19 @@ export default function SettingsMenuConfig() {
   const qc = useQueryClient();
 
   const authH = { Authorization: `Bearer ${token}` };
-  const isAdmin = ["super_admin", "admin"].includes(user?.role ?? "");
+  const isAdmin       = ["super_admin", "admin"].includes(user?.role ?? "");
+  const canOverride   = ["super_admin", "admin", "branch_manager"].includes(user?.role ?? "");
+  const userBranchId  = user?.branchId ?? null;
+  const userRole      = user?.role ?? "";
 
+  // Top-level view mode
+  const [viewMode, setViewMode] = useState<"categories" | "branch-overrides">("categories");
+
+  // Category view state
   const [selectedCatId, setSelectedCatId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"types" | "settings" | "branches">("types");
-  const [catModal, setCatModal] = useState<{ open: boolean; editing: Category | null }>({
-    open: false, editing: null,
-  });
-  const [typeModal, setTypeModal] = useState<{ open: boolean; editing: SubType | null }>({
-    open: false, editing: null,
-  });
+  const [catModal, setCatModal] = useState<{ open: boolean; editing: Category | null }>({ open: false, editing: null });
+  const [typeModal, setTypeModal] = useState<{ open: boolean; editing: SubType | null }>({ open: false, editing: null });
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: "cat" | "subtype"; id: string } | null>(null);
 
   // ── Data fetching ───────────────────────────────────────────────────────────
@@ -297,11 +555,8 @@ export default function SettingsMenuConfig() {
   const categories = catsData?.data ?? [];
   const selectedCat = categories.find((c) => c.id === selectedCatId) ?? null;
 
-  // Auto-select first category
   useEffect(() => {
-    if (categories.length > 0 && !selectedCatId) {
-      setSelectedCatId(categories[0].id);
-    }
+    if (categories.length > 0 && !selectedCatId) setSelectedCatId(categories[0].id);
   }, [categories, selectedCatId]);
 
   const { data: typesData, isLoading: typesLoading } = useQuery<{ data: SubType[] }>({
@@ -349,10 +604,7 @@ export default function SettingsMenuConfig() {
 
   const { mutate: deleteCat } = useMutation({
     mutationFn: async (id: string) => {
-      const r = await fetch(`${BASE}/categories/${id}`, {
-        method: "DELETE",
-        headers: authH,
-      });
+      const r = await fetch(`${BASE}/categories/${id}`, { method: "DELETE", headers: authH });
       if (!r.ok) throw new Error();
     },
     onSuccess: () => {
@@ -382,18 +634,14 @@ export default function SettingsMenuConfig() {
       await fetch(`${BASE}/branch-override`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...authH },
-        body: JSON.stringify({
-          productGroupId: selectedCatId,
-          branchId: o.branchId,
-          isVisible: !o.isVisible,
-        }),
+        body: JSON.stringify({ productGroupId: selectedCatId, branchId: o.branchId, isVisible: !o.isVisible }),
       });
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["menu-config-overrides", selectedCatId] }),
     onError: () => toast({ title: "Failed to update", variant: "destructive" }),
   });
 
-  // ── Sorting helpers ─────────────────────────────────────────────────────────
+  // ── Sort helpers ────────────────────────────────────────────────────────────
   function moveCategory(idx: number, dir: -1 | 1) {
     const sorted = [...categories].sort((a, b) => a.sortOrder - b.sortOrder);
     const target = sorted[idx + dir];
@@ -414,7 +662,7 @@ export default function SettingsMenuConfig() {
         transition={{ duration: 0.3 }}
         className="max-w-7xl mx-auto space-y-6"
       >
-        {/* Header */}
+        {/* ── Page Header ──────────────────────────────────────────────────── */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="font-display text-2xl font-bold text-foreground">Menu Configuration</h1>
@@ -422,326 +670,326 @@ export default function SettingsMenuConfig() {
               Manage categories, sub-types, tax overrides and branch visibility
             </p>
           </div>
-          {isAdmin && (
+          {isAdmin && viewMode === "categories" && (
             <Button className="gap-2" onClick={() => setCatModal({ open: true, editing: null })}>
               <Plus className="w-4 h-4" /> New Category
             </Button>
           )}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
-          {/* ── Left: category list ─────────────────────────────────────── */}
-          <div className="space-y-2">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest px-1">
-              Categories ({categories.length})
-            </p>
+        {/* ── Top-level View Tabs ───────────────────────────────────────────── */}
+        <div className="flex items-center gap-1 border-b border-white/8 pb-0">
+          {([
+            { key: "categories",      label: "Categories",      icon: Layers },
+            { key: "branch-overrides", label: "Branch Overrides", icon: GitBranch },
+          ] as const).map(({ key, label, icon: Icon }) => (
+            (key === "branch-overrides" && !canOverride) ? null :
+            <button
+              key={key}
+              onClick={() => setViewMode(key)}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-all -mb-px",
+                viewMode === key
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Icon className="w-4 h-4" />
+              {label}
+            </button>
+          ))}
+        </div>
 
-            {catsLoading ? (
-              <div className="text-center py-10 text-muted-foreground text-sm">Loading…</div>
-            ) : sortedCats.length === 0 ? (
-              <Card className="p-6 text-center text-muted-foreground text-sm">
-                No categories yet.
-              </Card>
-            ) : (
-              <div className="space-y-1.5">
-                {sortedCats.map((cat, idx) => (
-                  <motion.div key={cat.id} layout>
-                    <button
-                      onClick={() => { setSelectedCatId(cat.id); setActiveTab("types"); }}
-                      className={cn(
-                        "w-full text-left rounded-xl border transition-all duration-150 p-3",
-                        selectedCatId === cat.id
-                          ? "bg-primary/10 border-primary/30 text-foreground"
-                          : "bg-card/40 border-white/5 text-muted-foreground hover:border-white/15 hover:text-foreground"
-                      )}
-                    >
-                      <div className="flex items-start gap-2.5">
-                        {/* Sort arrows */}
-                        {isAdmin && (
-                          <div className="flex flex-col gap-0.5 flex-shrink-0 mt-0.5">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); moveCategory(idx, -1); }}
-                              disabled={idx === 0}
-                              className="p-0.5 hover:text-primary disabled:opacity-20 transition-colors"
-                            >
-                              <ChevronUp className="w-3 h-3" />
-                            </button>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); moveCategory(idx, 1); }}
-                              disabled={idx === sortedCats.length - 1}
-                              className="p-0.5 hover:text-primary disabled:opacity-20 transition-colors"
-                            >
-                              <ChevronDown className="w-3 h-3" />
-                            </button>
-                          </div>
+        {/* ── BRANCH OVERRIDES VIEW ─────────────────────────────────────────── */}
+        {viewMode === "branch-overrides" && (
+          <BranchOverridesView
+            authH={authH}
+            isAdmin={isAdmin}
+            userBranchId={userBranchId}
+            userRole={userRole}
+          />
+        )}
+
+        {/* ── CATEGORIES VIEW ───────────────────────────────────────────────── */}
+        {viewMode === "categories" && (
+          <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
+            {/* Left: category list */}
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest px-1">
+                Categories ({categories.length})
+              </p>
+
+              {catsLoading ? (
+                <div className="text-center py-10 text-muted-foreground text-sm">Loading…</div>
+              ) : sortedCats.length === 0 ? (
+                <Card className="p-6 text-center text-muted-foreground text-sm">No categories yet.</Card>
+              ) : (
+                <div className="space-y-1.5">
+                  {sortedCats.map((cat, idx) => (
+                    <motion.div key={cat.id} layout>
+                      <button
+                        onClick={() => { setSelectedCatId(cat.id); setActiveTab("types"); }}
+                        className={cn(
+                          "w-full text-left rounded-xl border transition-all duration-150 p-3",
+                          selectedCatId === cat.id
+                            ? "bg-primary/10 border-primary/30 text-foreground"
+                            : "bg-card/40 border-white/5 text-muted-foreground hover:border-white/15 hover:text-foreground"
                         )}
-
-                        <span className="text-xl leading-none flex-shrink-0 mt-0.5">{cat.icon}</span>
-
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-sm truncate">
-                              {cat.name?.en ?? "—"}
-                            </span>
-                            {!cat.isActive && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-500/20 text-gray-400 flex-shrink-0">
-                                Inactive
-                              </span>
-                            )}
-                          </div>
-                          {cat.name?.zh && (
-                            <span className="text-xs text-muted-foreground">{cat.name.zh}</span>
+                      >
+                        <div className="flex items-start gap-2.5">
+                          {isAdmin && (
+                            <div className="flex flex-col gap-0.5 flex-shrink-0 mt-0.5">
+                              <button onClick={(e) => { e.stopPropagation(); moveCategory(idx, -1); }}
+                                disabled={idx === 0}
+                                className="p-0.5 hover:text-primary disabled:opacity-20 transition-colors">
+                                <ChevronUp className="w-3 h-3" />
+                              </button>
+                              <button onClick={(e) => { e.stopPropagation(); moveCategory(idx, 1); }}
+                                disabled={idx === sortedCats.length - 1}
+                                className="p-0.5 hover:text-primary disabled:opacity-20 transition-colors">
+                                <ChevronDown className="w-3 h-3" />
+                              </button>
+                            </div>
                           )}
-                          <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
-                            <span className="flex items-center gap-1">
-                              <Layers className="w-3 h-3" />{cat.typeCount} types
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Tag className="w-3 h-3" />{cat.itemCount} items
-                            </span>
+                          <span className="text-xl leading-none flex-shrink-0 mt-0.5">{cat.icon}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-sm truncate">{cat.name?.en ?? "—"}</span>
+                              {!cat.isActive && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-500/20 text-gray-400 flex-shrink-0">
+                                  Inactive
+                                </span>
+                              )}
+                            </div>
+                            {cat.name?.zh && <span className="text-xs text-muted-foreground">{cat.name.zh}</span>}
+                            <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1"><Layers className="w-3 h-3" />{cat.typeCount} types</span>
+                              <span className="flex items-center gap-1"><Tag className="w-3 h-3" />{cat.itemCount} items</span>
+                            </div>
                           </div>
+                          {isAdmin && (
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              <button onClick={(e) => { e.stopPropagation(); toggleCat(cat); }}
+                                className="p-1.5 rounded-lg hover:bg-white/5 transition-colors"
+                                title={cat.isActive ? "Deactivate" : "Activate"}>
+                                {cat.isActive
+                                  ? <Eye className="w-3.5 h-3.5 text-green-400" />
+                                  : <EyeOff className="w-3.5 h-3.5 text-gray-500" />}
+                              </button>
+                              <button onClick={(e) => { e.stopPropagation(); setCatModal({ open: true, editing: cat }); }}
+                                className="p-1.5 rounded-lg hover:bg-white/5 transition-colors" title="Edit">
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ type: "cat", id: cat.id }); }}
+                                className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors" title="Deactivate">
+                                <Trash2 className="w-3.5 h-3.5 text-destructive/60 hover:text-destructive" />
+                              </button>
+                            </div>
+                          )}
                         </div>
-
-                        {/* Action buttons */}
-                        {isAdmin && (
-                          <div className="flex items-center gap-1 flex-shrink-0">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); toggleCat(cat); }}
-                              className="p-1.5 rounded-lg hover:bg-white/5 transition-colors"
-                              title={cat.isActive ? "Deactivate" : "Activate"}
-                            >
-                              {cat.isActive
-                                ? <Eye className="w-3.5 h-3.5 text-green-400" />
-                                : <EyeOff className="w-3.5 h-3.5 text-gray-500" />
-                              }
-                            </button>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setCatModal({ open: true, editing: cat }); }}
-                              className="p-1.5 rounded-lg hover:bg-white/5 transition-colors"
-                              title="Edit"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ type: "cat", id: cat.id }); }}
-                              className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors"
-                              title="Deactivate"
-                            >
-                              <Trash2 className="w-3.5 h-3.5 text-destructive/60 hover:text-destructive" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </button>
-                  </motion.div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* ── Right: selected category detail ────────────────────────── */}
-          <div>
-            {!selectedCat ? (
-              <Card className="p-12 text-center text-muted-foreground">
-                Select a category to manage its sub-types and settings
-              </Card>
-            ) : (
-              <div className="space-y-5">
-                {/* Tabs */}
-                <div className="flex items-center gap-1 bg-card/50 border border-white/5 rounded-xl p-1 w-fit">
-                  {(["types", "settings", "branches"] as const).map((tab) => (
-                    <button
-                      key={tab}
-                      onClick={() => setActiveTab(tab)}
-                      className={cn(
-                        "px-4 py-2 rounded-lg text-sm font-medium transition-all",
-                        activeTab === tab
-                          ? "bg-primary text-primary-foreground shadow"
-                          : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-                      )}
-                    >
-                      {tab === "types" ? "Sub-types" : tab === "settings" ? "Settings" : "Branch Visibility"}
-                    </button>
+                      </button>
+                    </motion.div>
                   ))}
                 </div>
+              )}
+            </div>
 
-                {/* ── Tab: Sub-types ─────────────────────────────────────── */}
-                {activeTab === "types" && (
-                  <Card className="p-5">
-                    <div className="flex items-center justify-between mb-4">
-                      <div>
-                        <h3 className="font-semibold">{selectedCat.icon} {selectedCat.name?.en}</h3>
-                        <p className="text-xs text-muted-foreground mt-0.5">{types.length} sub-types</p>
-                      </div>
-                      {isAdmin && (
-                        <Button size="sm" className="gap-1.5"
-                          onClick={() => setTypeModal({ open: true, editing: null })}>
-                          <Plus className="w-3.5 h-3.5" /> Add Sub-type
-                        </Button>
-                      )}
-                    </div>
+            {/* Right: category detail */}
+            <div>
+              {!selectedCat ? (
+                <Card className="p-12 text-center text-muted-foreground">
+                  Select a category to manage its sub-types and settings
+                </Card>
+              ) : (
+                <div className="space-y-5">
+                  <div className="flex items-center gap-1 bg-card/50 border border-white/5 rounded-xl p-1 w-fit">
+                    {(["types", "settings", "branches"] as const).map((tab) => (
+                      <button key={tab} onClick={() => setActiveTab(tab)}
+                        className={cn(
+                          "px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                          activeTab === tab
+                            ? "bg-primary text-primary-foreground shadow"
+                            : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                        )}>
+                        {tab === "types" ? "Sub-types" : tab === "settings" ? "Settings" : "Branch Visibility"}
+                      </button>
+                    ))}
+                  </div>
 
-                    {typesLoading ? (
-                      <div className="py-8 text-center text-muted-foreground text-sm">Loading…</div>
-                    ) : types.length === 0 ? (
-                      <div className="py-8 text-center text-muted-foreground text-sm">
-                        No sub-types yet. Add one to start classifying menu items.
+                  {/* Sub-types tab */}
+                  {activeTab === "types" && (
+                    <Card className="p-5">
+                      <div className="flex items-center justify-between mb-4">
+                        <div>
+                          <h3 className="font-semibold">{selectedCat.icon} {selectedCat.name?.en}</h3>
+                          <p className="text-xs text-muted-foreground mt-0.5">{types.length} sub-types</p>
+                        </div>
+                        {isAdmin && (
+                          <Button size="sm" className="gap-1.5"
+                            onClick={() => setTypeModal({ open: true, editing: null })}>
+                            <Plus className="w-3.5 h-3.5" /> Add Sub-type
+                          </Button>
+                        )}
                       </div>
-                    ) : (
-                      <div className="rounded-xl border border-white/10 overflow-hidden">
-                        <table className="w-full">
-                          <thead>
-                            <tr className="bg-white/5 border-b border-white/10 text-left text-xs text-muted-foreground">
-                              <th className="px-4 py-3 font-medium">Name</th>
-                              <th className="px-4 py-3 font-medium">Items</th>
-                              <th className="px-4 py-3 font-medium">Order</th>
-                              <th className="px-4 py-3 font-medium">Status</th>
-                              {isAdmin && <th className="px-4 py-3 font-medium"></th>}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {[...types].sort((a, b) => a.sortOrder - b.sortOrder).map((t) => (
-                              <tr key={t.id}
-                                className="border-b border-white/5 last:border-0 text-sm hover:bg-white/3">
-                                <td className="px-4 py-3">
-                                  <p className="font-medium">{t.name?.en}</p>
-                                  {t.name?.zh && (
-                                    <p className="text-xs text-muted-foreground">{t.name.zh}</p>
-                                  )}
-                                </td>
-                                <td className="px-4 py-3 text-muted-foreground">{t.itemCount}</td>
-                                <td className="px-4 py-3 text-muted-foreground">{t.sortOrder}</td>
-                                <td className="px-4 py-3">
-                                  <StatusBadge
-                                    status={t.isActive ? "active" : "inactive"}
-                                    label={t.isActive ? "Active" : "Inactive"}
-                                  />
-                                </td>
-                                {isAdmin && (
-                                  <td className="px-4 py-3">
-                                    <div className="flex items-center gap-1 justify-end">
-                                      <Button variant="ghost" size="icon" className="h-7 w-7"
-                                        onClick={() => setTypeModal({ open: true, editing: t })}>
-                                        <Pencil className="w-3.5 h-3.5" />
-                                      </Button>
-                                      <Button variant="ghost" size="icon"
-                                        className="h-7 w-7 hover:text-destructive hover:bg-destructive/10"
-                                        onClick={() => setDeleteConfirm({ type: "subtype", id: t.id })}>
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      </Button>
-                                    </div>
-                                  </td>
-                                )}
+                      {typesLoading ? (
+                        <div className="py-8 text-center text-muted-foreground text-sm">Loading…</div>
+                      ) : types.length === 0 ? (
+                        <div className="py-8 text-center text-muted-foreground text-sm">
+                          No sub-types yet. Add one to start classifying menu items.
+                        </div>
+                      ) : (
+                        <div className="rounded-xl border border-white/10 overflow-hidden">
+                          <table className="w-full">
+                            <thead>
+                              <tr className="bg-white/5 border-b border-white/10 text-left text-xs text-muted-foreground">
+                                <th className="px-4 py-3 font-medium">Name</th>
+                                <th className="px-4 py-3 font-medium">Items</th>
+                                <th className="px-4 py-3 font-medium">Order</th>
+                                <th className="px-4 py-3 font-medium">Status</th>
+                                {isAdmin && <th className="px-4 py-3 font-medium"></th>}
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </Card>
-                )}
+                            </thead>
+                            <tbody>
+                              {[...types].sort((a, b) => a.sortOrder - b.sortOrder).map((t) => (
+                                <tr key={t.id} className="border-b border-white/5 last:border-0 text-sm hover:bg-white/3">
+                                  <td className="px-4 py-3">
+                                    <p className="font-medium">{t.name?.en}</p>
+                                    {t.name?.zh && <p className="text-xs text-muted-foreground">{t.name.zh}</p>}
+                                  </td>
+                                  <td className="px-4 py-3 text-muted-foreground">{t.itemCount}</td>
+                                  <td className="px-4 py-3 text-muted-foreground">{t.sortOrder}</td>
+                                  <td className="px-4 py-3">
+                                    <StatusBadge status={t.isActive ? "active" : "inactive"}
+                                      label={t.isActive ? "Active" : "Inactive"} />
+                                  </td>
+                                  {isAdmin && (
+                                    <td className="px-4 py-3">
+                                      <div className="flex items-center gap-1 justify-end">
+                                        <Button variant="ghost" size="icon" className="h-7 w-7"
+                                          onClick={() => setTypeModal({ open: true, editing: t })}>
+                                          <Pencil className="w-3.5 h-3.5" />
+                                        </Button>
+                                        <Button variant="ghost" size="icon"
+                                          className="h-7 w-7 hover:text-destructive hover:bg-destructive/10"
+                                          onClick={() => setDeleteConfirm({ type: "subtype", id: t.id })}>
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </Button>
+                                      </div>
+                                    </td>
+                                  )}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </Card>
+                  )}
 
-                {/* ── Tab: Settings ──────────────────────────────────────── */}
-                {activeTab === "settings" && (
-                  <Card className="p-5">
-                    <h3 className="font-semibold mb-4 flex items-center gap-2">
-                      <Settings2 className="w-4 h-4 text-primary" /> Category Settings
-                    </h3>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                      <SettingItem label="Tax Override" value={
-                        selectedCat.taxRateOverride != null
-                          ? `${(selectedCat.taxRateOverride * 100).toFixed(1)}%`
-                          : "Inherit branch default"
-                      } />
-                      <SettingItem label="Commission Rate" value={
-                        selectedCat.commissionDefaultRate
-                          ? `${(selectedCat.commissionDefaultRate * 100).toFixed(1)}%`
-                          : "—"
-                      } />
-                      <SettingItem label="Commission Flat" value={
-                        selectedCat.commissionDefaultFlat
-                          ? `MYR ${selectedCat.commissionDefaultFlat.toFixed(2)}`
-                          : "—"
-                      } />
-                      <SettingItem label="Icon" value={selectedCat.icon} />
-                      <SettingItem label="Sort Order" value={String(selectedCat.sortOrder)} />
-                      <SettingItem label="Status" value={selectedCat.isActive ? "Active" : "Inactive"} />
-                    </div>
-                    {selectedCat.notes && (
-                      <div className="mt-4 p-3 bg-black/30 rounded-xl border border-white/5">
-                        <p className="text-xs text-muted-foreground mb-1">Notes</p>
-                        <p className="text-sm">{selectedCat.notes}</p>
+                  {/* Settings tab */}
+                  {activeTab === "settings" && (
+                    <Card className="p-5">
+                      <h3 className="font-semibold mb-4 flex items-center gap-2">
+                        <Settings2 className="w-4 h-4 text-primary" /> Category Settings
+                      </h3>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        <SettingItem label="Tax Override" value={
+                          selectedCat.taxRateOverride != null
+                            ? `${(selectedCat.taxRateOverride * 100).toFixed(1)}%`
+                            : "Inherit branch default"
+                        } />
+                        <SettingItem label="Commission Rate" value={
+                          selectedCat.commissionDefaultRate
+                            ? `${(selectedCat.commissionDefaultRate * 100).toFixed(1)}%`
+                            : "—"
+                        } />
+                        <SettingItem label="Commission Flat" value={
+                          selectedCat.commissionDefaultFlat
+                            ? `MYR ${selectedCat.commissionDefaultFlat.toFixed(2)}`
+                            : "—"
+                        } />
+                        <SettingItem label="Icon" value={selectedCat.icon} />
+                        <SettingItem label="Sort Order" value={String(selectedCat.sortOrder)} />
+                        <SettingItem label="Status" value={selectedCat.isActive ? "Active" : "Inactive"} />
                       </div>
-                    )}
-                    {isAdmin && (
-                      <div className="mt-4 pt-4 border-t border-white/5">
-                        <Button variant="outline" size="sm" className="gap-1.5"
-                          onClick={() => setCatModal({ open: true, editing: selectedCat })}>
-                          <Pencil className="w-3.5 h-3.5" /> Edit Category
-                        </Button>
-                      </div>
-                    )}
-                  </Card>
-                )}
+                      {selectedCat.notes && (
+                        <div className="mt-4 p-3 bg-black/30 rounded-xl border border-white/5">
+                          <p className="text-xs text-muted-foreground mb-1">Notes</p>
+                          <p className="text-sm">{selectedCat.notes}</p>
+                        </div>
+                      )}
+                      {isAdmin && (
+                        <div className="mt-4 pt-4 border-t border-white/5">
+                          <Button variant="outline" size="sm" className="gap-1.5"
+                            onClick={() => setCatModal({ open: true, editing: selectedCat })}>
+                            <Pencil className="w-3.5 h-3.5" /> Edit Category
+                          </Button>
+                        </div>
+                      )}
+                    </Card>
+                  )}
 
-                {/* ── Tab: Branch Visibility ────────────────────────────── */}
-                {activeTab === "branches" && (
-                  <Card className="p-5">
-                    <h3 className="font-semibold mb-1 flex items-center gap-2">
-                      <BookOpen className="w-4 h-4 text-primary" /> Branch Visibility
-                    </h3>
-                    <p className="text-xs text-muted-foreground mb-4">
-                      Control which branches show this category in their menus.
-                    </p>
-                    {overrides.length === 0 ? (
-                      <div className="py-8 text-center text-muted-foreground text-sm">
-                        No branches configured.
+                  {/* Branch Visibility tab (per-category view) */}
+                  {activeTab === "branches" && (
+                    <Card className="p-5">
+                      <div className="flex items-center justify-between mb-1">
+                        <h3 className="font-semibold flex items-center gap-2">
+                          <BookOpen className="w-4 h-4 text-primary" /> Branch Visibility
+                        </h3>
+                        <button
+                          onClick={() => setViewMode("branch-overrides")}
+                          className="text-xs text-primary hover:underline flex items-center gap-1"
+                        >
+                          <GitBranch className="w-3 h-3" /> Branch-first view
+                        </button>
                       </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {overrides.map((o) => (
-                          <div key={o.branchId}
-                            className="flex items-center justify-between px-4 py-3 rounded-xl
-                                       bg-black/20 border border-white/5">
-                            <div>
-                              <p className="text-sm font-medium">{o.branchName}</p>
-                              <p className="text-xs text-muted-foreground mt-0.5">
-                                {o.isVisible ? "Visible in menu" : "Hidden from menu"}
-                              </p>
+                      <p className="text-xs text-muted-foreground mb-4">
+                        Control which branches show this category in their menus.
+                      </p>
+                      {overrides.length === 0 ? (
+                        <div className="py-8 text-center text-muted-foreground text-sm">No branches configured.</div>
+                      ) : (
+                        <div className="space-y-2">
+                          {overrides.map((o) => (
+                            <div key={o.branchId}
+                              className="flex items-center justify-between px-4 py-3 rounded-xl bg-black/20 border border-white/5">
+                              <div>
+                                <p className="text-sm font-medium">{o.branchName}</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  {o.isVisible ? "Visible in menu" : "Hidden from menu"}
+                                </p>
+                              </div>
+                              {isAdmin ? (
+                                <button
+                                  role="switch"
+                                  aria-checked={o.isVisible}
+                                  aria-label={`Toggle visibility for ${o.branchName}`}
+                                  onClick={() => toggleOverride(o)}
+                                  className="flex items-center gap-1.5 text-sm transition-colors">
+                                  {o.isVisible
+                                    ? <><ToggleRight className="w-6 h-6 text-green-400" /><span className="text-green-400">On</span></>
+                                    : <><ToggleLeft className="w-6 h-6 text-gray-500" /><span className="text-muted-foreground">Off</span></>
+                                  }
+                                </button>
+                              ) : (
+                                <span className={o.isVisible ? "text-green-400 text-sm" : "text-muted-foreground text-sm"}>
+                                  {o.isVisible ? "Visible" : "Hidden"}
+                                </span>
+                              )}
                             </div>
-                            {isAdmin ? (
-                              <button
-                                role="switch"
-                                aria-checked={o.isVisible}
-                                aria-label={`Toggle visibility for ${o.branchName}`}
-                                onClick={() => toggleOverride(o)}
-                                className="flex items-center gap-1.5 text-sm transition-colors"
-                              >
-                                {o.isVisible
-                                  ? <><ToggleRight className="w-6 h-6 text-green-400" />
-                                    <span className="text-green-400">On</span></>
-                                  : <><ToggleLeft className="w-6 h-6 text-gray-500" />
-                                    <span className="text-muted-foreground">Off</span></>
-                                }
-                              </button>
-                            ) : (
-                              <span className={o.isVisible ? "text-green-400 text-sm" : "text-muted-foreground text-sm"}>
-                                {o.isVisible ? "Visible" : "Hidden"}
-                              </span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </Card>
-                )}
-              </div>
-            )}
+                          ))}
+                        </div>
+                      )}
+                    </Card>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </motion.div>
 
-      {/* ── Modals ──────────────────────────────────────────────────────────── */}
+      {/* ── Modals ────────────────────────────────────────────────────────────── */}
       <CategoryModal
         open={catModal.open}
         onClose={() => setCatModal({ open: false, editing: null })}
@@ -749,7 +997,6 @@ export default function SettingsMenuConfig() {
         authH={authH}
         editing={catModal.editing}
       />
-
       <TypeModal
         open={typeModal.open}
         onClose={() => setTypeModal({ open: false, editing: null })}
@@ -758,29 +1005,20 @@ export default function SettingsMenuConfig() {
         categoryId={selectedCatId ?? ""}
         editing={typeModal.editing}
       />
-
-      {/* Delete Confirm Dialog */}
       <Dialog open={!!deleteConfirm} onOpenChange={(v) => { if (!v) setDeleteConfirm(null); }}>
         <DialogContent className="sm:max-w-sm bg-[#0c0c10] border border-white/10">
-          <DialogHeader>
-            <DialogTitle>Confirm Deactivation</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>Confirm Deactivation</DialogTitle></DialogHeader>
           <p className="text-sm text-muted-foreground py-2">
             This will deactivate the {deleteConfirm?.type === "cat" ? "category" : "sub-type"}.
             Existing menu items will not be deleted.
           </p>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setDeleteConfirm(null)}>Cancel</Button>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                if (!deleteConfirm) return;
-                if (deleteConfirm.type === "cat") deleteCat(deleteConfirm.id);
-                else deleteType(deleteConfirm.id);
-              }}
-            >
-              Deactivate
-            </Button>
+            <Button variant="destructive" onClick={() => {
+              if (!deleteConfirm) return;
+              if (deleteConfirm.type === "cat") deleteCat(deleteConfirm.id);
+              else deleteType(deleteConfirm.id);
+            }}>Deactivate</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

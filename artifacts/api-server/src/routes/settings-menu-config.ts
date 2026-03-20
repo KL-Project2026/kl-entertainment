@@ -365,13 +365,93 @@ router.get("/settings/menu-config/categories/:id/branch-overrides",
   }
 );
 
+// GET /api/settings/menu-config/branch-overrides?branch_id=UUID
+// Returns ALL categories with their visibility status for a specific branch
+router.get("/settings/menu-config/branch-overrides",
+  authenticate,
+  requireRole(...READ_ROLES),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { branch_id } = req.query as Record<string, string>;
+
+      // branch_manager can only query their own branch
+      if (req.user?.role === ROLES.BRANCH_MANAGER && branch_id !== req.user?.branchId) {
+        res.status(403).json({ error: "BRANCH_ACCESS_DENIED", message: "You can only view overrides for your own branch." });
+        return;
+      }
+
+      if (!branch_id) {
+        res.status(400).json({ error: "BRANCH_ID_REQUIRED", message: "branch_id query parameter is required." });
+        return;
+      }
+
+      const { rows } = await pool.query(`
+        SELECT
+          g.id,
+          g.name,
+          g.icon,
+          g.sort_order,
+          g.is_active                                        AS global_is_active,
+          COALESCE(o.is_visible, g.is_active)                AS effective_visible,
+          o.is_visible                                       AS override_is_visible,
+          o.sort_order_override,
+          o.id                                               AS override_id,
+          o.updated_at                                       AS override_updated_at,
+          COUNT(DISTINCT t.id)::text                         AS type_count,
+          COUNT(DISTINCT p.id)::text                         AS item_count
+        FROM product_groups g
+        LEFT JOIN product_group_branch_overrides o
+          ON o.product_group_id = g.id AND o.branch_id = $1
+        LEFT JOIN product_types t ON t.group_id = g.id AND t.is_active = true
+        LEFT JOIN products      p ON p.type_id  = t.id AND p.deleted_at IS NULL
+        GROUP BY g.id, o.id
+        ORDER BY g.sort_order, g.name
+      `, [branch_id]);
+
+      res.json({
+        data: rows.map((r) => ({
+          id:                 r.id,
+          name:               r.name,
+          icon:               r.icon ?? "🍽️",
+          sortOrder:          r.sort_order,
+          globalIsActive:     r.global_is_active,
+          effectiveVisible:   r.effective_visible,
+          overrideIsVisible:  r.override_is_visible,   // null = no override
+          hasOverride:        r.override_id !== null,
+          overrideId:         r.override_id,
+          sortOrderOverride:  r.sort_order_override,
+          overrideUpdatedAt:  r.override_updated_at,
+          typeCount:          parseInt(r.type_count ?? "0"),
+          itemCount:          parseInt(r.item_count ?? "0"),
+        })),
+      });
+    } catch (err) {
+      console.error("menu-config branch-overrides GET:", err);
+      res.status(500).json({ error: "INTERNAL_ERROR" });
+    }
+  }
+);
+
 // PATCH /api/settings/menu-config/branch-override  (upsert)
+// Admin: any branch | branch_manager: own branch only
 router.patch("/settings/menu-config/branch-override",
   authenticate,
-  requireRole(...ADMIN_ONLY),
+  requireRole(...READ_ROLES),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const b = req.body as Record<string, unknown>;
+
+      // branch_manager can only manage their own branch
+      if (req.user?.role === ROLES.BRANCH_MANAGER) {
+        if (b.branchId !== req.user?.branchId) {
+          res.status(403).json({ error: "BRANCH_ACCESS_DENIED", message: "You can only manage overrides for your own branch." });
+          return;
+        }
+      } else if (![ROLES.SUPER_ADMIN, ROLES.ADMIN].includes(req.user?.role as string)) {
+        res.status(403).json({ error: "FORBIDDEN" });
+        return;
+      }
+
       const { rows } = await pool.query(`
         INSERT INTO product_group_branch_overrides
           (product_group_id, branch_id, is_visible, sort_order_override, updated_by, updated_at)
@@ -384,12 +464,47 @@ router.patch("/settings/menu-config/branch-override",
         RETURNING *
       `, [b.productGroupId, b.branchId, b.isVisible ?? true,
           b.sortOrderOverride ?? null, req.user?.id ?? null]);
+
       void writeAudit("BRANCH_VISIBILITY_CHANGED", "product_group",
         b.productGroupId as string, req.user?.id ?? null,
         b.branchId as string, null, { isVisible: b.isVisible }, req);
       res.json({ data: rows[0] });
     } catch (err) {
       console.error("menu-config branch override upsert:", err);
+      res.status(500).json({ error: "INTERNAL_ERROR" });
+    }
+  }
+);
+
+// DELETE /api/settings/menu-config/branch-override  (reset to global default)
+router.delete("/settings/menu-config/branch-override",
+  authenticate,
+  requireRole(...READ_ROLES),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const b = req.body as Record<string, unknown>;
+
+      if (req.user?.role === ROLES.BRANCH_MANAGER && b.branchId !== req.user?.branchId) {
+        res.status(403).json({ error: "BRANCH_ACCESS_DENIED" });
+        return;
+      } else if (![ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.BRANCH_MANAGER].includes(req.user?.role as string)) {
+        res.status(403).json({ error: "FORBIDDEN" });
+        return;
+      }
+
+      await pool.query(
+        `DELETE FROM product_group_branch_overrides
+         WHERE product_group_id=$1 AND branch_id=$2`,
+        [b.productGroupId, b.branchId]
+      );
+
+      void writeAudit("BRANCH_OVERRIDE_RESET", "product_group",
+        b.productGroupId as string, req.user?.id ?? null,
+        b.branchId as string, null, { reset: true }, req);
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error("menu-config branch override delete:", err);
       res.status(500).json({ error: "INTERNAL_ERROR" });
     }
   }
