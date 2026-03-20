@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Grid, Building2, Package, LogOut, CalendarDays,
   ShoppingCart, Users, CalendarCheck, Clock, Handshake, PieChart,
   LineChart, BarChart2, Globe, Receipt, Table2, FileBarChart, Menu, X,
-  UserCheck, Briefcase, Settings, ChevronDown,
+  UserCheck, Briefcase, Settings, ChevronDown, LayoutList,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
@@ -123,8 +123,9 @@ const CATEGORIES: CategoryDef[] = [
     icon: Settings,
     accent: "#6B7280",
     items: [
-      { path: "/branches",           key: "nav.branches",          icon: Building2, roles: ADMIN_UP },
-      { path: "/hostess-dashboard",  key: "nav.hostess_dashboard", icon: Users,     roles: ["super_admin", "admin", "branch_manager", "manager", "hostess"] },
+      { path: "/branches",             key: "nav.branches",          icon: Building2,  roles: ADMIN_UP },
+      { path: "/settings/menu-config", key: "nav.menu_config",       icon: LayoutList, roles: ADMIN_UP },
+      { path: "/hostess-dashboard",    key: "nav.hostess_dashboard", icon: Users,      roles: ["super_admin", "admin", "branch_manager", "manager", "hostess"] },
     ],
   },
 ];

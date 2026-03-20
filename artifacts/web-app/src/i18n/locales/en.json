@@ -21,7 +21,8 @@
     "settings": "Settings",
     "invoices": "Invoices",
     "tables": "Room & Table",
-    "daily_report": "Daily Report"
+    "daily_report": "Daily Report",
+    "menu_config": "Menu Config"
   },
   "auth": {
     "sign_in": "Sign In",

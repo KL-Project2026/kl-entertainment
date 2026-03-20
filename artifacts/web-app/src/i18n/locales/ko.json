@@ -17,7 +17,8 @@
     "settings": "설정",
     "invoices": "인보이스",
     "tables": "Room & Table",
-    "daily_report": "일일 리포트"
+    "daily_report": "일일 리포트",
+    "menu_config": "메뉴 설정"
   },
   "auth": {
     "sign_in": "로그인",

@@ -21,7 +21,8 @@
     "invoices": "Invois",
     "tables": "Room & Table",
     "daily_report": "Laporan Harian",
-    "settings": "Tetapan"
+    "settings": "Tetapan",
+    "menu_config": "Konfigurasi Menu"
   },
   "auth": {
     "sign_in": "Log Masuk",

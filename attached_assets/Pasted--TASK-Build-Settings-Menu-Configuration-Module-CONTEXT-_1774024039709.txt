@@ -1,0 +1,105 @@
+## TASK: Build "Settings › Menu Configuration" Module
+
+### CONTEXT
+Existing Karaoke/Entertainment Venue Management System.
+Stack: Node.js + Express + PostgreSQL + Socket.io + JWT RBAC (7 roles).
+Current state: Menu page exists (Item CRUD with Category/Sub-type tabs visible in UI).
+Settings section already exists in the sidebar navigation.
+
+**CRITICAL RULES — READ BEFORE ANY CODE:**
+1. Add-Only rule — NEVER delete or modify existing working code. All changes are additive.
+2. DO NOT touch the existing Menu page item CRUD logic.
+3. DO NOT modify existing menu_items, menu_categories, or any menu-related table columns.
+   Only ADD new columns or new tables if needed.
+4. Add redirect/fallback if any existing route is affected.
+5. Every new route must go through existing RBAC middleware.
+
+---
+
+### GOAL
+Separate "Menu Configuration" (Category + Sub-type management) out of the Menu item page
+and place it under Settings as a dedicated admin-only configuration page.
+
+The Menu page keeps: Item list, Add item, Edit item, Price, Status toggle.
+Settings › Menu Configuration handles: Category CRUD, Sub-type CRUD, display order, 
+tax mapping per category, commission defaults per category, branch-level visibility overrides.
+
+---
+
+### STEP 1 — DATABASE MIGRATION
+Run this migration ONLY if the columns/tables do not already exist.
+Check with IF NOT EXISTS on all statements.
+```sql
+-- 1A. Add missing columns to existing menu_categories table (if not already present)
+ALTER TABLE menu_categories
+  ADD COLUMN IF NOT EXISTS parent_id UUID REFERENCES menu_categories(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS icon VARCHAR(50) DEFAULT '🍽️',
+  ADD COLUMN IF NOT EXISTS sort_order INT DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS is_visible BOOLEAN DEFAULT TRUE,
+  ADD COLUMN IF NOT EXISTS tax_rate_override NUMERIC(5,4),
+    -- NULL = inherit branch default tax rate
+    -- e.g. 0.06 = 6% SST override for this category
+  ADD COLUMN IF NOT EXISTS commission_default_rate NUMERIC(5,4) DEFAULT 0,
+    -- Default hostess drink commission rate for items in this category
+    -- e.g. 0.10 = 10% per item sold
+  ADD COLUMN IF NOT EXISTS commission_default_flat NUMERIC(10,2) DEFAULT 0,
+    -- Flat MYR commission per item sold (alternative to rate)
+    -- commission_default_rate takes priority if both set
+  ADD COLUMN IF NOT EXISTS notes TEXT,
+  ADD COLUMN IF NOT EXISTS updated_by UUID REFERENCES users(id),
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+-- 1B. Branch-level category visibility override
+-- Allows ADMIN to hide a global category at a specific branch
+-- without deleting it or affecting other branches
+CREATE TABLE IF NOT EXISTS menu_category_branch_overrides (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  menu_category_id UUID NOT NULL REFERENCES menu_categories(id) ON DELETE CASCADE,
+  branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+  is_visible BOOLEAN NOT NULL DEFAULT TRUE,
+  sort_order_override INT,            -- NULL = use global sort_order
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_by UUID REFERENCES users(id),
+  UNIQUE(menu_category_id, branch_id)
+);
+
+-- 1C. Audit log for all menu config changes (admin-level operations)
+CREATE TABLE IF NOT EXISTS menu_config_audit_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  action VARCHAR(50) NOT NULL,        -- 'CATEGORY_CREATED', 'CATEGORY_UPDATED', 
+                                      -- 'SUBTYPE_DELETED', 'SORT_ORDER_CHANGED',
+                                      -- 'TAX_OVERRIDE_SET', 'BRANCH_VISIBILITY_CHANGED'
+  entity_type VARCHAR(50) NOT NULL,   -- 'menu_category'
+  entity_id UUID NOT NULL,
+  branch_id UUID REFERENCES branches(id),
+  changed_by UUID NOT NULL REFERENCES users(id),
+  old_value JSONB,                    -- snapshot before change
+  new_value JSONB,                    -- snapshot after change
+  ip_address VARCHAR(45),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 1D. Indexes
+CREATE INDEX IF NOT EXISTS idx_menu_cat_parent ON menu_categories(parent_id);
+CREATE INDEX IF NOT EXISTS idx_menu_cat_sort ON menu_categories(sort_order);
+CREATE INDEX IF NOT EXISTS idx_menu_cat_branch_override ON menu_category_branch_overrides(branch_id);
+CREATE INDEX IF NOT EXISTS idx_menu_config_audit_entity ON menu_config_audit_log(entity_id, created_at DESC);
+```
+
+---
+
+### STEP 2 — BACKEND ROUTES
+Create new file: `routes/settings-menu-config.js`
+Mount at: `app.use('/api/v1/settings/menu-config', settingsMenuConfigRouter)`
+
+Apply existing RBAC middleware on ALL routes.
+
+#### RBAC for this module:
+- GET (read) → ADMIN, STORE_MANAGER, SUPER_ADMIN
+- POST / PUT / PATCH / DELETE → ADMIN, SUPER_ADMIN only
+- STORE_MANAGER → read-only; branch override visibility toggle only (PATCH /branch-override)
+
+#### Endpoints to implement:
+
+**Categories**

@@ -21,7 +21,8 @@
     "invoices": "发票",
     "tables": "Room & Table",
     "daily_report": "日报",
-    "settings": "设置"
+    "settings": "设置",
+    "menu_config": "菜单配置"
   },
   "auth": {
     "sign_in": "登录",

@@ -12,6 +12,7 @@ import RoomBoard from "@/pages/room-board";
 import Branches from "@/pages/branches";
 import Products from "@/pages/products";
 import ProductDetail from "@/pages/product-detail";
+import SettingsMenuConfig from "@/pages/settings-menu-config";
 import Reservations from "@/pages/reservations";
 import ReservationDetail from "@/pages/reservation-detail";
 import BookingWizard from "@/pages/booking-wizard";
@@ -131,6 +132,7 @@ function Router() {
       <Route path="/branches" component={() => <ProtectedRoute component={Branches} />} />
       <Route path="/products" component={() => <ProtectedRoute component={Products} />} />
       <Route path="/products/:id" component={() => <ProtectedRoute component={ProductDetail} />} />
+      <Route path="/settings/menu-config" component={() => <ProtectedRoute component={SettingsMenuConfig} />} />
       <Route path="/reservations" component={() => <ProtectedRoute component={Reservations} />} />
       <Route path="/reservations/new" component={() => <ProtectedRoute component={BookingWizard} />} />
       <Route path="/reservations/:id" component={() => <AuthRoute component={ReservationDetail} />} />

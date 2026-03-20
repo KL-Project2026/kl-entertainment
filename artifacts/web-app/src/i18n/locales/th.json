@@ -17,7 +17,8 @@
     "invoices": "ใบแจ้งหนี้",
     "tables": "Room & Table",
     "daily_report": "รายงานประจำวัน",
-    "settings": "การตั้งค่า"
+    "settings": "การตั้งค่า",
+    "menu_config": "ตั้งค่าเมนู"
   },
   "auth": {
     "sign_in": "เข้าสู่ระบบ",
