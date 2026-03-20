@@ -2,9 +2,10 @@ import { execSync } from "child_process";
 import path from "path";
 import { pool } from "@workspace/db";
 
+// process.cwd() = workspace root in both dev (tsx) and production (node dist/index.cjs)
 const SQL_FILE = path.join(
-  new URL(".", import.meta.url).pathname,
-  "prod-full-seed.sql"
+  process.cwd(),
+  "artifacts/api-server/src/scripts/prod-full-seed.sql"
 );
 
 export async function initProductionDb(): Promise<void> {
