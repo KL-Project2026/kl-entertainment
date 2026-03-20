@@ -1,0 +1,502 @@
+You are building a feature for a multinational karaoke venue management system.
+Current stack: Node.js (Express) + PostgreSQL + Socket.io. ADDITIVE changes only —
+never delete or modify existing working code.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 FEATURE: Hostess Extended Profile Management
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## CONTEXT
+
+The existing `staff` table tracks all employees including hostesses (role = 'HOSTESS').
+We now need a SEPARATE `hostess_profiles` table that stores sensitive personal details
+ONLY for hostesses, linked 1:1 to the staff record. This separation is deliberate:
+- Staff table = operational identity (name, role, branch, login)
+- Hostess profile table = personal/commercial details (body stats, services, photos)
+
+This profile data is consumed by:
+1. Reservation module → guest requests specific hostess (preview card)
+2. Room Order module → hostess assignment panel
+3. Hostess self-portal → view own profile
+4. Manager panel → manage assignments, guest-hostess matching
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📐 DATABASE SCHEMA — CREATE THESE TABLES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Table 1: hostess_profiles
+-- 1:1 with staff table (staff.role = 'HOSTESS')
+
+CREATE TABLE hostess_profiles (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  staff_id            UUID NOT NULL UNIQUE REFERENCES staff(id) ON DELETE CASCADE,
+  branch_id           UUID NOT NULL REFERENCES branches(id),
+
+  -- Personal Details (PDPA-sensitive: encrypted at rest in production)
+  nationality         VARCHAR(100),           -- e.g. "Malaysian", "Thai", "Korean"
+  nationality_code    CHAR(2),                -- ISO 3166-1 alpha-2: MY, TH, KR, CN, SG
+  date_of_birth       DATE,                   -- derive age dynamically; never store raw age
+  height_cm           SMALLINT,               -- in cm (display conversion handled at API layer)
+  weight_kg           DECIMAL(5,2),           -- in kg
+  body_size           VARCHAR(10),            -- e.g. "S", "M", "L", "XL", or custom "34-26-36"
+  bust_cm             SMALLINT,               -- optional; display only if branch config allows
+  waist_cm            SMALLINT,
+  hip_cm              SMALLINT,
+
+  -- Profile Content
+  intro_text          TEXT,                   -- multilingual; max 500 chars
+  intro_translations  JSONB DEFAULT '{}',     -- {"zh": "...", "ko": "...", "th": "...", "en": "..."}
+  languages_spoken    TEXT[] DEFAULT '{}',    -- ["en", "zh", "ko", "ms", "th"]
+
+  -- Availability & Status
+  status              VARCHAR(20) DEFAULT 'active'
+                      CHECK (status IN ('active','inactive','suspended','on_leave')),
+  available_today     BOOLEAN DEFAULT false,  -- updated by shift check-in / manager toggle
+  
+  -- Operational
+  display_order       SMALLINT DEFAULT 0,     -- for UI ordering in selection panels
+  is_featured         BOOLEAN DEFAULT false,  -- highlight on reservation selection UI
+  
+  -- Agency link (null = direct hire)
+  agency_id           UUID REFERENCES agencies(id),
+  agency_hostess_code VARCHAR(50),            -- agency's internal reference code
+  
+  -- Audit
+  pdpa_consent_given  BOOLEAN DEFAULT false,
+  pdpa_consent_date   TIMESTAMPTZ,
+  pdpa_consent_ip     VARCHAR(45),
+  created_by          UUID REFERENCES staff(id),
+  updated_by          UUID REFERENCES staff(id),
+  created_at          TIMESTAMPTZ DEFAULT now(),
+  updated_at          TIMESTAMPTZ DEFAULT now(),
+  deleted_at          TIMESTAMPTZ             -- soft delete only; NEVER hard delete
+);
+
+-- INDEXES
+CREATE INDEX idx_hostess_profiles_branch ON hostess_profiles(branch_id);
+CREATE INDEX idx_hostess_profiles_status ON hostess_profiles(status);
+CREATE INDEX idx_hostess_profiles_nationality ON hostess_profiles(nationality_code);
+CREATE INDEX idx_hostess_profiles_available ON hostess_profiles(branch_id, available_today)
+  WHERE status = 'active' AND deleted_at IS NULL;
+
+
+### Table 2: hostess_services  (CHILD TABLE — 1:many)
+-- Each hostess can offer multiple services at different price points
+
+CREATE TABLE hostess_services (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  hostess_profile_id  UUID NOT NULL REFERENCES hostess_profiles(id) ON DELETE CASCADE,
+  
+  service_code        VARCHAR(50) NOT NULL,   -- e.g. "COMPANION", "SINGING", "POURING", "DANCE"
+  service_name        VARCHAR(100) NOT NULL,  -- display name (default language)
+  service_translations JSONB DEFAULT '{}',   -- {"zh": "陪唱", "ko": "동반", "th": "..."}
+  service_description TEXT,
+  
+  -- Pricing
+  price_amount        DECIMAL(10,2) NOT NULL,
+  currency_code       CHAR(3) NOT NULL DEFAULT 'MYR',  -- ISO 4217
+  price_unit          VARCHAR(20) DEFAULT 'per_hour'
+                      CHECK (price_unit IN ('per_hour','per_session','flat_rate','per_bottle')),
+  duration_minutes    SMALLINT,               -- null = unlimited / session-based
+  
+  -- Availability
+  is_active           BOOLEAN DEFAULT true,
+  min_booking_hours   SMALLINT DEFAULT 1,
+  requires_approval   BOOLEAN DEFAULT false,  -- manager must approve this service type
+  
+  -- Commission split for this service type
+  hostess_commission_pct  DECIMAL(5,2),       -- % of price_amount to hostess
+  agency_commission_pct   DECIMAL(5,2),       -- % if agency model (null for direct hire)
+  
+  display_order       SMALLINT DEFAULT 0,
+  created_at          TIMESTAMPTZ DEFAULT now(),
+  updated_at          TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX idx_hostess_services_profile ON hostess_services(hostess_profile_id);
+CREATE INDEX idx_hostess_services_active ON hostess_services(hostess_profile_id, is_active);
+
+
+### Table 3: hostess_photos  (CHILD TABLE — 1:many, max 7)
+-- Separate table for photo management; supports ordering & feature flagging
+
+CREATE TABLE hostess_photos (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  hostess_profile_id  UUID NOT NULL REFERENCES hostess_profiles(id) ON DELETE CASCADE,
+  
+  storage_key         VARCHAR(500) NOT NULL,  -- S3/Replit storage path key
+  original_filename   VARCHAR(255),
+  file_size_bytes     INTEGER,
+  mime_type           VARCHAR(50),            -- image/jpeg, image/webp, image/png
+  width_px            SMALLINT,
+  height_px           SMALLINT,
+  
+  -- Thumbnail variants (generated on upload)
+  thumb_key_sm        VARCHAR(500),           -- 200×200 (list view thumbnail)
+  thumb_key_md        VARCHAR(500),           -- 400×400 (card view)
+  thumb_key_lg        VARCHAR(500),           -- 800×800 (profile modal / full preview)
+  
+  is_primary          BOOLEAN DEFAULT false,  -- ONLY ONE per hostess; enforced by trigger
+  display_order       SMALLINT DEFAULT 0,     -- 0 = first shown
+  is_approved         BOOLEAN DEFAULT false,  -- manager must approve before shown to guests
+  approved_by         UUID REFERENCES staff(id),
+  approved_at         TIMESTAMPTZ,
+  
+  upload_by           UUID REFERENCES staff(id),
+  created_at          TIMESTAMPTZ DEFAULT now(),
+  deleted_at          TIMESTAMPTZ             -- soft delete; preserve for audit
+);
+
+-- CONSTRAINT: max 7 active photos per hostess
+-- Enforced in API layer + DB trigger (see trigger below)
+
+CREATE INDEX idx_hostess_photos_profile ON hostess_photos(hostess_profile_id);
+CREATE INDEX idx_hostess_photos_primary ON hostess_photos(hostess_profile_id, is_primary)
+  WHERE is_primary = true AND deleted_at IS NULL;
+
+-- Trigger: ensure only one primary photo per hostess
+CREATE OR REPLACE FUNCTION enforce_single_primary_photo()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.is_primary = true THEN
+    UPDATE hostess_photos
+    SET is_primary = false
+    WHERE hostess_profile_id = NEW.hostess_profile_id
+      AND id != NEW.id
+      AND deleted_at IS NULL;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_single_primary_photo
+BEFORE INSERT OR UPDATE ON hostess_photos
+FOR EACH ROW EXECUTE FUNCTION enforce_single_primary_photo();
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🖼️ PHOTO SPECIFICATIONS (enforce in API + document in UI)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Photo upload rules (implement as middleware + UI hints):
+
+  Minimum photos: 3
+  Maximum photos: 7
+  
+  RECOMMENDED upload:
+  - Aspect ratio:     3:4 portrait (ideal for card UI)
+  - Minimum size:     800 × 1067 px
+  - Recommended size: 1200 × 1600 px
+  - Max file size:    5 MB per photo (before compression)
+  - Accepted formats: JPEG, PNG, WEBP
+  - NO GIF, NO HEIC (server-side rejection)
+  
+  Auto-generate 3 thumbnail sizes on upload:
+  - SM: 200×267 px  → list thumbnail, availability panel
+  - MD: 400×533 px  → booking selection card
+  - LG: 800×1067 px → full profile modal, manager view
+  
+  Compression: convert all to WebP for storage efficiency
+  Naming convention: {hostess_profile_id}/{uuid}-{size}.webp
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔌 API ENDPOINTS — BUILD THESE ROUTES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Base path: /api/v1/hostess-profiles
+
+### Profile CRUD
+GET    /api/v1/hostess-profiles
+  → List all hostesses for branch (query: branch_id, status, available_today, nationality_code)
+  → RBAC: STORE_MANAGER, ADMIN, SUPER_ADMIN
+  → Returns: profile card data (NO weight/measurements unless role = MANAGER+)
+  → Includes: primary photo thumb_md URL, languages, service summary, available_today
+
+GET    /api/v1/hostess-profiles/:id
+  → Full profile detail
+  → RBAC: SELF (own profile) | STORE_MANAGER+ (any profile in branch) | ADMIN+
+  → Field masking: weight/measurements hidden from STAFF role
+
+POST   /api/v1/hostess-profiles
+  → Create hostess profile (links to existing staff_id)
+  → RBAC: STORE_MANAGER, ADMIN, SUPER_ADMIN
+  → Validates: staff_id exists + role = 'HOSTESS' + no existing profile
+  → Required: pdpa_consent_given = true before saving
+
+PATCH  /api/v1/hostess-profiles/:id
+  → Update profile fields
+  → RBAC: SELF (intro, languages only) | STORE_MANAGER+ (all fields)
+  → Audit: log every change with updated_by + timestamp
+
+DELETE /api/v1/hostess-profiles/:id
+  → Soft delete only (set deleted_at)
+  → RBAC: ADMIN, SUPER_ADMIN only
+  → Blocks delete if hostess has active/upcoming sessions
+
+### Services Sub-resource
+GET    /api/v1/hostess-profiles/:id/services
+POST   /api/v1/hostess-profiles/:id/services
+PATCH  /api/v1/hostess-profiles/:id/services/:serviceId
+DELETE /api/v1/hostess-profiles/:id/services/:serviceId (soft delete)
+  → RBAC: STORE_MANAGER, ADMIN, SUPER_ADMIN
+
+### Photo Management
+POST   /api/v1/hostess-profiles/:id/photos
+  → Multipart upload (max 7 active photos enforced)
+  → Trigger thumbnail generation pipeline
+  → Set is_approved = false by default (manager must approve)
+  → Return: { photo_id, thumb_sm, thumb_md, thumb_lg, is_approved }
+  → RBAC: SELF (upload own) | STORE_MANAGER+ (upload for any)
+
+GET    /api/v1/hostess-profiles/:id/photos
+  → RBAC-aware response:
+    STORE_MANAGER+ → all photos (including unapproved)
+    STAFF/SELF     → only approved photos
+    
+PATCH  /api/v1/hostess-profiles/:id/photos/:photoId
+  → Update: display_order, is_primary, is_approved
+  → Approval action: STORE_MANAGER+ only; logs approved_by + approved_at
+
+DELETE /api/v1/hostess-profiles/:id/photos/:photoId
+  → Soft delete (deleted_at). Enforce minimum 3 approved photos check.
+  → If deleting primary: promote next photo by display_order to primary
+
+PATCH  /api/v1/hostess-profiles/:id/photos/reorder
+  → Body: [{ photo_id, display_order }]
+  → Batch update display_order for drag-and-drop UI
+
+### Availability (used by Reservation + Room Order modules)
+GET    /api/v1/hostess-profiles/available
+  → Query: branch_id (required), date, time_start, duration_hours
+  → Returns hostesses who are: status=active + shift scheduled + not assigned in time window
+  → Includes: primary photo (thumb_md), name, languages, services summary
+  → Used by: Reservation wizard step "Select Hostess", Room Order panel
+  → RBAC: STAFF, STORE_MANAGER, ADMIN, SUPER_ADMIN
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔐 RBAC FIELD MASKING RULES (implement in response serializer)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Define a hostessProfileSerializer(profile, requestingRole) function:
+
+Role: SUPER_ADMIN, ADMIN, STORE_MANAGER
+  → All fields visible including measurements, DOB, agency_id
+
+Role: HOSTESS (self only)
+  → All fields EXCEPT agency_id, agency_hostess_code, commission percentages
+
+Role: STAFF, DRIVER
+  → Visible: id, display_name, languages_spoken, primary photo (approved only),
+              services (names only, NO prices), available_today
+  → Hidden: DOB, height, weight, bust/waist/hip, nationality, intro_text
+  → Purpose: just enough for room service context
+
+Role: CUSTOMER (future self-booking portal)
+  → Visible: display_name (alias, NOT real name), languages_spoken,
+              primary + approved photos only, services (names + prices),
+              intro_text
+  → Hidden: ALL physical measurements, nationality, DOB, real name
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🖥️ UI COMPONENTS — BUILD THESE SCREENS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+### Screen 1: Hostess Profile List (Manager View)
+- Route: /staff/hostesses
+- Grid layout: 3–4 cards per row (responsive)
+- Each card shows:
+  → Primary photo (thumb_md, 3:4 ratio)
+  → Display name + nationality flag emoji
+  → Status badge (active/inactive/on_leave)
+  → Language chips (EN, 中文, 한국어, etc.)
+  → available_today toggle (green/grey pill, clickable by manager)
+  → Service count + starting price ("Services from MYR 80/hr")
+  → Quick action: Edit | View | Toggle Availability
+- Filter bar: Branch | Status | Nationality | Available Today | Agency/Direct
+- Sort: Name | Display Order | Recently Updated
+
+### Screen 2: Hostess Profile Detail / Edit Form
+- Route: /staff/hostesses/:id/edit
+- Tabs:
+  TAB 1: Basic Info
+    → Staff link (read-only: name, staff_id, branch)
+    → Nationality (dropdown, ISO country list with flags)
+    → Date of Birth (date picker → shows calculated age display)
+    → Height (cm) | Weight (kg) — numeric inputs
+    → Body Size: dropdown (XS/S/M/L/XL/XXL) + optional custom (bust-waist-hip in cm)
+    → Languages Spoken: multi-select chip input
+    → Status selector
+    → PDPA Consent checkbox (required; show consent date if already given)
+    
+  TAB 2: Introduction
+    → Tab per language: EN | 中文 | 한국어 | ภาษาไทย | BM
+    → Textarea per language (max 500 chars, live counter)
+    → is_featured toggle
+    → Display Order (number input)
+    
+  TAB 3: Services & Pricing
+    → Table of hostess_services rows
+    → Columns: Service Name | Price | Unit | Duration | Commission % | Active | Actions
+    → "Add Service" button → inline row or modal form
+    → Service code uses predefined list (COMPANION, POURING, SINGING, DANCE, CUSTOM)
+    → For CUSTOM: free-text service name + translation fields
+    → Drag to reorder
+    
+  TAB 4: Photos
+    → Upload zone with drag-and-drop
+    → Show recommended specs inline:
+      "📐 Recommended: 1200×1600px (3:4 portrait) | Max 5MB | JPEG/PNG/WEBP"
+      "Upload 3–7 photos. First approved photo = shown in booking selection."
+    → Photo grid (up to 7):
+      Each photo tile:
+        - Thumbnail preview
+        - Approval badge (Approved ✓ / Pending Review)
+        - [Set as Primary] button (only on approved photos)
+        - [Approve] button (STORE_MANAGER+ only)
+        - [Delete] ×
+        - Drag handle for reorder
+    → Progress bar during upload
+    → Error states: "Minimum 3 photos required", "Maximum 7 photos reached"
+
+### Screen 3: Hostess Availability Panel (used in Reservation + Room Order)
+- Component: <HostessAvailabilityPanel branchId sessionStart sessionEnd />
+- Compact card grid (thumb_sm + name + languages + price from)
+- Available = green ring on photo; unavailable = greyed out with reason tooltip
+- Clicking card: expand to show service options + select button
+- Integrates with GET /api/v1/hostess-profiles/available
+- Shows "Guest Preference" badge if guest has a saved preferred hostess
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚙️ BUSINESS LOGIC — IMPLEMENT THESE RULES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. AGE DISPLAY: Never store "age" field.
+   → Derive: SELECT EXTRACT(YEAR FROM AGE(NOW(), date_of_birth)) AS age
+   → API always returns calculated age, not raw DOB to non-manager roles
+
+2. PHOTO MINIMUM ENFORCEMENT:
+   → Cannot set status = 'active' if approved photos < 3
+   → API returns 422 with message: "Minimum 3 approved photos required to activate profile"
+
+3. PHOTO APPROVAL WORKFLOW:
+   → Uploaded photos default to is_approved = false
+   → Only STORE_MANAGER+ can approve photos
+   → Unapproved photos: visible only to MANAGER+ roles
+   → Emit Socket.io event: "hostess:photo:pending_approval" → notify manager dashboard
+
+4. PDPA CONSENT:
+   → Profile cannot be activated without pdpa_consent_given = true
+   → Store: consent_date, consent_ip at time of consent action
+   → Consent is per-hostess, recorded once; re-consent required if profile transferred to new branch
+   // MIGRATION NOTE: In .NET production, replace with PDPA consent service with versioned consent records
+
+5. AVAILABILITY CALCULATION:
+   → available_today is a soft toggle (manager can override for "on call" scenarios)
+   → True availability check (for booking) uses shift schedule:
+     SELECT hp.* FROM hostess_profiles hp
+     JOIN shifts s ON s.staff_id = hp.staff_id
+     WHERE s.shift_date = $date
+       AND s.start_time <= $requested_start
+       AND s.end_time >= $requested_end
+       AND NOT EXISTS (
+         SELECT 1 FROM hostess_assignments ha
+         WHERE ha.hostess_profile_id = hp.id
+           AND ha.status IN ('confirmed','in_progress')
+           AND ha.start_time < $requested_end
+           AND ha.end_time > $requested_start
+       )
+
+6. SERVICE PRICING + COMMISSION:
+   → When hostess is assigned to a session, copy service price at time of booking
+     into the assignment record (price_snapshot) — do NOT reference live price
+   → This prevents price changes affecting historical commissions
+   // MIGRATION NOTE: In .NET, implement as value object snapshot in Event Sourcing
+
+7. AUDIT LOG: Every create/update/delete on all three tables must write to audit_log:
+   { table_name, record_id, action, changed_fields, old_values, new_values,
+     performed_by, performed_at, ip_address }
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🌍 INTERNATIONALIZATION REQUIREMENTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- intro_translations JSONB supports: { "en", "zh-Hans", "zh-Hant", "ko", "th", "ms" }
+- service_translations JSONB same structure
+- API response: include translations object in full profile response
+- UI: show translation tabs in edit form; fallback to "en" if translation missing
+- nationality_code ISO 3166-1 alpha-2; UI shows flag emoji derived from code
+- Currency display: use branch.currency_code for all price displays; never hardcode MYR
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📁 FILE STRUCTURE — ADD THESE FILES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+server/
+  models/
+    hostessProfile.js         ← DB queries for hostess_profiles
+    hostessService.js         ← DB queries for hostess_services
+    hostessPhoto.js           ← DB queries for hostess_photos
+  routes/
+    hostessProfiles.js        ← All /api/v1/hostess-profiles routes
+  middleware/
+    hostessPhotoUpload.js     ← Multer config + size/type validation
+    hostessFieldMask.js       ← Role-based field serializer
+  services/
+    hostessAvailability.js    ← Availability calculation logic
+    hostessPhotoProcessor.js  ← Thumbnail generation (sharp library)
+  migrations/
+    YYYYMMDD_add_hostess_profile_tables.sql
+
+client/src/
+  pages/staff/
+    HostessList.jsx           ← Grid list view
+    HostessProfileForm.jsx    ← Create/Edit form with tabs
+  components/hostess/
+    HostessCard.jsx           ← Card component (list + booking views)
+    HostessAvailabilityPanel.jsx  ← Used in Reservation + Room Order
+    HostessPhotoUploader.jsx  ← Photo upload zone with preview
+    HostessServiceTable.jsx   ← Services CRUD inline table
+    HostessFieldMask.jsx      ← HOC for RBAC field visibility
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📦 DEPENDENCIES TO ADD
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+server:
+  sharp          ← image resizing + WebP conversion (thumbnail pipeline)
+  multer         ← multipart file upload middleware
+  multer-storage-engine or @replit/object-storage  ← storage backend
+
+client:
+  react-dropzone        ← drag-and-drop photo upload zone
+  react-beautiful-dnd   ← photo reorder drag-and-drop
+  flag-icons (npm)      ← nationality flag display from ISO code
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ CRITICAL CONSTRAINTS — NEVER VIOLATE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+❌ Never expose physical measurements (height/weight/bust-waist-hip) to STAFF or CUSTOMER roles
+❌ Never hard-delete photos — always soft delete (deleted_at); storage cleanup = separate job
+❌ Never store "age" as a column — always derive from date_of_birth
+❌ Never activate a profile without PDPA consent recorded
+❌ Never allow more than 7 photos per hostess (enforce in API, not just UI)
+❌ Never allow less than 3 approved photos for active status
+❌ Never show unapproved photos outside MANAGER+ roles
+❌ Never use real name in CUSTOMER-facing endpoints — use display_name alias only
+❌ Never calculate commission from live service price — always use price_snapshot at assignment time
+❌ Never modify existing staff table structure — hostess_profiles is an EXTENSION, not a replacement
+
+// MIGRATION NOTE: When moving to .NET:
+// - hostessPhotoProcessor.js → ImageSharp (.NET) pipeline
+// - Multer → ASP.NET Core IFormFile + custom middleware
+// - Socket.io photo approval event → SignalR hub notification
+// - sharp thumbnail generation → background job via Hangfire or IHostedService

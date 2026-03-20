@@ -17,6 +17,8 @@ import BookingWizard from "@/pages/booking-wizard";
 import POS from "@/pages/pos";
 import Staff from "@/pages/staff";
 import StaffDetail from "@/pages/staff-detail";
+import HostessProfiles from "@/pages/hostess-profiles";
+import HostessProfileDetail from "@/pages/hostess-profile-detail";
 import ScheduleBuilder from "@/pages/schedule-builder";
 import Attendance from "@/pages/attendance";
 import Agents from "@/pages/agents";
@@ -130,6 +132,8 @@ function Router() {
       <Route path="/reservations/:id" component={() => <AuthRoute component={ReservationDetail} />} />
       <Route path="/pos" component={() => <ProtectedRoute component={POS} />} />
       <Route path="/staff" component={() => <AuthRoute component={Staff} />} />
+      <Route path="/staff/hostesses" component={() => <AuthRoute component={HostessProfiles} />} />
+      <Route path="/staff/hostesses/:id" component={() => <AuthRoute component={HostessProfileDetail} />} />
       <Route path="/staff/:id" component={() => <AuthRoute component={StaffDetail} />} />
       <Route path="/schedule-builder" component={() => <AuthRoute component={ScheduleBuilder} />} />
       <Route path="/attendance" component={() => <AuthRoute component={Attendance} />} />

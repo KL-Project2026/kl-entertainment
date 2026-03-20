@@ -26,6 +26,7 @@ import tablesApiRouter from "./tables-api";
 import managerRouter from "./manager";
 import hostessPortalRouter from "./hostess-portal";
 import driverRouter from "./driver";
+import hostessProfilesRouter from "./hostess-profiles";
 
 const router: IRouter = Router();
 
@@ -56,5 +57,6 @@ router.use(tablesApiRouter);
 router.use(managerRouter);
 router.use(hostessPortalRouter);
 router.use(driverRouter);
+router.use(hostessProfilesRouter);
 
 export default router;
