@@ -1,0 +1,206 @@
+# KL Project — P6: 최종 검증 & 통합 테스트
+> P5 완료 후 실행하세요.
+> 코드를 수정하지 않고 기능을 검증합니다.
+
+---
+
+## 역할
+당신은 KL Project의 QA 엔지니어입니다.
+**코드를 수정하지 말고**, 아래 체크리스트를 순서대로 실행하고 결과를 보고하세요.
+
+---
+
+## 검증 체크리스트
+
+### A. DB 확인
+```sql
+-- 각 쿼리를 실행하고 결과 건수 보고
+
+SELECT COUNT(*) FROM attendance;
+SELECT COUNT(*) FROM availability_blocks;
+SELECT COUNT(*) FROM folio_entries;
+SELECT COUNT(*) FROM invoices;
+SELECT COUNT(*) FROM payments;
+SELECT COUNT(*) FROM receipts;
+SELECT COUNT(*) FROM hostess_sessions;
+SELECT COUNT(*) FROM hostess_payouts;
+SELECT COUNT(*) FROM agent_commissions;
+SELECT COUNT(*) FROM expenses;
+SELECT COUNT(*) FROM tables;
+SELECT COUNT(*) FROM staff_schedules;
+
+-- 트리거 확인
+SELECT trigger_name, event_object_table
+FROM information_schema.triggers
+WHERE trigger_name = 'trg_calc_hours';
+
+-- 함수 확인
+SELECT routine_name FROM information_schema.routines
+WHERE routine_name IN ('generate_invoice_no','generate_receipt_no','calc_hours_worked');
+```
+
+### B. API 엔드포인트 확인
+```
+아래 API가 200 응답을 반환하는지 확인:
+
+GET  /api/attendance/staff/1       → 200 (또는 빈 배열)
+GET  /api/attendance/hostess/1     → 200
+GET  /api/availability/rooms       → 200
+GET  /api/folio/1                  → 200 (또는 빈 Folio)
+GET  /api/invoices                 → 200
+GET  /api/accounts/guest/1         → 200
+GET  /api/accounts/hostess/1       → 200
+GET  /api/accounts/daily           → 200
+```
+
+### C. 공통 컴포넌트 파일 존재 확인
+```
+src/utils/constants.js                       존재 여부
+src/utils/formatters.js                      존재 여부
+src/utils/useHoverRow.js                     존재 여부
+src/components/shared/StatusBadge.jsx        존재 여부
+src/components/shared/AttendanceTab.jsx      존재 여부
+src/components/shared/AvailabilityCalendar.jsx 존재 여부
+src/components/shared/AccountTab.jsx         존재 여부
+src/components/shared/FolioView.jsx          존재 여부
+```
+
+### D. 페이지 탭 확인 (브라우저에서 직접 확인)
+```
+아래 페이지를 열고 탭 목록 보고:
+
+/staff/[id]       탭: [기본 정보] [출퇴근] [Account]       있음/없음
+/hostesses/[id]   탭: [기본 정보] [세션] [출퇴근] [Account] 있음/없음
+/rooms/[id]       탭: [기본 정보] [가용성] [Account]        있음/없음
+/guests/[id]      탭: [...] [Account]                       있음/없음
+/agents/[id]      탭: [...] [Account]                       있음/없음
+/reservations/[id] 탭: [...] [Folio]                        있음/없음
+```
+
+### E. Hover 색상 확인
+```
+아래 페이지에서 마우스를 행/카드 위에 올렸을 때:
+
+/reservations   → 금색 반투명 배경 적용 여부
+/guests         → 금색 반투명 배경 적용 여부
+/rooms          → 금색 반투명 배경 적용 여부
+/staff          → 금색 반투명 배경 적용 여부
+
+확인: 글자색 변경 없음 (배경만 변경)
+확인: hover 시 cursor가 pointer로 변경
+```
+
+### F. 클릭 → 상세 이동 확인
+```
+아래를 클릭하고 이동 여부 확인:
+
+예약 목록에서 행 클릭      → /reservations/:id 이동
+게스트 목록에서 행 클릭    → /guests/:id 이동
+룸 목록에서 행 클릭        → /rooms/:id 이동
+Room Board 셀 클릭         → /rooms/:id 이동
+```
+
+### G. Edit 기능 확인
+```
+아래 상세 페이지에서:
+
+1. "편집" 버튼 존재 여부
+2. 클릭 시 입력 폼으로 전환 여부
+3. "취소" 클릭 시 원래 상태 복원 여부
+4. "저장" 버튼 색상이 #D1AE38 (금색) 여부
+```
+
+### H. 출퇴근 탭 확인
+```
+/staff/[id] 또는 /hostesses/[id] 에서 출퇴근 탭:
+
+1. 탭 클릭 시 출퇴근 화면 표시
+2. "출근" 버튼 표시 여부
+3. 월 선택 필터 작동 여부
+4. 기록 테이블 표시 여부
+```
+
+### I. 가용성 탭 확인
+```
+/rooms/[id] 에서 가용성 탭:
+
+1. 24시간 그리드 표시 여부
+2. 날짜 선택 변경 시 업데이트 여부
+3. "차단 추가" 버튼 존재 여부
+```
+
+### J. 기존 기능 영향 없음 확인
+```
+아래 기존 기능이 여전히 작동하는지 확인:
+
+1. 로그인 (있다면)
+2. 예약 생성
+3. 기존 예약 조회
+4. Room Board 표시
+5. POS 기능 (있다면)
+6. 기타 P0에서 확인된 기존 기능
+```
+
+---
+
+## 발견된 문제 처리
+
+문제가 발견되면 아래 형식으로 기록하고 수정합니다:
+
+```
+[문제 #1]
+페이지: /staff/1
+증상: 출퇴근 탭 클릭 시 "AttendanceTab is not defined" 에러
+원인: AttendanceTab import 경로 오류
+수정: import 경로를 '../components/shared/AttendanceTab'으로 수정
+결과: ✅ 해결
+```
+
+---
+
+## 최종 보고 형식
+
+```
+══════════════════════════════════════════════════════════
+  KL PROJECT — 통합 업데이트 최종 검증 보고
+  완료일: [날짜]
+══════════════════════════════════════════════════════════
+
+A. DB 테이블
+   신규 생성: 12개 ✅
+   트리거: calc_hours_worked ✅
+   함수: generate_invoice_no, generate_receipt_no ✅
+
+B. API
+   출퇴근 API: 6개 ✅
+   가용성 API: 6개 ✅
+   회계 API: 11개 ✅
+
+C. 공통 컴포넌트: 8개 ✅
+
+D. 탭 추가
+   Staff      ✅   Hostess   ✅
+   Room       ✅   Guest     ✅
+   Agent      ✅   Reservation ✅
+
+E. Hover 색상: ✅ (rgba(209,174,56,0.15) 적용)
+   글자색 변경: ✅ 없음
+
+F. Click → Detail: ✅ 전체 적용
+
+G. Edit 기능: ✅ 전체 적용
+
+H. 출퇴근 탭: ✅
+
+I. 가용성 탭: ✅
+
+J. 기존 기능 영향: ✅ 없음
+
+발견된 문제: [건수]
+해결된 문제: [건수]
+미해결 문제: [건수 + 내용]
+
+══════════════════════════════════════════════════════════
+  전체 업데이트 완료
+══════════════════════════════════════════════════════════
+```
