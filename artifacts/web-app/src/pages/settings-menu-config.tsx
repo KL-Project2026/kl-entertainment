@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { DashboardLayout } from "@/components/layout";
 import { useAuthStore } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -1031,7 +1030,7 @@ export default function SettingsMenuConfig() {
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <DashboardLayout>
+    <>
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -1441,7 +1440,7 @@ export default function SettingsMenuConfig() {
           filterEntityName={auditEntityName}
         />
       )}
-    </DashboardLayout>
+    </>
   );
 }
 
