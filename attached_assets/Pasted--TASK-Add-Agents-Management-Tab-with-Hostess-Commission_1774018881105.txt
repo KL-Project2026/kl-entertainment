@@ -1,0 +1,130 @@
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TASK: Add "Agents" Management Tab with Hostess Commission Integration
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+You are working on a Multinational Karaoke Business Management System 
+(Node.js + Express + PostgreSQL + Socket.io on Replit).
+The system already has: branches, rooms, reservations, hostess profiles, 
+POS/folio, commission engine, RBAC (7 roles), and investor dashboard.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## OBJECTIVE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Add a new "Agents" tab to the existing navigation. 
+This feature manages talent agencies (에이전시) that supply hostesses to 
+the venue, tracks per-agent hostess assignments, commission splits, 
+account summaries, and full revenue drill-downs per hostess.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## PART 1 — DATABASE SCHEMA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Add these tables to the existing PostgreSQL schema (ADDITIVE ONLY — do 
+NOT modify existing tables):
+```sql
+-- 에이전트(에이전시) 프로파일
+CREATE TABLE agents (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  branch_id       UUID REFERENCES branches(id),
+  agent_code      VARCHAR(20) UNIQUE NOT NULL,   -- e.g. AGT-001
+  company_name    VARCHAR(200) NOT NULL,
+  contact_person  VARCHAR(100),
+  phone           VARCHAR(30),
+  email           VARCHAR(150),
+  profile_image_url TEXT,                        -- photo or logo URL
+  address         TEXT,
+  notes           TEXT,
+  is_active       BOOLEAN DEFAULT true,
+  
+  -- Bank Information (결제/정산 은행 정보)
+  bank_name       VARCHAR(100),
+  bank_account_number VARCHAR(50),
+  bank_account_name   VARCHAR(100),
+  bank_swift_code VARCHAR(30),
+  bank_country    VARCHAR(10) DEFAULT 'MY',
+  
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 호스티스↔에이전트 연결 + 커미션 비율 계약
+CREATE TABLE agent_hostess_contracts (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agent_id        UUID REFERENCES agents(id) ON DELETE CASCADE,
+  hostess_id      UUID REFERENCES hostesses(id) ON DELETE CASCADE,
+  
+  -- Commission Split (커미션 분배율)
+  venue_commission_rate   DECIMAL(5,2) NOT NULL,  -- 호스티스가 받는 % (e.g. 60.00)
+  agent_commission_rate   DECIMAL(5,2) NOT NULL,  -- 에이전시가 받는 % (e.g. 40.00)
+  -- NOTE: venue_rate + agent_rate = 100.00 always
+  
+  session_fee_split       DECIMAL(5,2) DEFAULT 60.00, -- 세션피 기준 호스티스 몫
+  drink_commission_split  DECIMAL(5,2) DEFAULT 50.00, -- 음료 커미션 기준 호스티스 몫
+  package_commission_split DECIMAL(5,2) DEFAULT 55.00,
+  
+  contract_start  DATE NOT NULL,
+  contract_end    DATE,                           -- NULL = indefinite
+  is_active       BOOLEAN DEFAULT true,
+  
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(agent_id, hostess_id, contract_start)
+);
+
+-- 에이전트별 정산 인보이스 (매월/격주 정산)
+CREATE TABLE agent_invoices (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agent_id        UUID REFERENCES agents(id),
+  invoice_number  VARCHAR(50) UNIQUE NOT NULL,
+  period_start    DATE NOT NULL,
+  period_end      DATE NOT NULL,
+  total_sessions  INT DEFAULT 0,
+  gross_revenue   DECIMAL(12,2) DEFAULT 0,
+  agent_cut_amount DECIMAL(12,2) DEFAULT 0,
+  status          VARCHAR(20) DEFAULT 'pending', -- pending / approved / paid / disputed
+  paid_at         TIMESTAMPTZ,
+  notes           TEXT,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+After adding tables, run a SEED script:
+- Randomly assign agents to ~80% of existing hostesses 
+  (use random() < 0.8 in SQL or JS shuffle logic)
+- Create 4–6 sample agents with realistic Malaysian/Thai/Korean company names
+- Generate sample agent_hostess_contracts with varied commission splits:
+  e.g. 60/40, 65/35, 55/45, 70/30
+- Update hostesses.agent_id (add column if not exists) for easy lookup
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## PART 2 — BACKEND API ROUTES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Create file: routes/agents.js
+Add to server.js: app.use('/api/agents', agentsRouter)
+
+Required endpoints:
+
+### Agent CRUD
+GET    /api/agents                     → list all agents (branch-scoped)
+GET    /api/agents/:id                 → single agent detail
+POST   /api/agents                     → create agent
+PUT    /api/agents/:id                 → update agent (profile + bank info)
+DELETE /api/agents/:id                 → soft delete (set is_active=false)
+
+### Agent ↔ Hostess
+GET    /api/agents/:id/hostesses       
+  → returns all hostesses under this agent
+  → include per-hostess: 
+     name, photo, status (active/inactive), 
+     venue_commission_rate, agent_commission_rate,
+     contract_start, contract_end,
+     total_sessions_ytd, total_revenue_ytd, 
+     agent_cut_ytd, hostess_earnings_ytd
+
+POST   /api/agents/:id/hostesses       → assign hostess to agent with contract terms
+PUT    /api/agents/:id/hostesses/:hostessId → update commission split
+DELETE /api/agents/:id/hostesses/:hostessId → remove hostess from agent (end contract)
+
+### Account Summary (Accounts tab within Agent detail)
+GET    /api/agen...

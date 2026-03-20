@@ -43,7 +43,7 @@ interface AccountSummary {
     grossRevenue: number; agentTotalCut: number; hostessTotalEarnings: number;
   };
   hostessBreakdown: {
-    staffId: string; name: string; photoUrl: string | null;
+    contractId: string; staffId: string; name: string; photoUrl: string | null;
     sessionsCount: number; grossRevenue: number; agentCut: number;
     hostessEarnings: number; commissionRate: string;
   }[];
@@ -234,7 +234,7 @@ function RevenueModal({ agencyId, contractId, contractName, from, to, onClose }:
           </div>
         ) : isLoading ? (
           <div className="py-8 text-center text-muted-foreground">Loading sessions…</div>
-        ) : !detail || detail.sessions.length === 0 ? (
+        ) : !detail?.sessions || detail.sessions.length === 0 ? (
           <div className="py-8 text-center text-muted-foreground">No sessions found for this period.</div>
         ) : (
           <>
@@ -589,7 +589,7 @@ export default function AgencyDetail() {
                             <td className="text-center py-2 pr-4 text-xs font-mono">{h.commissionRate}</td>
                             <td className="text-center py-2">
                               <button
-                                onClick={() => setRevenueModal({ contractId: h.staffId, name: h.name })}
+                                onClick={() => setRevenueModal({ contractId: h.contractId, name: h.name })}
                                 className="text-muted-foreground hover:text-primary transition-colors"
                               >
                                 <BarChart2 className="w-4 h-4" />

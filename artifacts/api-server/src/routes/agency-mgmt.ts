@@ -226,7 +226,7 @@ router.patch(
         bankCountry: "bank_country", commissionRate: "commission_rate",
         paymentCycle: "payment_cycle",
       };
-      const sets: string[] = ["updated_at = NOW()"];
+      const sets: string[] = [];
       const params: unknown[] = [];
       let p = 1;
       for (const [jsKey, dbCol] of Object.entries(allowedFields)) {
@@ -235,6 +235,7 @@ router.patch(
           params.push(req.body[jsKey]);
         }
       }
+      if (!sets.length) { res.status(400).json({ error: "No fields to update" }); return; }
       params.push(id);
       const { rows } = await pool.query(
         `UPDATE agents SET ${sets.join(", ")} WHERE id = $${p} AND deleted_at IS NULL RETURNING *`,
@@ -281,7 +282,7 @@ router.post(
       if (!req.file) { res.status(400).json({ error: "No file uploaded" }); return; }
       const imageUrl = `/uploads/agency-images/${req.file.filename}`;
       await pool.query(
-        "UPDATE agents SET profile_image_url = $1, updated_at = NOW() WHERE id = $2",
+        "UPDATE agents SET profile_image_url = $1 WHERE id = $2",
         [imageUrl, id]
       );
       res.json({ imageUrl });
@@ -536,6 +537,7 @@ router.get(
       // Hostess breakdown
       const { rows: breakdownRows } = await pool.query(
         `SELECT
+           ahc.id AS contract_id,
            s.id AS staff_id,
            s.full_name,
            ( SELECT storage_key FROM hostess_photos ph WHERE ph.hostess_profile_id = hp.id AND ph.is_primary = true AND ph.deleted_at IS NULL LIMIT 1 ) AS photo_url,
@@ -554,7 +556,7 @@ router.get(
            AND hs.start_at::date BETWEEN $2::date AND $3::date
            AND hs.status = 'active'
          WHERE ahc.agent_id = $1 AND ahc.is_active = true AND hp.deleted_at IS NULL
-         GROUP BY s.id, hp.id, ahc.venue_commission_rate, ahc.agent_commission_rate
+         GROUP BY ahc.id, s.id, hp.id, ahc.venue_commission_rate, ahc.agent_commission_rate
          ORDER BY gross_revenue DESC`,
         [id, fromDate, toDate]
       );
@@ -575,6 +577,7 @@ router.get(
           hostessTotalEarnings,
         },
         hostessBreakdown: breakdownRows.map(r => ({
+          contractId: r.contract_id,
           staffId: r.staff_id,
           name: r.full_name,
           photoUrl: r.photo_url ?? null,
@@ -623,8 +626,8 @@ router.get(
         `SELECT
            hs.id,
            hs.start_at::date AS session_date,
-           r.reservation_code,
-           rm.room_number AS room_name,
+           r.reservation_no AS reservation_code,
+           rm.name AS room_name,
            hs.hours_worked,
            hs.gross_amount,
            hs.gross_amount * $3::decimal / 100 AS agent_cut,
