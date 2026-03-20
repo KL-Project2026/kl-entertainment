@@ -11,6 +11,7 @@ import Dashboard from "@/pages/dashboard";
 import RoomBoard from "@/pages/room-board";
 import Branches from "@/pages/branches";
 import Products from "@/pages/products";
+import ProductDetail from "@/pages/product-detail";
 import Reservations from "@/pages/reservations";
 import ReservationDetail from "@/pages/reservation-detail";
 import BookingWizard from "@/pages/booking-wizard";
@@ -129,6 +130,7 @@ function Router() {
       <Route path="/room-board" component={() => <ProtectedRoute component={RoomBoard} />} />
       <Route path="/branches" component={() => <ProtectedRoute component={Branches} />} />
       <Route path="/products" component={() => <ProtectedRoute component={Products} />} />
+      <Route path="/products/:id" component={() => <ProtectedRoute component={ProductDetail} />} />
       <Route path="/reservations" component={() => <ProtectedRoute component={Reservations} />} />
       <Route path="/reservations/new" component={() => <ProtectedRoute component={BookingWizard} />} />
       <Route path="/reservations/:id" component={() => <AuthRoute component={ReservationDetail} />} />

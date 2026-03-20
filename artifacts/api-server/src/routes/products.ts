@@ -89,6 +89,35 @@ router.post(
   }
 );
 
+// Single product
+router.get(
+  "/products/:id",
+  authenticate,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { rows } = await pool.query(
+        `SELECT p.*,
+                pt.name   AS type_name,
+                pg.id     AS group_id,
+                pg.name   AS group_name,
+                b.name    AS branch_name
+         FROM products p
+         LEFT JOIN product_types  pt ON p.type_id    = pt.id
+         LEFT JOIN product_groups pg ON pt.group_id   = pg.id
+         LEFT JOIN branches        b ON p.branch_id   = b.id
+         WHERE p.id = $1 AND p.deleted_at IS NULL`,
+        [req.params.id]
+      );
+      if (!rows.length) { res.status(404).json({ error: "NOT_FOUND" }); return; }
+      const lang = getLang(req);
+      res.json({ data: formatProductDetail(rows[0], lang) });
+    } catch (err) {
+      console.error("Get product error:", err);
+      res.status(500).json({ error: "INTERNAL_ERROR" });
+    }
+  }
+);
+
 // Products
 router.get(
   "/products",
@@ -153,23 +182,29 @@ router.put(
       const body = req.body as Record<string, unknown>;
       const { rows } = await pool.query(
         `UPDATE products
-         SET name = COALESCE($1::jsonb, name),
-             sku = COALESCE($2, sku),
-             unit_price = COALESCE($3, unit_price),
-             unit = COALESCE($4, unit),
-             tax_applicable = COALESCE($5, tax_applicable),
-             sort_order = COALESCE($6, sort_order),
-             is_active = COALESCE($7, is_active)
-         WHERE id = $8 AND deleted_at IS NULL
+         SET name          = COALESCE($1::jsonb, name),
+             description   = COALESCE($2::jsonb, description),
+             sku           = COALESCE($3, sku),
+             unit_price    = COALESCE($4, unit_price),
+             unit          = COALESCE($5, unit),
+             tax_applicable= COALESCE($6, tax_applicable),
+             sort_order    = COALESCE($7, sort_order),
+             is_active     = COALESCE($8, is_active)
+         WHERE id = $9 AND deleted_at IS NULL
          RETURNING *`,
-        [body.name ? JSON.stringify(body.name) : null,
-         body.sku, body.unitPrice, body.unit, body.taxApplicable,
-         body.sortOrder, body.isActive, req.params.id]
+        [
+          body.name        ? JSON.stringify(body.name)        : null,
+          body.description ? JSON.stringify(body.description) : null,
+          body.sku        ?? null,
+          body.unitPrice  ?? null,
+          body.unit       ?? null,
+          body.taxApplicable !== undefined ? body.taxApplicable : null,
+          body.sortOrder  ?? null,
+          body.isActive   !== undefined ? body.isActive : null,
+          req.params.id,
+        ]
       );
-      if (!rows.length) {
-        res.status(404).json({ error: "NOT_FOUND" });
-        return;
-      }
+      if (!rows.length) { res.status(404).json({ error: "NOT_FOUND" }); return; }
       const lang = getLang(req);
       res.json({ data: formatProduct(rows[0], lang) });
     } catch (err) {
@@ -221,6 +256,21 @@ function formatType(row: Record<string, unknown>) {
     sortOrder: row.sort_order,
     isActive: row.is_active,
     createdAt: row.created_at,
+  };
+}
+
+function formatProductDetail(row: Record<string, unknown>, lang: string) {
+  const base = formatProduct(row, lang);
+  const typeName  = row.type_name  as Record<string, string> | null;
+  const groupName = row.group_name as Record<string, string> | null;
+  return {
+    ...base,
+    typeId:      row.type_id   ?? null,
+    typeName:    typeName  ? (typeName[lang]  ?? typeName["en"]  ?? "") : null,
+    groupId:     row.group_id  ?? null,
+    groupName:   groupName ? (groupName[lang] ?? groupName["en"] ?? "") : null,
+    branchName:  row.branch_name ?? null,
+    description: row.description ?? null,
   };
 }
 
