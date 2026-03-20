@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { useAuthStore } from "@/lib/auth";
+import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -204,6 +205,7 @@ export default function HostessProfiles() {
   const available = profiles.filter(p => p.availableToday).length;
 
   return (
+    <DashboardLayout>
     <div className="p-6 space-y-6 max-w-[1600px]">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -292,5 +294,6 @@ export default function HostessProfiles() {
         </div>
       )}
     </div>
+    </DashboardLayout>
   );
 }

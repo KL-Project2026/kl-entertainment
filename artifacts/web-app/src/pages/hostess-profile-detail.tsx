@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/lib/auth";
+import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -210,12 +211,13 @@ export default function HostessProfileDetail() {
   });
 
   // ─── Render ──────────────────────────────────────────────────
-  if (isLoading) return <div className="p-8 text-muted-foreground">Loading profile…</div>;
-  if (!profile) return <div className="p-8 text-muted-foreground">Profile not found.</div>;
+  if (isLoading) return <DashboardLayout><div className="p-8 text-muted-foreground">Loading profile…</div></DashboardLayout>;
+  if (!profile) return <DashboardLayout><div className="p-8 text-muted-foreground">Profile not found.</div></DashboardLayout>;
 
   const countryInfo = COUNTRIES.find(c => c.code === merged.nationalityCode);
 
   return (
+    <DashboardLayout>
     <div className="p-6 max-w-5xl space-y-6">
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
@@ -705,5 +707,6 @@ export default function HostessProfileDetail() {
         </div>
       )}
     </div>
+    </DashboardLayout>
   );
 }
