@@ -1,7 +1,8 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
 import { authenticate } from "../middleware/auth";
-import { investorOnly } from "../middleware/rbac";
+import { investorOnly, requireRole } from "../middleware/rbac";
+import { runNightlyJob } from "../jobs/investorReportJob";
 import { getInvestorDashboardSnapshot } from "../services/pnl-service";
 import { getRevenueReport } from "../services/reports-service";
 
@@ -482,6 +483,23 @@ router.post(
     } catch (err) {
       console.error("[Investor] POST /reports error:", err);
       res.status(500).json({ error: "Failed to create report" });
+    }
+  }
+);
+
+// ── POST /api/admin/reports/regenerate ────────────────────────────────────
+// Manually trigger the nightly investor report aggregation job (admin only)
+router.post(
+  "/admin/reports/regenerate",
+  authenticate,
+  requireRole("super_admin", "admin"),
+  async (_req: Request, res: Response): Promise<void> => {
+    try {
+      await runNightlyJob();
+      res.json({ message: "Investor report regeneration triggered successfully." });
+    } catch (err) {
+      console.error("[Admin] reports/regenerate error:", err);
+      res.status(500).json({ error: "Report generation failed", detail: (err as Error).message });
     }
   }
 );

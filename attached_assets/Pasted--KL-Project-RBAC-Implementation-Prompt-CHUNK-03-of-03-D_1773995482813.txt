@@ -1,0 +1,1039 @@
+# KL Project — RBAC Implementation Prompt
+## CHUNK 03 of 03: Driver / Customer Portals + Nightly Job + Nav Guard + Final Integration
+---
+
+> ⚠️ DO NOT START THIS CHUNK until Chunk 01 AND Chunk 02 completion checklists are 100% green.
+
+---
+
+## 🔴 FINAL SAFETY RULES
+
+```
+RULE A — Chunks 01 and 02 must be fully working before this chunk.
+          Confirm: all routes from Chunks 01–02 return correct responses.
+          Confirm: no console errors, no server crash.
+
+RULE B — Nightly aggregation job (cron) must NEVER modify live tables.
+          It ONLY reads from existing tables and WRITES to investor_reports.
+          Test it manually before scheduling — run once, verify output, then schedule.
+
+RULE C — Customer portal must have ZERO access to operational data.
+          After implementing, run the verification queries in Step 7
+          to confirm API-level blocking is working.
+
+RULE D — Navigation guard component wraps existing nav — does not replace it.
+          Read your existing NavBar/Sidebar component fully before wrapping.
+          Test every role's navigation after implementing.
+
+RULE E — This is the FINAL integration chunk.
+          After completing all steps, run the FULL E2E test suite in Step 8
+          before declaring the RBAC implementation complete.
+```
+
+---
+
+## 📦 CHUNK 03 SCOPE
+
+1. Driver portal — API routes + mobile dashboard
+2. Customer self-service portal — API routes + frontend
+3. Nightly investor_reports aggregation job (cron)
+4. Role-based navigation guard component
+5. Field masking middleware (passport, payment tokens)
+6. PDPA consent flag middleware
+7. Security verification queries
+8. Full E2E test checklist
+
+---
+
+## STEP 1 — DRIVER API ROUTES (New — Additive)
+
+Create `/src/routes/driver.js`:
+
+```javascript
+// ============================================================
+// FILE: /src/routes/driver.js  (NEW FILE)
+// ACTION: CREATE — no existing file modified
+// Mount: app.use('/api/driver', driverRoutes)
+// ============================================================
+
+const express = require('express');
+const router  = express.Router();
+const auth    = require('../middleware/auth');
+const { requireRole } = require('../middleware/rbac');
+const { ROLES } = require('../constants/roles');
+
+const driverAccess = requireRole(
+  ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.STORE_MANAGER, ROLES.DRIVER
+);
+
+// ── GET /api/driver/my-jobs ───────────────────────────────
+// Driver sees ONLY assigned pickup_requests
+// ⚠️  reservation_id, room_number, payment_amount — never returned
+router.get('/my-jobs', auth, driverAccess, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const role   = req.user.role;
+
+    // If STORE_MANAGER / ADMIN: can see all or filter by driver_id
+    const targetDriverId = (role === ROLES.DRIVER)
+      ? userId
+      : (req.query.driver_id || null);
+
+    let whereClause = 'WHERE pr.is_active = true';
+    const params = [];
+    let paramIndex = 1;
+
+    if (targetDriverId) {
+      whereClause += ` AND pr.driver_id = $${paramIndex++}`;
+      params.push(targetDriverId);
+    }
+
+    const result = await db.query(
+      `SELECT
+         pr.id,
+         pr.scheduled_time,
+         pr.pickup_location,
+         pr.dropoff_location,
+         pr.passenger_name,
+         pr.passenger_phone,
+         pr.notes,
+         pr.status,
+         -- ⚠️ The following fields intentionally OMITTED for driver role:
+         -- pr.reservation_id    → hidden
+         -- pr.room_number       → hidden
+         -- pr.payment_amount    → hidden
+         -- pr.vip_level         → hidden
+         -- pr.customer_profile_id → hidden
+         CASE WHEN $${paramIndex} IN ('SUPER_ADMIN', 'ADMIN', 'STORE_MANAGER')
+           THEN pr.reservation_id::TEXT
+           ELSE NULL
+         END AS reservation_id
+       FROM pickup_requests pr
+       ${whereClause}
+       ORDER BY pr.scheduled_time ASC`,
+      [...params, req.user.role]
+    );
+
+    res.json({ data: result.rows });
+  } catch (err) {
+    console.error('[Driver] my-jobs error:', err);
+    res.status(500).json({ error: 'Failed to fetch jobs' });
+  }
+});
+
+// ── PATCH /api/driver/jobs/:id/status ────────────────────
+// Driver updates job status only (no other fields)
+router.patch('/jobs/:id/status', auth, driverAccess, async (req, res) => {
+  try {
+    const { id }     = req.params;
+    const { status } = req.body;
+    const userId     = req.user.id;
+    const role       = req.user.role;
+
+    // Valid status transitions for driver
+    const allowedStatuses = ['EN_ROUTE', 'ARRIVED', 'PASSENGER_ONBOARD', 'COMPLETED', 'ISSUE_REPORTED'];
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        error: 'Invalid status value',
+        allowed: allowedStatuses,
+      });
+    }
+
+    // Verify the job belongs to this driver (DRIVER role only)
+    let ownershipCheck = '';
+    const params = [status, id];
+    if (role === ROLES.DRIVER) {
+      ownershipCheck = 'AND driver_id = $3';
+      params.push(userId);
+    }
+
+    const result = await db.query(
+      `UPDATE pickup_requests
+       SET status = $1, updated_at = NOW()
+       WHERE id = $2 ${ownershipCheck}
+       RETURNING id, status`,
+      params
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Job not found or not assigned to you.' });
+    }
+
+    res.json({ message: 'Status updated', job: result.rows[0] });
+  } catch (err) {
+    console.error('[Driver] status update error:', err);
+    res.status(500).json({ error: 'Status update failed' });
+  }
+});
+
+// ── POST /api/driver/messages ─────────────────────────────
+// Driver sends message to branch dispatcher
+router.post('/messages', auth, driverAccess, async (req, res) => {
+  try {
+    const { message, job_id } = req.body;
+    const userId  = req.user.id;
+    const branchId = req.user.branch_id;
+
+    if (!message?.trim()) {
+      return res.status(400).json({ error: 'Message cannot be empty' });
+    }
+
+    const result = await db.query(
+      `INSERT INTO driver_messages
+         (driver_id, branch_id, job_id, message, sent_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       RETURNING id, sent_at`,
+      [userId, branchId, job_id || null, message.trim()]
+    );
+
+    res.json({ message: 'Message sent', id: result.rows[0].id });
+  } catch (err) {
+    console.error('[Driver] message send error:', err);
+    res.status(500).json({ error: 'Failed to send message' });
+  }
+});
+
+module.exports = router;
+```
+
+---
+
+## STEP 2 — CUSTOMER PORTAL API ROUTES (New — Additive)
+
+Create `/src/routes/customer.js`:
+
+```javascript
+// ============================================================
+// FILE: /src/routes/customer.js  (NEW FILE)
+// ACTION: CREATE — no existing file modified
+// Mount: app.use('/api/customer', customerRoutes)
+// ⚠️  Every endpoint in this file enforces SELF_ONLY at query level
+// ============================================================
+
+const express = require('express');
+const router  = express.Router();
+const auth    = require('../middleware/auth');
+const { requireRole } = require('../middleware/rbac');
+const { ROLES } = require('../constants/roles');
+
+const customerAccess = requireRole(
+  ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.STORE_MANAGER, ROLES.CUSTOMER
+);
+
+// ── GET /api/customer/my-reservations ────────────────────
+// ⚠️  SELF_ONLY enforced at SQL level — customer_id = $1 = req.user.id
+// ⚠️  Sensitive fields (net_revenue, hostess_assigned, etc.) excluded
+router.get('/my-reservations', auth, customerAccess, async (req, res) => {
+  try {
+    const customerId = req.user.id;
+    const role       = req.user.role;
+
+    // ADMIN/MANAGER can view any customer's reservations via query param
+    const targetId = (role === ROLES.CUSTOMER)
+      ? customerId
+      : (req.query.customer_id || customerId);
+
+    const result = await db.query(
+      `SELECT
+         r.id,
+         r.checkin_date,
+         r.checkout_date,
+         r.status,
+         rt.name         AS room_type,
+         b.name          AS branch_name,
+         b.address       AS branch_address,
+
+         -- room_number only revealed post check-in
+         CASE WHEN r.status = 'CHECKED_IN' THEN rm.room_number ELSE NULL END AS room_number,
+
+         -- Display price only — no internal cost fields
+         r.total_amount  AS booking_amount_display,
+         r.currency_code,
+
+         -- ⚠️ The following intentionally omitted:
+         -- r.net_revenue, r.cost_price, r.ota_commission
+         -- r.hostess_assigned, r.internal_notes
+         -- r.blacklist_flag, r.channel_source
+         NULL AS net_revenue,
+         NULL AS hostess_assigned
+
+       FROM reservations r
+       JOIN branches b   ON b.id = r.branch_id
+       LEFT JOIN rooms rm ON rm.id = r.room_id
+       LEFT JOIN room_types rt ON rt.id = rm.room_type_id
+       WHERE r.customer_id = $1
+       ORDER BY r.checkin_date DESC`,
+      [targetId]
+    );
+
+    res.json({ data: result.rows });
+  } catch (err) {
+    console.error('[Customer] my-reservations error:', err);
+    res.status(500).json({ error: 'Failed to fetch reservations' });
+  }
+});
+
+// ── PATCH /api/customer/reservations/:id/cancel ──────────
+// Customer can cancel within policy window — SOFT CANCEL only
+router.patch('/reservations/:id/cancel', auth, customerAccess, async (req, res) => {
+  try {
+    const { id }    = req.params;
+    const { reason } = req.body;
+    const customerId = req.user.id;
+    const role       = req.user.role;
+
+    // Verify ownership (CUSTOMER role only)
+    let ownerCheck = '';
+    const params = [id];
+    if (role === ROLES.CUSTOMER) {
+      ownerCheck = 'AND customer_id = $2';
+      params.push(customerId);
+    }
+
+    // Check cancellation policy window (MVP: allow always — refine in Phase 2)
+    const resCheck = await db.query(
+      `SELECT id, status, checkin_date FROM reservations
+       WHERE id = $1 ${ownerCheck}`,
+      params
+    );
+
+    if (resCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Reservation not found.' });
+    }
+
+    const reservation = resCheck.rows[0];
+    if (['CANCELLED', 'CHECKED_IN', 'CHECKED_OUT'].includes(reservation.status)) {
+      return res.status(409).json({
+        error: `Cannot cancel a reservation with status: ${reservation.status}`,
+      });
+    }
+
+    // ✅ SOFT CANCEL — update status only, no DELETE
+    await db.query(
+      `UPDATE reservations
+       SET
+         status           = 'CANCELLED',
+         cancellation_reason = $1,
+         cancelled_by     = $2,
+         cancelled_at     = NOW()
+       WHERE id = $3`,
+      [reason || 'Cancelled by customer', customerId, id]
+    );
+
+    res.json({ message: 'Reservation cancelled successfully.' });
+  } catch (err) {
+    console.error('[Customer] cancel reservation error:', err);
+    res.status(500).json({ error: 'Cancellation failed. Please contact support.' });
+  }
+});
+
+// ── GET /api/customer/my-invoices ─────────────────────────
+// ⚠️  SELF_ONLY — only own invoices returned
+router.get('/my-invoices', auth, customerAccess, async (req, res) => {
+  try {
+    const customerId = req.user.id;
+    const role       = req.user.role;
+    const targetId   = (role === ROLES.CUSTOMER) ? customerId : (req.query.customer_id || customerId);
+
+    const result = await db.query(
+      `SELECT
+         i.id, i.invoice_number, i.issued_at,
+         i.total_amount, i.currency_code, i.status,
+         b.name AS branch_name
+       FROM invoices i
+       JOIN reservations r ON r.id = i.reservation_id
+       JOIN branches b     ON b.id = r.branch_id
+       WHERE r.customer_id = $1
+         AND i.status != 'VOIDED'
+       ORDER BY i.issued_at DESC`,
+      [targetId]
+    );
+
+    res.json({ data: result.rows });
+  } catch (err) {
+    console.error('[Customer] my-invoices error:', err);
+    res.status(500).json({ error: 'Failed to fetch invoices' });
+  }
+});
+
+// ── GET /api/customer/my-profile ──────────────────────────
+router.get('/my-profile', auth, customerAccess, async (req, res) => {
+  try {
+    const customerId = req.user.id;
+
+    const result = await db.query(
+      `SELECT
+         c.id, c.first_name, c.last_name, c.email,
+         c.phone, c.preferred_language, c.nationality,
+         c.loyalty_tier, c.loyalty_points,
+         c.room_preference, c.beverage_preference,
+         c.marketing_opt_in, c.pdpa_consent_at,
+         -- ⚠️ Intentionally omitted: blacklist_flag, blacklist_reason,
+         --    vip_tier_internal, internal_notes, payment_token
+         NULL AS blacklist_flag
+       FROM customers c
+       WHERE c.id = $1`,
+      [customerId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Profile not found.' });
+    }
+
+    res.json({ data: result.rows[0] });
+  } catch (err) {
+    console.error('[Customer] my-profile error:', err);
+    res.status(500).json({ error: 'Failed to fetch profile' });
+  }
+});
+
+module.exports = router;
+```
+
+---
+
+## STEP 3 — NIGHTLY INVESTOR REPORT AGGREGATION JOB
+
+Create `/src/jobs/investorReportJob.js`:
+
+```javascript
+// ============================================================
+// FILE: /src/jobs/investorReportJob.js  (NEW FILE)
+// PURPOSE: Nightly job that pre-aggregates data into investor_reports
+// ⚠️  READ-ONLY on all live tables — only WRITES to investor_reports
+// ⚠️  Uses INSERT ... ON CONFLICT DO UPDATE (upsert) — idempotent
+// ⚠️  Test manually once before scheduling: node investorReportJob.js
+// ============================================================
+
+const db = require('../db'); // ← your existing DB client
+
+/**
+ * generateInvestorReport
+ * Aggregates data for a given branch and period (YYYY-MM).
+ * SAFE: uses only SELECT on live tables, UPSERT on investor_reports.
+ */
+const generateInvestorReport = async (tenantId, branchId, period) => {
+  console.log(`[InvestorJob] Generating report: tenant=${tenantId} branch=${branchId} period=${period}`);
+
+  try {
+    // ── 1. Revenue aggregation from invoices / pos_orders ──────
+    // ⚠️  Adjust table/column names to match your actual schema
+    const revenueResult = await db.query(
+      `SELECT
+         COALESCE(SUM(CASE WHEN i.category = 'ROOM'      THEN i.amount ELSE 0 END), 0) AS room_revenue,
+         COALESCE(SUM(CASE WHEN i.category = 'BEVERAGE'  THEN i.amount ELSE 0 END), 0) AS beverage_revenue,
+         COALESCE(SUM(CASE WHEN i.category = 'FOOD'      THEN i.amount ELSE 0 END), 0) AS food_revenue,
+         COALESCE(SUM(CASE WHEN i.category = 'PACKAGE'   THEN i.amount ELSE 0 END), 0) AS package_revenue,
+         COALESCE(SUM(CASE WHEN i.category NOT IN ('ROOM','BEVERAGE','FOOD','PACKAGE')
+                           THEN i.amount ELSE 0 END), 0)                                AS other_revenue,
+         COALESCE(SUM(i.amount), 0)                                                     AS total_revenue
+       FROM invoices i
+       WHERE i.branch_id = $1
+         AND i.status = 'PAID'
+         AND TO_CHAR(i.issued_at, 'YYYY-MM') = $2`,
+      [branchId, period]
+    );
+    const rev = revenueResult.rows[0];
+
+    // ── 2. Commission expense aggregation ──────────────────────
+    // ⚠️  Aggregate total only — no per-hostess breakdown
+    const commissionResult = await db.query(
+      `SELECT COALESCE(SUM(net_payable), 0) AS total_commission
+       FROM commissions
+       WHERE branch_id = $1
+         AND TO_CHAR(session_date, 'YYYY-MM') = $2
+         AND status = 'SETTLED'`,
+      [branchId, period]
+    );
+    const totalCommission = commissionResult.rows[0]?.total_commission || 0;
+
+    // ── 3. Room utilization ────────────────────────────────────
+    const utilizationResult = await db.query(
+      `SELECT
+         COUNT(DISTINCT r.id)                          AS total_rooms,
+         COUNT(DISTINCT CASE WHEN res.status = 'CHECKED_IN'
+               OR res.status = 'CHECKED_OUT'
+               THEN res.room_id END)                   AS occupied_rooms,
+         COUNT(DISTINCT res.id)                        AS total_sessions,
+         COUNT(DISTINCT res.customer_id)               AS unique_customers,
+         COALESCE(AVG(i.amount), 0)                    AS avg_spend
+       FROM rooms r
+       LEFT JOIN reservations res ON res.room_id = r.id
+         AND TO_CHAR(res.checkin_date, 'YYYY-MM') = $2
+       LEFT JOIN invoices i ON i.reservation_id = res.id
+         AND i.status = 'PAID'
+       WHERE r.branch_id = $1`,
+      [branchId, period]
+    );
+    const util = utilizationResult.rows[0];
+    const totalRooms    = parseInt(util.total_rooms || 1);
+    const occupiedRooms = parseInt(util.occupied_rooms || 0);
+    const utilPct       = totalRooms > 0 ? ((occupiedRooms / totalRooms) * 100).toFixed(2) : 0;
+
+    // ── 4. P&L calculation ─────────────────────────────────────
+    const totalRevenue      = parseFloat(rev.total_revenue);
+    const totalOpCost       = parseFloat(totalCommission); // MVP: commission only; add more in Phase 2
+    const grossProfit       = totalRevenue - totalOpCost;
+    const netProfit         = grossProfit; // MVP: no tax deduction yet
+
+    // ── 5. Get branch name ─────────────────────────────────────
+    const branchResult = await db.query(
+      'SELECT name FROM branches WHERE id = $1',
+      [branchId]
+    );
+    const branchName = branchResult.rows[0]?.name || `Branch ${branchId}`;
+
+    // ── 6. Upsert into investor_reports ───────────────────────
+    // ⚠️  ON CONFLICT DO UPDATE — idempotent, safe to re-run
+    await db.query(
+      `INSERT INTO investor_reports (
+         tenant_id, branch_id, branch_name, period,
+         total_revenue, room_revenue, beverage_revenue,
+         food_revenue, package_revenue, other_revenue,
+         total_operating_cost, total_commission_expense,
+         gross_profit, net_profit,
+         room_utilization_pct, total_sessions,
+         unique_customers, avg_spend_per_session,
+         generated_at, generated_by
+       ) VALUES (
+         $1, $2, $3, $4,
+         $5, $6, $7, $8, $9, $10,
+         $11, $12, $13, $14,
+         $15, $16, $17, $18,
+         NOW(), 'SYSTEM_NIGHTLY_JOB'
+       )
+       ON CONFLICT (tenant_id, branch_id, period) DO UPDATE SET
+         total_revenue           = EXCLUDED.total_revenue,
+         room_revenue            = EXCLUDED.room_revenue,
+         beverage_revenue        = EXCLUDED.beverage_revenue,
+         food_revenue            = EXCLUDED.food_revenue,
+         package_revenue         = EXCLUDED.package_revenue,
+         other_revenue           = EXCLUDED.other_revenue,
+         total_operating_cost    = EXCLUDED.total_operating_cost,
+         total_commission_expense = EXCLUDED.total_commission_expense,
+         gross_profit            = EXCLUDED.gross_profit,
+         net_profit              = EXCLUDED.net_profit,
+         room_utilization_pct    = EXCLUDED.room_utilization_pct,
+         total_sessions          = EXCLUDED.total_sessions,
+         unique_customers        = EXCLUDED.unique_customers,
+         avg_spend_per_session   = EXCLUDED.avg_spend_per_session,
+         generated_at            = NOW()`,
+      [
+        tenantId, branchId, branchName, period,
+        totalRevenue, parseFloat(rev.room_revenue), parseFloat(rev.beverage_revenue),
+        parseFloat(rev.food_revenue), parseFloat(rev.package_revenue), parseFloat(rev.other_revenue),
+        totalOpCost, parseFloat(totalCommission),
+        grossProfit, netProfit,
+        utilPct, parseInt(util.total_sessions),
+        parseInt(util.unique_customers), parseFloat(util.avg_spend),
+      ]
+    );
+
+    console.log(`[InvestorJob] ✅ Report generated: branch=${branchId} period=${period} revenue=${totalRevenue}`);
+    return { success: true, period, branchId };
+
+  } catch (err) {
+    // ⚠️  Log error but DO NOT crash — allow other branches to continue
+    console.error(`[InvestorJob] ❌ Failed: branch=${branchId} period=${period}`, err.message);
+    return { success: false, error: err.message };
+  }
+};
+
+/**
+ * runNightlyJob
+ * Iterates all active branches and generates reports for current + previous month.
+ * Safe to run multiple times — idempotent upsert.
+ */
+const runNightlyJob = async () => {
+  console.log('[InvestorJob] Starting nightly aggregation...');
+
+  try {
+    const now     = new Date();
+    const periods = [
+      `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,  // current month
+      `${now.getFullYear()}-${String(now.getMonth()).padStart(2, '0')}`,       // previous month
+    ].filter(p => p !== `${now.getFullYear()}-00`); // guard against January edge case
+
+    const branchesResult = await db.query(
+      'SELECT id, tenant_id FROM branches WHERE is_active = true'
+    );
+
+    for (const branch of branchesResult.rows) {
+      for (const period of periods) {
+        await generateInvestorReport(branch.tenant_id, branch.id, period);
+      }
+    }
+
+    console.log('[InvestorJob] ✅ Nightly aggregation complete.');
+  } catch (err) {
+    console.error('[InvestorJob] ❌ Nightly job failed:', err);
+  }
+};
+
+// ── Schedule: run at 02:00 AM daily ───────────────────────
+// ⚠️  Only schedule after manual test confirms correct output
+// Using node-cron (npm install node-cron)
+// Uncomment after manual verification:
+/*
+const cron = require('node-cron');
+cron.schedule('0 2 * * *', runNightlyJob, {
+  timezone: 'Asia/Kuala_Lumpur', // ← set to your primary timezone
+});
+console.log('[InvestorJob] Nightly cron scheduled at 02:00 KL time');
+*/
+
+// ── Manual trigger endpoint (ADMIN only) ──────────────────
+// Add to your admin routes:
+// router.post('/admin/reports/regenerate', auth, requireRole('ADMIN','SUPER_ADMIN'), async (req, res) => {
+//   await runNightlyJob();
+//   res.json({ message: 'Report regeneration triggered' });
+// });
+
+module.exports = { runNightlyJob, generateInvestorReport };
+```
+
+---
+
+## STEP 4 — ROLE-BASED NAVIGATION GUARD COMPONENT
+
+```jsx
+// ============================================================
+// FILE: /src/components/RoleBasedNav.jsx  (NEW FILE)
+// PURPOSE: Renders nav items based on current user role
+// ⚠️  This WRAPS your existing NavBar — does not replace it
+// ⚠️  Find your existing NavBar/Sidebar, then add this logic
+// ============================================================
+
+import React from 'react';
+
+// Navigation item definition — add all menu items here
+// visible_to: array of roles that can see this item
+const NAV_ITEMS = [
+  // ── Super Admin only ──────────────────────────────────────
+  { label: 'Platform Management', path: '/platform',      icon: '⚙️',  visible_to: ['SUPER_ADMIN'] },
+  { label: 'System Configuration', path: '/system-config', icon: '🔧', visible_to: ['SUPER_ADMIN'] },
+  { label: 'All Tenants',          path: '/tenants',       icon: '🏢', visible_to: ['SUPER_ADMIN'] },
+
+  // ── Admin + Super Admin ───────────────────────────────────
+  { label: 'Branch Management',    path: '/branches',      icon: '🏪', visible_to: ['SUPER_ADMIN', 'ADMIN'] },
+  { label: 'Staff Management',     path: '/staff',         icon: '👥', visible_to: ['SUPER_ADMIN', 'ADMIN'] },
+  { label: 'Commission Policies',  path: '/commission-policies', icon: '💰', visible_to: ['SUPER_ADMIN', 'ADMIN'] },
+  { label: 'Investor Access',      path: '/investor-mgmt', icon: '📊', visible_to: ['SUPER_ADMIN', 'ADMIN'] },
+  { label: 'P&L Reports',          path: '/reports/pnl',   icon: '📈', visible_to: ['SUPER_ADMIN', 'ADMIN'] },
+
+  // ── Investor only ─────────────────────────────────────────
+  { label: 'Investor Dashboard',   path: '/investor/dashboard', icon: '💹', visible_to: ['INVESTOR'] },
+  { label: 'Financial Reports',    path: '/investor/reports',   icon: '📋', visible_to: ['INVESTOR', 'ADMIN', 'SUPER_ADMIN'] },
+
+  // ── Manager + above ───────────────────────────────────────
+  { label: 'Room Board',           path: '/room-board',    icon: '🎤', visible_to: ['SUPER_ADMIN', 'ADMIN', 'STORE_MANAGER'] },
+  { label: 'Reservations',         path: '/reservations',  icon: '📅', visible_to: ['SUPER_ADMIN', 'ADMIN', 'STORE_MANAGER'] },
+  { label: 'Customers',            path: '/customers',     icon: '👤', visible_to: ['SUPER_ADMIN', 'ADMIN', 'STORE_MANAGER'] },
+  { label: 'Hostess Management',   path: '/hostesses',     icon: '🎵', visible_to: ['SUPER_ADMIN', 'ADMIN', 'STORE_MANAGER'] },
+  { label: 'Agent Management',     path: '/agents',        icon: '🤝', visible_to: ['SUPER_ADMIN', 'ADMIN'] },
+  { label: 'POS',                  path: '/pos',           icon: '🧾', visible_to: ['SUPER_ADMIN', 'ADMIN', 'STORE_MANAGER', 'STAFF_CASHIER', 'STAFF_WAITER'] },
+  { label: 'Products & Menu',      path: '/products',      icon: '🍾', visible_to: ['SUPER_ADMIN', 'ADMIN', 'STORE_MANAGER', 'STAFF_BARTENDER'] },
+  { label: 'Pickup Management',    path: '/pickups',       icon: '🚗', visible_to: ['SUPER_ADMIN', 'ADMIN', 'STORE_MANAGER'] },
+  { label: 'Daily Report',         path: '/reports/daily', icon: '📊', visible_to: ['SUPER_ADMIN', 'ADMIN', 'STORE_MANAGER'] },
+
+  // ── Hostess only ──────────────────────────────────────────
+  { label: 'My Dashboard',         path: '/hostess/dashboard',     icon: '🎤', visible_to: ['HOSTESS'] },
+  { label: 'My Commission',        path: '/hostess/my-commissions', icon: '💴', visible_to: ['HOSTESS'] },
+
+  // ── Staff only ────────────────────────────────────────────
+  { label: 'My Tasks',             path: '/staff/tasks',   icon: '📋', visible_to: ['STAFF_CASHIER', 'STAFF_WAITER', 'STAFF_BARTENDER', 'STAFF_SECURITY'] },
+  { label: 'Inventory',            path: '/inventory',     icon: '📦', visible_to: ['STAFF_BARTENDER', 'ADMIN', 'STORE_MANAGER'] },
+
+  // ── Driver only ───────────────────────────────────────────
+  { label: 'My Jobs',              path: '/driver/jobs',   icon: '🚘', visible_to: ['DRIVER'] },
+
+  // ── Customer only ─────────────────────────────────────────
+  { label: 'My Bookings',          path: '/my-bookings',   icon: '🎵', visible_to: ['CUSTOMER'] },
+  { label: 'My Profile',           path: '/my-profile',    icon: '👤', visible_to: ['CUSTOMER'] },
+  { label: 'Membership & Points',  path: '/my-loyalty',    icon: '⭐', visible_to: ['CUSTOMER'] },
+  { label: 'My Invoices',          path: '/my-invoices',   icon: '🧾', visible_to: ['CUSTOMER'] },
+
+  // ── All roles ─────────────────────────────────────────────
+  { label: 'Clock In / Out',       path: '/attendance',    icon: '⏰', visible_to: ['HOSTESS', 'STAFF_CASHIER', 'STAFF_WAITER', 'STAFF_BARTENDER', 'STAFF_SECURITY', 'DRIVER'] },
+  { label: 'Announcements',        path: '/announcements', icon: '📢', visible_to: ['STORE_MANAGER', 'HOSTESS', 'STAFF_CASHIER', 'STAFF_WAITER', 'STAFF_BARTENDER', 'STAFF_SECURITY'] },
+];
+
+/**
+ * useUserRole
+ * Extract role from JWT token in localStorage
+ */
+const useUserRole = () => {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) return null;
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.role || null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * RoleBasedNav
+ * Renders only nav items the current user's role can access.
+ *
+ * USAGE — in your existing NavBar component:
+ *   Replace the manual nav item list with:
+ *   <RoleBasedNav currentPath={location.pathname} onNavigate={navigate} />
+ */
+const RoleBasedNav = ({ currentPath, onNavigate }) => {
+  const role = useUserRole();
+
+  if (!role) return null;
+
+  const visibleItems = NAV_ITEMS.filter(item => item.visible_to.includes(role));
+
+  return (
+    <nav className="flex flex-col gap-1">
+      {visibleItems.map(item => (
+        <button
+          key={item.path}
+          onClick={() => onNavigate && onNavigate(item.path)}
+          className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm text-left transition-colors
+            ${currentPath === item.path
+              ? 'bg-yellow-500 text-white font-medium'
+              : 'text-gray-600 hover:bg-gray-100'
+            }`}
+        >
+          <span className="text-base">{item.icon}</span>
+          <span>{item.label}</span>
+        </button>
+      ))}
+    </nav>
+  );
+};
+
+export default RoleBasedNav;
+export { useUserRole, NAV_ITEMS };
+```
+
+---
+
+## STEP 5 — FIELD MASKING MIDDLEWARE
+
+```javascript
+// ============================================================
+// FILE: /src/middleware/fieldMask.js  (NEW FILE)
+// PURPOSE: Strip or mask sensitive fields from API responses
+// ⚠️  Apply ONLY to specific routes — not globally
+// ⚠️  Never apply to routes that already handle masking internally
+// ============================================================
+
+const { ROLES } = require('../constants/roles');
+
+const SENSITIVE_FIELDS = {
+  // Fields that are always stripped regardless of role
+  ALWAYS_REMOVE: [
+    'password_hash', 'cvv', 'two_fa_secret',
+  ],
+
+  // Fields masked (*** shown) for non-ADMIN roles
+  MASK_FOR_NON_ADMIN: [
+    'card_token', 'payment_token',
+  ],
+
+  // Fields stripped entirely for non-ADMIN roles
+  REMOVE_FOR_NON_ADMIN: [
+    'net_revenue', 'cost_price', 'ota_commission',
+    'agent_fee_rate', 'blacklist_reason',
+    'internal_notes', 'vip_tier_internal',
+    'commission_trigger',
+  ],
+};
+
+const maskObject = (obj, userRole) => {
+  if (!obj || typeof obj !== 'object') return obj;
+
+  const adminRoles = [ROLES.SUPER_ADMIN, ROLES.ADMIN];
+  const isAdmin    = adminRoles.includes(userRole);
+  const result     = { ...obj };
+
+  // Always remove sensitive fields
+  SENSITIVE_FIELDS.ALWAYS_REMOVE.forEach(field => delete result[field]);
+
+  if (!isAdmin) {
+    // Mask payment tokens
+    SENSITIVE_FIELDS.MASK_FOR_NON_ADMIN.forEach(field => {
+      if (result[field] !== undefined) result[field] = '***';
+    });
+
+    // Remove financial / internal fields
+    SENSITIVE_FIELDS.REMOVE_FOR_NON_ADMIN.forEach(field => {
+      delete result[field];
+    });
+  }
+
+  return result;
+};
+
+/**
+ * applyFieldMask
+ * Wraps res.json to apply field masking before sending response.
+ * USAGE: router.get('/path', auth, applyFieldMask, handler)
+ */
+const applyFieldMask = (req, res, next) => {
+  const userRole    = req.user?.role;
+  const originalJson = res.json.bind(res);
+
+  res.json = (data) => {
+    try {
+      if (Array.isArray(data)) {
+        data = data.map(item => maskObject(item, userRole));
+      } else if (data && typeof data === 'object') {
+        if (Array.isArray(data.data)) {
+          data.data = data.data.map(item => maskObject(item, userRole));
+        } else {
+          data = maskObject(data, userRole);
+        }
+      }
+    } catch (err) {
+      console.error('[FieldMask] Masking error:', err.message);
+      // ⚠️  If masking fails, still return data — log but don't block
+    }
+    return originalJson(data);
+  };
+
+  next();
+};
+
+module.exports = { applyFieldMask, maskObject };
+```
+
+---
+
+## STEP 6 — FINAL app.js ADDITIONS
+
+```javascript
+// ============================================================
+// FILE: app.js / server.js / index.js
+// ACTION: ADD new routes (do NOT modify existing app.use() calls)
+// This is the complete list of all Chunk 03 additions
+// ============================================================
+
+// ADD imports (alongside existing requires):
+const driverRoutes   = require('./src/routes/driver');
+const customerRoutes = require('./src/routes/customer');
+const { runNightlyJob } = require('./src/jobs/investorReportJob');
+
+// ADD route mounts (after existing routes, before app.listen):
+app.use('/api/driver',   driverRoutes);
+app.use('/api/customer', customerRoutes);
+
+// ── Optional: Manual trigger endpoint for report generation ──
+// ADD alongside admin routes:
+const { requireRole } = require('./src/middleware/rbac');
+const auth = require('./src/middleware/auth'); // your existing auth
+app.post('/api/admin/reports/regenerate',
+  auth,
+  requireRole('ADMIN', 'SUPER_ADMIN'),
+  async (req, res) => {
+    try {
+      await runNightlyJob();
+      res.json({ message: 'Investor report regeneration triggered successfully.' });
+    } catch (err) {
+      res.status(500).json({ error: 'Report generation failed', detail: err.message });
+    }
+  }
+);
+
+// ── Nightly cron — enable AFTER manual test ──────────────────
+// npm install node-cron (if not installed)
+// Uncomment only after verifying runNightlyJob() produces correct output:
+/*
+const cron = require('node-cron');
+cron.schedule('0 2 * * *', () => {
+  console.log('[CRON] Running nightly investor report aggregation...');
+  runNightlyJob();
+}, { timezone: 'Asia/Kuala_Lumpur' });
+*/
+```
+
+---
+
+## STEP 7 — SECURITY VERIFICATION QUERIES
+
+> Run these SQL queries and API tests after completing all chunks.
+> Every test MUST pass before going live.
+
+```sql
+-- ════════════════════════════════════════════════════════════
+-- SECURITY VERIFICATION QUERIES
+-- Run against your database after all 3 chunks are complete
+-- ════════════════════════════════════════════════════════════
+
+-- VQ-1: Confirm users.role column exists with correct defaults
+SELECT column_name, data_type, column_default
+FROM information_schema.columns
+WHERE table_name = 'users'
+  AND column_name IN ('role', 'branch_id', 'investor_branch_scope', 'two_fa_enabled');
+-- Expected: 4 rows returned
+
+-- VQ-2: Confirm investor_reports table has correct structure
+SELECT column_name FROM information_schema.columns
+WHERE table_name = 'investor_reports'
+ORDER BY ordinal_position;
+-- Expected: ~25+ columns including all revenue breakdown fields
+
+-- VQ-3: Confirm NO existing column was dropped from users
+SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'users';
+-- Expected: same count as before migration + 4 new columns
+
+-- VQ-4: Verify investor_reports does NOT store per-hostess breakdown
+-- (these columns must NOT exist in investor_reports)
+SELECT column_name FROM information_schema.columns
+WHERE table_name = 'investor_reports'
+  AND column_name IN ('hostess_id', 'hostess_name', 'customer_name',
+                      'customer_id', 'staff_salary_total', 'cost_breakdown_detail');
+-- Expected: 0 rows (none of these columns should exist)
+
+-- VQ-5: Verify no reservations were hard-deleted
+-- (all cancellations should be status='CANCELLED')
+SELECT COUNT(*) FROM reservations WHERE status = 'CANCELLED';
+-- Expected: any number > 0 is fine; confirms soft-delete is working
+
+-- VQ-6: Audit log is capturing changes
+SELECT COUNT(*) FROM audit_logs WHERE created_at > NOW() - INTERVAL '1 hour';
+-- Expected: > 0 if any data changes occurred during testing
+```
+
+```bash
+# ════════════════════════════════════════════════════════════
+# API SECURITY TESTS — run with curl or Postman
+# Replace TOKEN_* with actual JWT tokens for each role
+# ════════════════════════════════════════════════════════════
+
+# ST-1: INVESTOR cannot access reservations
+curl -H "Authorization: Bearer TOKEN_INVESTOR" http://localhost:3000/api/reservations
+# Expected: 403 Forbidden
+
+# ST-2: INVESTOR cannot access hostess data
+curl -H "Authorization: Bearer TOKEN_INVESTOR" http://localhost:3000/api/hostesses
+# Expected: 403 Forbidden
+
+# ST-3: INVESTOR can access investor reports
+curl -H "Authorization: Bearer TOKEN_INVESTOR" http://localhost:3000/api/investor/reports
+# Expected: 200 OK with pre-aggregated data
+
+# ST-4: DRIVER cannot access reservations
+curl -H "Authorization: Bearer TOKEN_DRIVER" http://localhost:3000/api/reservations
+# Expected: 403 Forbidden
+
+# ST-5: DRIVER can access own pickup jobs
+curl -H "Authorization: Bearer TOKEN_DRIVER" http://localhost:3000/api/driver/my-jobs
+# Expected: 200 OK (own jobs only)
+
+# ST-6: CUSTOMER cannot access other customers' reservations
+curl -H "Authorization: Bearer TOKEN_CUSTOMER" "http://localhost:3000/api/reservations?customer_id=99999"
+# Expected: 403 or empty data (not other customer's records)
+
+# ST-7: CUSTOMER can access own reservations
+curl -H "Authorization: Bearer TOKEN_CUSTOMER" http://localhost:3000/api/customer/my-reservations
+# Expected: 200 OK (own reservations only)
+
+# ST-8: HOSTESS cannot access other hostess commissions
+curl -H "Authorization: Bearer TOKEN_HOSTESS" "http://localhost:3000/api/hostess/my-commissions?hostess_id=99999"
+# Expected: Returns own commissions only (hostess_id param ignored)
+
+# ST-9: STAFF_CASHIER response has masked customer_name
+curl -H "Authorization: Bearer TOKEN_CASHIER" http://localhost:3000/api/pos/orders
+# Expected: customer_name = "***" in response
+
+# ST-10: No role returns password_hash
+curl -H "Authorization: Bearer TOKEN_ADMIN" http://localhost:3000/api/staff
+# Expected: password_hash field NOT present in any response object
+```
+
+---
+
+## ✅ FULL E2E TEST CHECKLIST — ALL CHUNKS
+
+```
+═══════════════════════════════════════════════════════════
+FINAL COMPLETION CHECKLIST — Run after all 3 chunks
+Pass ALL items before declaring RBAC implementation complete
+═══════════════════════════════════════════════════════════
+
+DATABASE (from Chunk 01):
+  □ users.role column present with DEFAULT 'STAFF'
+  □ investor_reports table created and has correct columns
+  □ investor_export_logs table created
+  □ No existing tables modified or dropped
+
+CHUNK 01 — Foundation:
+  □ /src/constants/roles.js exists
+  □ /src/middleware/rbac.js exists with requireRole, branchScope
+  □ /api/investor/* routes accessible to INVESTOR role
+  □ /api/investor/* returns 403 to DRIVER, CUSTOMER, HOSTESS
+
+CHUNK 02 — Manager / Hostess / Staff:
+  □ /api/manager/dashboard returns branch-scoped data
+  □ /api/hostess/my-commissions returns SELF_ONLY records
+  □ POST /api/hostess/clock-in works with and without GPS
+  □ Room board Socket.io still works for STORE_MANAGER
+  □ CUSTOMER / INVESTOR disconnected from Socket gracefully
+
+CHUNK 03 — Driver / Customer / Jobs:
+  □ /api/driver/my-jobs returns only assigned jobs
+  □ DRIVER cannot see reservation_id, room_number, payment_amount
+  □ /api/customer/my-reservations returns SELF_ONLY records
+  □ Customer cancel performs SOFT cancel (status update, no delete)
+  □ net_revenue, hostess_assigned NOT in customer reservation response
+  □ Nightly job tested manually — investor_reports populated correctly
+  □ RoleBasedNav hides/shows items correctly per role
+  □ Field masking removes password_hash from ALL role responses
+
+EXISTING FUNCTIONALITY (must still work):
+  □ Admin login ✅
+  □ Reservation creation ✅
+  □ Room board live updates ✅
+  □ POS order creation ✅
+  □ Invoice generation ✅
+  □ Hostess assignment ✅
+  □ No server crash on startup ✅
+  □ No browser console errors from new code ✅
+
+SECURITY:
+  □ VQ-1 through VQ-6 database queries all pass
+  □ ST-1 through ST-10 API tests all return expected results
+  □ investor_reports has no per-hostess or per-customer fields
+  □ Soft delete confirmed (no hard deletes added)
+═══════════════════════════════════════════════════════════
+```
+
+---
+
+## 📁 NEW FILES CREATED ACROSS ALL 3 CHUNKS
+
+```
+/src/constants/roles.js                      ← Chunk 01
+/src/middleware/rbac.js                      ← Chunk 01
+/src/middleware/scopeGuards.js               ← Chunk 02
+/src/middleware/fieldMask.js                 ← Chunk 03
+/src/routes/investor.js                      ← Chunk 01
+/src/routes/storeManager.js                  ← Chunk 02
+/src/routes/hostess.js                       ← Chunk 02
+/src/routes/driver.js                        ← Chunk 03
+/src/routes/customer.js                      ← Chunk 03
+/src/jobs/investorReportJob.js               ← Chunk 03
+/src/pages/InvestorDashboard.jsx             ← Chunk 01
+/src/pages/HostessDashboard.jsx              ← Chunk 02
+/src/components/RoleBasedNav.jsx             ← Chunk 03
+```
+
+## EXISTING FILES WITH ADDITIVE CHANGES ONLY
+
+```
+app.js / server.js   ← 3 new app.use() lines added (one per chunk)
+auth.js              ← role + branch_id added to JWT payload
+your-pos-routes.js   ← requireRole guard added before handler
+your-socket.js       ← role check added inside existing handlers
+your-router.jsx      ← 3 new <Route> elements added
+```
+
+---
+*KL Project RBAC — Chunk 03 of 03 | Version 3.0 | 2026-03-20*

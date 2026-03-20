@@ -25,6 +25,7 @@ import paymentsApiRouter from "./payments-api";
 import tablesApiRouter from "./tables-api";
 import managerRouter from "./manager";
 import hostessPortalRouter from "./hostess-portal";
+import driverRouter from "./driver";
 
 const router: IRouter = Router();
 
@@ -54,5 +55,6 @@ router.use(paymentsApiRouter);
 router.use(tablesApiRouter);
 router.use(managerRouter);
 router.use(hostessPortalRouter);
+router.use(driverRouter);
 
 export default router;

@@ -119,4 +119,104 @@ router.put("/customer/bookings/:id/cancel", auth, async (req: Request, res: Resp
   }
 });
 
+// PATCH alias for cancel (spec-compliant)
+router.patch("/customer/reservations/:id/cancel", auth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const customerId = (req as Request & { customerId: string }).customerId;
+    const { id } = req.params as { id: string };
+    const { reason } = req.body as { reason?: string };
+
+    // Check the reservation belongs to this customer and can be cancelled
+    const { rows: found } = await pool.query(
+      `SELECT id, status FROM reservations WHERE id = $1 AND customer_id = $2`,
+      [id, customerId]
+    );
+    if (!found[0]) { res.status(404).json({ error: "NOT_FOUND" }); return; }
+    if (!["tentative", "confirmed"].includes(found[0]!.status)) {
+      res.status(409).json({ error: `Cannot cancel a reservation with status: ${found[0]!.status}` }); return;
+    }
+
+    await pool.query(
+      `UPDATE reservations
+       SET status = 'cancelled',
+           special_requests = COALESCE($1, special_requests),
+           cancelled_at = NOW()
+       WHERE id = $2`,
+      [reason ?? null, id]
+    );
+    res.json({ message: "Reservation cancelled successfully." });
+  } catch (err) {
+    console.error("[customer-bookings] patch-cancel error:", err);
+    res.status(500).json({ error: "INTERNAL_ERROR" });
+  }
+});
+
+// ── GET /customer/my-invoices ────────────────────────────
+// Self-only: only own invoices returned (RULE C)
+router.get("/customer/my-invoices", auth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const customerId = (req as Request & { customerId: string }).customerId;
+
+    const { rows } = await pool.query(
+      `SELECT
+         i.id,
+         i.invoice_no,
+         i.issued_at,
+         i.total_amount,
+         i.currency,
+         i.status,
+         b.name AS branch_name
+       FROM invoices i
+       JOIN branches b ON b.id = i.branch_id
+       WHERE i.customer_id = $1
+         AND i.status != 'voided'
+       ORDER BY i.issued_at DESC
+       LIMIT 50`,
+      [customerId]
+    );
+
+    res.json({ data: rows, count: rows.length });
+  } catch (err) {
+    console.error("[customer-bookings] my-invoices error:", err);
+    res.status(500).json({ error: "INTERNAL_ERROR" });
+  }
+});
+
+// ── GET /customer/my-profile ─────────────────────────────
+// Returns own profile — intentionally omits password_hash, internal flags
+router.get("/customer/my-profile", auth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const customerId = (req as Request & { customerId: string }).customerId;
+
+    const { rows } = await pool.query(
+      `SELECT
+         c.id,
+         c.customer_code,
+         c.full_name,
+         c.email,
+         c.phone,
+         c.whatsapp,
+         c.nationality,
+         c.language_pref,
+         c.vip_tier,
+         c.credit_balance,
+         c.payment_type,
+         c.referral_source,
+         c.is_active,
+         c.created_at
+         -- Intentionally omitted: password_hash, notes, referral_agent_id
+         -- credit_limit, credit_due_day (internal billing fields)
+       FROM customers c
+       WHERE c.id = $1 AND c.deleted_at IS NULL`,
+      [customerId]
+    );
+
+    if (!rows[0]) { res.status(404).json({ error: "PROFILE_NOT_FOUND" }); return; }
+    res.json({ data: rows[0] });
+  } catch (err) {
+    console.error("[customer-bookings] my-profile error:", err);
+    res.status(500).json({ error: "INTERNAL_ERROR" });
+  }
+});
+
 export default router;

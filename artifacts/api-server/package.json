@@ -9,6 +9,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@types/node-cron": "^3.0.11",
     "@types/pdfkit": "^0.17.5",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
@@ -18,6 +19,7 @@
     "drizzle-orm": "catalog:",
     "express": "^5",
     "jsonwebtoken": "^9.0.3",
+    "node-cron": "^4.2.1",
     "pdfkit": "^0.18.0",
     "socket.io": "^4.8.3"
   },

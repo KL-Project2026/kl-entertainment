@@ -14,25 +14,51 @@ const LANGS = [
   { code: "th", label: "TH" },
 ];
 
-const NAV_ITEMS = [
-  { path: "/", key: "nav.dashboard", icon: LayoutDashboard },
-  { path: "/room-board", key: "nav.room_board", icon: Grid },
-  { path: "/reservations", key: "nav.reservations", icon: CalendarDays },
-  { path: "/pos", key: "nav.pos", icon: ShoppingCart },
-  { path: "/staff", key: "nav.staff", icon: Users },
-  { path: "/schedule-builder", key: "nav.schedules", icon: CalendarCheck },
-  { path: "/attendance", key: "nav.attendance", icon: Clock },
-  { path: "/agents", key: "nav.agents", icon: Handshake },
-  { path: "/shareholders", key: "nav.shareholders", icon: PieChart },
-  { path: "/investor-dashboard", key: "nav.investor", icon: LineChart },
-  { path: "/investor-reports",   key: "nav.investor_reports", icon: PieChart },
-  { path: "/hostess-dashboard",  key: "nav.hostess_dashboard", icon: Users },
-  { path: "/invoices", key: "nav.invoices", icon: Receipt },
-  { path: "/tables", key: "nav.tables", icon: Table2 },
-  { path: "/reports/daily", key: "nav.daily_report", icon: FileBarChart },
-  { path: "/reports", key: "nav.reports", icon: BarChart2 },
-  { path: "/branches", key: "nav.branches", icon: Building2 },
-  { path: "/products", key: "nav.products", icon: Package },
+// All role values used in the nav guard
+type NavRole =
+  | "super_admin" | "admin" | "investor"
+  | "branch_manager" | "manager"
+  | "hostess" | "driver" | "kitchen" | "hall" | "general";
+
+// Shorthand sets for readability
+const ADMIN_UP:   NavRole[] = ["super_admin", "admin"];
+const MANAGER_UP: NavRole[] = ["super_admin", "admin", "branch_manager", "manager"];
+const OPS_UP:     NavRole[] = ["super_admin", "admin", "branch_manager", "manager", "kitchen", "hall", "general"];
+
+const NAV_ITEMS: { path: string; key: string; icon: React.ComponentType<{ className?: string }>; roles: NavRole[] }[] = [
+  // Dashboard — all operational roles
+  { path: "/",                   key: "nav.dashboard",        icon: LayoutDashboard, roles: OPS_UP },
+  // Room board — operational staff
+  { path: "/room-board",         key: "nav.room_board",       icon: Grid,            roles: OPS_UP },
+  // Reservations — managers+
+  { path: "/reservations",       key: "nav.reservations",     icon: CalendarDays,    roles: MANAGER_UP },
+  // POS — all operational
+  { path: "/pos",                key: "nav.pos",              icon: ShoppingCart,    roles: OPS_UP },
+  // Staff management — managers+
+  { path: "/staff",              key: "nav.staff",            icon: Users,           roles: MANAGER_UP },
+  // Schedule — managers+
+  { path: "/schedule-builder",   key: "nav.schedules",        icon: CalendarCheck,   roles: MANAGER_UP },
+  // Attendance — managers+
+  { path: "/attendance",         key: "nav.attendance",       icon: Clock,           roles: MANAGER_UP },
+  // Agents — admin+
+  { path: "/agents",             key: "nav.agents",           icon: Handshake,       roles: ADMIN_UP },
+  // Shareholders — admin+
+  { path: "/shareholders",       key: "nav.shareholders",     icon: PieChart,        roles: ADMIN_UP },
+  // Investor views — investor + admin+
+  { path: "/investor-dashboard", key: "nav.investor",         icon: LineChart,       roles: ["super_admin", "admin", "investor"] },
+  { path: "/investor-reports",   key: "nav.investor_reports", icon: PieChart,        roles: ["super_admin", "admin", "investor"] },
+  // Hostess dashboard — visible to managers + hostess themselves
+  { path: "/hostess-dashboard",  key: "nav.hostess_dashboard",icon: Users,           roles: ["super_admin", "admin", "branch_manager", "manager", "hostess"] },
+  // Invoices — managers+
+  { path: "/invoices",           key: "nav.invoices",         icon: Receipt,         roles: MANAGER_UP },
+  // Tables — managers+
+  { path: "/tables",             key: "nav.tables",           icon: Table2,          roles: MANAGER_UP },
+  // Reports — managers+
+  { path: "/reports/daily",      key: "nav.daily_report",     icon: FileBarChart,    roles: MANAGER_UP },
+  { path: "/reports",            key: "nav.reports",          icon: BarChart2,       roles: MANAGER_UP },
+  // Branches + Products — admin+
+  { path: "/branches",           key: "nav.branches",         icon: Building2,       roles: ADMIN_UP },
+  { path: "/products",           key: "nav.products",         icon: Package,         roles: MANAGER_UP },
 ];
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -67,7 +93,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
-          {NAV_ITEMS.map((item) => {
+          {NAV_ITEMS.filter((item) =>
+            !user?.role || item.roles.includes(user.role as NavRole)
+          ).map((item) => {
             const isActive = activeItem?.path === item.path;
             const Icon = item.icon;
             return (
