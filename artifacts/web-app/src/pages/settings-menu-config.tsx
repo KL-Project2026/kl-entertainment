@@ -11,13 +11,17 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import {
+  Sheet, SheetContent, SheetHeader, SheetTitle,
+} from "@/components/ui/sheet";
+import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { motion } from "framer-motion";
 import {
   Plus, Pencil, Trash2, ChevronUp, ChevronDown, Tag,
   ToggleLeft, ToggleRight, Eye, EyeOff, Settings2, Layers, BookOpen,
-  GitBranch, RotateCcw, Shield, ShieldOff,
+  GitBranch, RotateCcw, Shield, ScrollText, Filter, ChevronRight,
+  User, Clock, MapPin,
 } from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { cn } from "@/lib/utils";
@@ -266,6 +270,324 @@ function TypeModal({ open, onClose, onSaved, authH, categoryId, editing }: TypeM
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ── Audit Log helpers ─────────────────────────────────────────────────────────
+interface AuditEntry {
+  id: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  entityName: { en?: string } | null;
+  branchId: string | null;
+  branchName: string | null;
+  changedBy: string;
+  changedByName: string;
+  changedByRole: string | null;
+  oldValue: Record<string, unknown> | null;
+  newValue: Record<string, unknown> | null;
+  ipAddress: string | null;
+  createdAt: string;
+}
+
+const ACTION_META: Record<string, { label: string; color: string; bg: string }> = {
+  CATEGORY_CREATED:           { label: "Created",          color: "text-green-400",  bg: "bg-green-400/10 border-green-400/20" },
+  CATEGORY_UPDATED:           { label: "Updated",          color: "text-blue-400",   bg: "bg-blue-400/10 border-blue-400/20"  },
+  CATEGORY_DEACTIVATED:       { label: "Deactivated",      color: "text-gray-400",   bg: "bg-gray-400/10 border-gray-400/20"  },
+  SUBTYPE_CREATED:            { label: "Sub-type Created",  color: "text-green-400",  bg: "bg-green-400/10 border-green-400/20" },
+  SUBTYPE_UPDATED:            { label: "Sub-type Updated",  color: "text-blue-400",   bg: "bg-blue-400/10 border-blue-400/20"  },
+  SUBTYPE_DEACTIVATED:        { label: "Sub-type Deactivated", color: "text-gray-400", bg: "bg-gray-400/10 border-gray-400/20" },
+  SORT_ORDER_CHANGED:         { label: "Reordered",         color: "text-amber-400",  bg: "bg-amber-400/10 border-amber-400/20" },
+  BRANCH_VISIBILITY_CHANGED:  { label: "Branch Visibility", color: "text-violet-400", bg: "bg-violet-400/10 border-violet-400/20" },
+  BRANCH_OVERRIDE_RESET:      { label: "Override Reset",    color: "text-amber-400",  bg: "bg-amber-400/10 border-amber-400/20" },
+};
+
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const s = Math.floor(diff / 1000);
+  if (s < 60)   return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60)   return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24)   return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+function absTime(iso: string): string {
+  return new Date(iso).toLocaleString("en-MY", {
+    day: "2-digit", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit", hour12: true,
+  });
+}
+
+/** Show a compact diff of old→new values */
+function DiffSummary({ oldV, newV }: { oldV: Record<string, unknown> | null; newV: Record<string, unknown> | null }) {
+  if (!oldV && !newV) return null;
+  if (!oldV) {
+    const keys = Object.keys(newV ?? {}).slice(0, 4);
+    return (
+      <div className="mt-2 space-y-0.5">
+        {keys.map((k) => (
+          <p key={k} className="text-xs text-muted-foreground font-mono">
+            <span className="text-green-400">+</span> {k}: {JSON.stringify((newV as Record<string, unknown>)[k])}
+          </p>
+        ))}
+      </div>
+    );
+  }
+  if (!newV) return null;
+
+  const changed = Object.keys(newV).filter(
+    (k) => JSON.stringify(newV[k]) !== JSON.stringify(oldV[k])
+  ).slice(0, 5);
+
+  if (!changed.length) return null;
+  return (
+    <div className="mt-2 space-y-1">
+      {changed.map((k) => (
+        <div key={k} className="text-xs font-mono flex items-center gap-1.5 flex-wrap">
+          <span className="text-muted-foreground">{k}:</span>
+          <span className="text-red-400/80 line-through">{JSON.stringify(oldV[k])}</span>
+          <ChevronRight className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+          <span className="text-green-400">{JSON.stringify(newV[k])}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Audit Log Sheet ───────────────────────────────────────────────────────────
+interface AuditLogSheetProps {
+  open: boolean;
+  onClose: () => void;
+  authH: Record<string, string>;
+  filterEntityId?: string | null;
+  filterEntityName?: string;
+}
+
+function AuditLogSheet({ open, onClose, authH, filterEntityId, filterEntityName }: AuditLogSheetProps) {
+  const [actionFilter, setActionFilter] = useState("__all__");
+  const [offset, setOffset] = useState(0);
+  const [allEntries, setAllEntries] = useState<AuditEntry[]>([]);
+  const [knownTotal, setKnownTotal] = useState(0);
+  const PAGE = 30;
+
+  // Reset everything when the sheet opens/closes or the entity filter changes
+  useEffect(() => {
+    if (open) {
+      setOffset(0);
+      setAllEntries([]);
+      setKnownTotal(0);
+      setActionFilter("__all__");
+    }
+  }, [open, filterEntityId]);
+
+  const { data: actionsData } = useQuery<{ data: string[] }>({
+    queryKey: ["audit-actions"],
+    queryFn: async () => {
+      const r = await fetch(`${BASE}/audit-log/actions`, { headers: authH });
+      return r.json() as Promise<{ data: string[] }>;
+    },
+    enabled: open,
+  });
+  const availableActions = actionsData?.data ?? [];
+
+  const params = new URLSearchParams({ limit: String(PAGE), offset: String(offset) });
+  if (filterEntityId) params.set("entity_id", filterEntityId);
+  if (actionFilter !== "__all__") params.set("action", actionFilter);
+
+  const { data, isFetching } = useQuery<{ data: AuditEntry[]; pagination: { total: number } }>({
+    queryKey: ["audit-log", filterEntityId, actionFilter, offset],
+    queryFn: async () => {
+      const r = await fetch(`${BASE}/audit-log?${params.toString()}`, { headers: authH });
+      return r.json() as Promise<{ data: AuditEntry[]; pagination: { total: number } }>;
+    },
+    enabled: open,
+  });
+
+  // Accumulate entries for "load more" — also update knownTotal from fresh data
+  useEffect(() => {
+    if (!data?.data) return;
+    if (offset === 0) setAllEntries(data.data);
+    else setAllEntries((prev) => [...prev, ...data.data]);
+    setKnownTotal(data.pagination.total);
+  }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const total = knownTotal;
+  const hasMore = allEntries.length < total;
+
+  function resetFilters() {
+    setActionFilter("__all__");
+    setOffset(0);
+    setAllEntries([]);
+    setKnownTotal(0);
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <SheetContent
+        side="right"
+        className="w-full sm:max-w-[620px] bg-[#0a0a0f] border-l border-white/8 flex flex-col p-0"
+      >
+        {/* Header */}
+        <SheetHeader className="px-6 py-4 border-b border-white/8 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <ScrollText className="w-5 h-5 text-primary" />
+              <div>
+                <SheetTitle className="text-base font-semibold">
+                  Audit Log
+                  {filterEntityName && (
+                    <span className="ml-2 text-sm font-normal text-muted-foreground">
+                      — {filterEntityName}
+                    </span>
+                  )}
+                </SheetTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {total} {total === 1 ? "entry" : "entries"} • Admin only
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Filters */}
+          <div className="flex items-center gap-2 mt-3">
+            <Filter className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+            <Select value={actionFilter} onValueChange={(v) => { setActionFilter(v); setOffset(0); setAllEntries([]); }}>
+              <SelectTrigger className="h-8 text-xs bg-black/30 border-white/10 w-52">
+                <SelectValue placeholder="All actions" />
+              </SelectTrigger>
+              <SelectContent className="bg-[#0c0c10] border-white/10 text-xs">
+                <SelectItem value="__all__">All actions</SelectItem>
+                {availableActions.map((a) => (
+                  <SelectItem key={a} value={a}>
+                    {ACTION_META[a]?.label ?? a}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {actionFilter !== "__all__" && (
+              <button onClick={resetFilters}
+                className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+                <RotateCcw className="w-3 h-3" /> Reset
+              </button>
+            )}
+            <span className="ml-auto text-xs text-muted-foreground">
+              Showing {allEntries.length} of {total}
+            </span>
+          </div>
+        </SheetHeader>
+
+        {/* Timeline */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+          {isFetching && allEntries.length === 0 ? (
+            <div className="py-16 text-center text-muted-foreground text-sm">Loading…</div>
+          ) : allEntries.length === 0 ? (
+            <div className="py-16 text-center text-muted-foreground text-sm">
+              No audit log entries found.
+            </div>
+          ) : (
+            <>
+              {allEntries.map((entry, i) => {
+                const meta = ACTION_META[entry.action] ?? {
+                  label: entry.action, color: "text-gray-400", bg: "bg-gray-400/10 border-gray-400/20",
+                };
+                const entityLabel = typeof entry.entityName === "object"
+                  ? (entry.entityName as Record<string, string>)?.en ?? "—"
+                  : "—";
+
+                return (
+                  <div key={entry.id} className="relative">
+                    {/* Timeline line */}
+                    {i < allEntries.length - 1 && (
+                      <div className="absolute left-[18px] top-10 bottom-0 w-px bg-white/5" />
+                    )}
+                    <div className="flex gap-3">
+                      {/* Dot */}
+                      <div className={cn(
+                        "w-9 h-9 rounded-full border flex items-center justify-center flex-shrink-0 mt-0.5 z-10",
+                        meta.bg
+                      )}>
+                        <span className={cn("text-[10px] font-bold leading-none", meta.color)}>
+                          {meta.label.slice(0, 2).toUpperCase()}
+                        </span>
+                      </div>
+
+                      {/* Content */}
+                      <div className="flex-1 min-w-0 pb-3">
+                        <div className="flex items-start justify-between gap-2 flex-wrap">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={cn(
+                              "text-xs font-semibold px-2 py-0.5 rounded-full border",
+                              meta.bg, meta.color
+                            )}>
+                              {meta.label}
+                            </span>
+                            {entityLabel !== "—" && (
+                              <span className="text-sm font-medium">{entityLabel}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground flex-shrink-0"
+                            title={absTime(entry.createdAt)}>
+                            <Clock className="w-3 h-3" />
+                            {relativeTime(entry.createdAt)}
+                          </div>
+                        </div>
+
+                        {/* Meta row */}
+                        <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <User className="w-3 h-3" />
+                            {entry.changedByName}
+                            {entry.changedByRole && (
+                              <span className="opacity-60">· {entry.changedByRole.replace("_", " ")}</span>
+                            )}
+                          </span>
+                          {entry.branchName && (
+                            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <MapPin className="w-3 h-3" />
+                              {entry.branchName}
+                            </span>
+                          )}
+                          {entry.ipAddress && (
+                            <span className="text-xs text-muted-foreground/50 font-mono">
+                              {entry.ipAddress}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Diff */}
+                        <DiffSummary
+                          oldV={entry.oldValue as Record<string, unknown> | null}
+                          newV={entry.newValue as Record<string, unknown> | null}
+                        />
+
+                        {/* Absolute timestamp */}
+                        <p className="text-[10px] text-muted-foreground/40 mt-1.5 font-mono">
+                          {absTime(entry.createdAt)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Load more */}
+              {hasMore && (
+                <div className="text-center pt-2 pb-4">
+                  <Button variant="outline" size="sm" className="gap-2"
+                    onClick={() => setOffset(allEntries.length)}
+                    disabled={isFetching}>
+                    {isFetching ? "Loading…" : `Load more (${total - allEntries.length} remaining)`}
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -537,6 +859,17 @@ export default function SettingsMenuConfig() {
   // Top-level view mode
   const [viewMode, setViewMode] = useState<"categories" | "branch-overrides">("categories");
 
+  // Audit log sheet
+  const [auditOpen, setAuditOpen] = useState(false);
+  const [auditEntityId, setAuditEntityId] = useState<string | null>(null);
+  const [auditEntityName, setAuditEntityName] = useState<string | undefined>(undefined);
+
+  function openAudit(entityId?: string, entityName?: string) {
+    setAuditEntityId(entityId ?? null);
+    setAuditEntityName(entityName);
+    setAuditOpen(true);
+  }
+
   // Category view state
   const [selectedCatId, setSelectedCatId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"types" | "settings" | "branches">("types");
@@ -670,11 +1003,18 @@ export default function SettingsMenuConfig() {
               Manage categories, sub-types, tax overrides and branch visibility
             </p>
           </div>
-          {isAdmin && viewMode === "categories" && (
-            <Button className="gap-2" onClick={() => setCatModal({ open: true, editing: null })}>
-              <Plus className="w-4 h-4" /> New Category
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {isAdmin && (
+              <Button variant="outline" size="sm" className="gap-2 text-xs h-8" onClick={() => openAudit()}>
+                <ScrollText className="w-3.5 h-3.5" /> Audit Log
+              </Button>
+            )}
+            {isAdmin && viewMode === "categories" && (
+              <Button className="gap-2" onClick={() => setCatModal({ open: true, editing: null })}>
+                <Plus className="w-4 h-4" /> New Category
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* ── Top-level View Tabs ───────────────────────────────────────────── */}
@@ -802,18 +1142,35 @@ export default function SettingsMenuConfig() {
                 </Card>
               ) : (
                 <div className="space-y-5">
-                  <div className="flex items-center gap-1 bg-card/50 border border-white/5 rounded-xl p-1 w-fit">
-                    {(["types", "settings", "branches"] as const).map((tab) => (
-                      <button key={tab} onClick={() => setActiveTab(tab)}
-                        className={cn(
-                          "px-4 py-2 rounded-lg text-sm font-medium transition-all",
-                          activeTab === tab
-                            ? "bg-primary text-primary-foreground shadow"
-                            : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-                        )}>
-                        {tab === "types" ? "Sub-types" : tab === "settings" ? "Settings" : "Branch Visibility"}
-                      </button>
-                    ))}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1 bg-card/50 border border-white/5 rounded-xl p-1">
+                      {(["types", "settings", "branches"] as const).map((tab) => (
+                        <button key={tab} onClick={() => setActiveTab(tab)}
+                          className={cn(
+                            "px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                            activeTab === tab
+                              ? "bg-primary text-primary-foreground shadow"
+                              : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                          )}>
+                          {tab === "types" ? "Sub-types" : tab === "settings" ? "Settings" : "Branch Visibility"}
+                        </button>
+                      ))}
+                    </div>
+                    {isAdmin && selectedCat && (
+                      <Button
+                        variant="ghost" size="sm"
+                        className="gap-1.5 text-muted-foreground hover:text-foreground text-xs"
+                        data-testid="category-audit-log-btn"
+                        onClick={() => openAudit(
+                          selectedCat.id,
+                          typeof selectedCat.name === "object"
+                            ? (selectedCat.name as Record<string, string>).en ?? "Category"
+                            : String(selectedCat.name)
+                        )}
+                      >
+                        <ScrollText className="w-3.5 h-3.5" /> Audit Log
+                      </Button>
+                    )}
                   </div>
 
                   {/* Sub-types tab */}
@@ -919,10 +1276,19 @@ export default function SettingsMenuConfig() {
                         </div>
                       )}
                       {isAdmin && (
-                        <div className="mt-4 pt-4 border-t border-white/5">
+                        <div className="mt-4 pt-4 border-t border-white/5 flex items-center gap-3 flex-wrap">
                           <Button variant="outline" size="sm" className="gap-1.5"
                             onClick={() => setCatModal({ open: true, editing: selectedCat })}>
                             <Pencil className="w-3.5 h-3.5" /> Edit Category
+                          </Button>
+                          <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground"
+                            onClick={() => openAudit(
+                              selectedCat.id,
+                              typeof selectedCat.name === "object"
+                                ? (selectedCat.name as Record<string,string>).en ?? "Category"
+                                : String(selectedCat.name)
+                            )}>
+                            <ScrollText className="w-3.5 h-3.5" /> View Audit Log
                           </Button>
                         </div>
                       )}
@@ -1022,6 +1388,16 @@ export default function SettingsMenuConfig() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* ── Audit Log Sheet ─────────────────────────────────────────────────── */}
+      {isAdmin && (
+        <AuditLogSheet
+          open={auditOpen}
+          onClose={() => setAuditOpen(false)}
+          authH={authH}
+          filterEntityId={auditEntityId}
+          filterEntityName={auditEntityName}
+        />
+      )}
     </DashboardLayout>
   );
 }

@@ -511,22 +511,97 @@ router.delete("/settings/menu-config/branch-override",
 );
 
 // GET /api/settings/menu-config/audit-log
+// ?entity_id=UUID  optional — filter by specific category/type
+// ?action=string   optional — filter by action type
+// ?limit=50        default 50, max 200
+// ?offset=0        default 0
 router.get("/settings/menu-config/audit-log",
   authenticate,
   requireRole(...ADMIN_ONLY),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const limit = parseInt(req.query.limit as string ?? "50");
+      const q = req.query as Record<string, string>;
+      const limit  = Math.min(parseInt(q.limit  ?? "50"),  200);
+      const offset = parseInt(q.offset ?? "0");
+      const entityId = q.entity_id ?? null;
+      const action   = q.action    ?? null;
+
+      const params: unknown[] = [];
+      const conds: string[] = [];
+
+      if (entityId) { params.push(entityId); conds.push(`l.entity_id = $${params.length}`); }
+      if (action)   { params.push(action);   conds.push(`l.action    = $${params.length}`); }
+
+      const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+
+      // Count total for pagination
+      const countRes = await pool.query(
+        `SELECT COUNT(*)::int AS total FROM menu_config_audit_log l ${where}`,
+        params
+      );
+      const total = countRes.rows[0].total as number;
+
+      params.push(limit);  const limitIdx  = params.length;
+      params.push(offset); const offsetIdx = params.length;
+
       const { rows } = await pool.query(`
-        SELECT l.*, s.name AS changed_by_name
+        SELECT
+          l.*,
+          s.full_name                                              AS changed_by_name,
+          s.role                                                   AS changed_by_role,
+          -- look up entity name from both possible tables
+          COALESCE(
+            (SELECT pg.name FROM product_groups pg WHERE pg.id = l.entity_id),
+            (SELECT pt.name FROM product_types  pt WHERE pt.id = l.entity_id)
+          )                                                        AS entity_name,
+          b.name                                                   AS branch_name
         FROM menu_config_audit_log l
-        LEFT JOIN staff s ON s.id = l.changed_by
+        LEFT JOIN staff    s ON s.id = l.changed_by
+        LEFT JOIN branches b ON b.id = l.branch_id
+        ${where}
         ORDER BY l.created_at DESC
-        LIMIT $1
-      `, [limit]);
-      res.json({ data: rows });
+        LIMIT $${limitIdx} OFFSET $${offsetIdx}
+      `, params);
+
+      res.json({
+        data: rows.map((r) => ({
+          id:            r.id,
+          action:        r.action,
+          entityType:    r.entity_type,
+          entityId:      r.entity_id,
+          entityName:    r.entity_name ?? null,
+          branchId:      r.branch_id ?? null,
+          branchName:    r.branch_name ?? null,
+          changedBy:     r.changed_by,
+          changedByName: r.changed_by_name ?? "System",
+          changedByRole: r.changed_by_role ?? null,
+          oldValue:      r.old_value ?? null,
+          newValue:      r.new_value ?? null,
+          ipAddress:     r.ip_address ?? null,
+          createdAt:     r.created_at,
+        })),
+        pagination: { total, limit, offset },
+      });
     } catch (err) {
       console.error("menu-config audit log:", err);
+      res.status(500).json({ error: "INTERNAL_ERROR" });
+    }
+  }
+);
+
+// GET /api/settings/menu-config/audit-log/actions
+// Returns distinct action types for filter dropdown
+router.get("/settings/menu-config/audit-log/actions",
+  authenticate,
+  requireRole(...ADMIN_ONLY),
+  async (_req: Request, res: Response): Promise<void> => {
+    try {
+      const { rows } = await pool.query(
+        `SELECT DISTINCT action FROM menu_config_audit_log ORDER BY action`
+      );
+      res.json({ data: rows.map((r) => r.action as string) });
+    } catch (err) {
+      console.error("menu-config audit actions:", err);
       res.status(500).json({ error: "INTERNAL_ERROR" });
     }
   }
