@@ -146,6 +146,102 @@ router.post(
   }
 );
 
+// History — date range summary — must be BEFORE /reservations/:id
+router.get(
+  "/reservations/history",
+  authenticate,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { branch_id, date_from, date_to, status } = req.query as Record<string, string>;
+
+      const today = new Date().toISOString().slice(0, 10);
+      const from = date_from || today;
+      const to   = date_to   || today;
+
+      const isSuperUser = ([ROLES.SUPER_ADMIN, ROLES.ADMIN] as string[]).includes(req.user!.role);
+      const effectiveBranchId = branch_id ?? (!isSuperUser ? req.user!.branchId! : undefined);
+
+      const cond: string[] = ["r.reservation_date BETWEEN $1 AND $2"];
+      const params: unknown[] = [from, to];
+
+      if (effectiveBranchId) {
+        params.push(effectiveBranchId);
+        cond.push(`r.branch_id = $${params.length}`);
+      }
+      if (status) {
+        params.push(status);
+        cond.push(`r.status = $${params.length}`);
+      }
+
+      const where = cond.join(" AND ");
+
+      // Reservation rows with per-reservation folio total
+      const { rows: resRows } = await pool.query(
+        `SELECT r.*, rm.name AS room_name, rm.room_type,
+                COALESCE(fsum.total, 0) AS folio_total
+         FROM reservations r
+         LEFT JOIN rooms rm ON rm.id = r.room_id
+         LEFT JOIN (
+           SELECT reservation_id, SUM(amount) AS total
+           FROM folio_entries WHERE is_void = false
+           GROUP BY reservation_id
+         ) fsum ON fsum.reservation_id = r.id
+         WHERE ${where}
+         ORDER BY r.start_time DESC
+         LIMIT 500`,
+        params
+      );
+
+      // Status breakdown
+      const { rows: statusRows } = await pool.query(
+        `SELECT r.status, COUNT(*) AS cnt
+         FROM reservations r
+         WHERE ${where}
+         GROUP BY r.status ORDER BY cnt DESC`,
+        params
+      );
+
+      // Revenue breakdown by folio entry_type
+      const { rows: revenueRows } = await pool.query(
+        `SELECT fe.entry_type, SUM(fe.amount) AS total
+         FROM folio_entries fe
+         JOIN reservations r ON r.id = fe.reservation_id
+         WHERE ${where} AND fe.is_void = false
+         GROUP BY fe.entry_type ORDER BY total DESC`,
+        params
+      );
+
+      const totalRevenue = revenueRows.reduce(
+        (s, r) => s + parseFloat(String((r as Record<string, unknown>).total ?? 0)), 0
+      );
+
+      res.json({
+        data: {
+          reservations: resRows.map(r => ({
+            ...formatReservation(r),
+            folioTotal: parseFloat(String((r as Record<string, unknown>).folio_total ?? 0)),
+          })),
+          summary: {
+            total: resRows.length,
+            byStatus: statusRows.map(r => ({
+              status: (r as Record<string, unknown>).status,
+              count:  parseInt(String((r as Record<string, unknown>).cnt ?? 0), 10),
+            })),
+            totalRevenue,
+            byType: revenueRows.map(r => ({
+              type:  (r as Record<string, unknown>).entry_type,
+              total: parseFloat(String((r as Record<string, unknown>).total ?? 0)),
+            })),
+          },
+        },
+      });
+    } catch (err) {
+      console.error("Reservation history error:", err);
+      res.status(500).json({ error: "INTERNAL_ERROR" });
+    }
+  }
+);
+
 // Availability check — must be BEFORE /reservations/:id to avoid route collision
 router.get(
   "/reservations/availability",
