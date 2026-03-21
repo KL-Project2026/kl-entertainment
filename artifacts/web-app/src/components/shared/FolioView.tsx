@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { formatCurrency } from "../../lib/utils";
+import { useAuthStore } from "../../lib/auth";
 
 interface FolioEntry {
   id: string;
@@ -47,6 +48,7 @@ const ENTRY_COLORS: Record<string, { bg: string; text: string; border: string }>
 export const FolioView: React.FC<FolioViewProps> = ({
   reservationId, currency = "MYR", isLive = false, onEntryAdded,
 }) => {
+  const { token } = useAuthStore();
   const [entries, setEntries]     = useState<FolioEntry[]>([]);
   const [total,   setTotal]       = useState(0);
   const [loading, setLoading]     = useState(true);
@@ -62,7 +64,7 @@ export const FolioView: React.FC<FolioViewProps> = ({
   const load = useCallback(() => {
     setLoading(true);
     fetch(`/api/folio/${reservationId}`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem("accessToken") ?? ""}` },
+      headers: { Authorization: `Bearer ${token ?? ""}` },
     })
       .then(r => r.json())
       .then(d => {
@@ -72,7 +74,7 @@ export const FolioView: React.FC<FolioViewProps> = ({
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [reservationId]);
+  }, [reservationId, token]);
 
   useEffect(() => {
     load();
@@ -93,7 +95,7 @@ export const FolioView: React.FC<FolioViewProps> = ({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("accessToken") ?? ""}`,
+          Authorization: `Bearer ${token ?? ""}`,
         },
         body: JSON.stringify({
           reservation_id: reservationId,
@@ -118,7 +120,7 @@ export const FolioView: React.FC<FolioViewProps> = ({
     if (!window.confirm("Void this order entry?")) return;
     await fetch(`/api/folio/entries/${id}`, {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${localStorage.getItem("accessToken") ?? ""}` },
+      headers: { Authorization: `Bearer ${token ?? ""}` },
     });
     load();
   };
@@ -131,7 +133,7 @@ export const FolioView: React.FC<FolioViewProps> = ({
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("accessToken") ?? ""}`,
+          Authorization: `Bearer ${token ?? ""}`,
         },
         body: JSON.stringify({ order_status: next }),
       });
