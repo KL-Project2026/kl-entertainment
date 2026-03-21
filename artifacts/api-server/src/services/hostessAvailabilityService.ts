@@ -13,7 +13,8 @@ export async function checkHostessAvailability(
   hostessProfileId: string,
   requiredFrom: Date,
   requiredUntil: Date,
-  branchId: string
+  branchId: string,
+  excludeAssignmentIds: string[] = []
 ): Promise<AvailabilityResult> {
 
   // 1. Fetch hostess profile — must be active and belong to (or allowed in) branch
@@ -78,14 +79,18 @@ export async function checkHostessAvailability(
     }
   }
 
-  // 4. Check hostess_session_assignments — ACTIVE overlap
+  // 4. Check hostess_session_assignments — ACTIVE overlap (excluding specified IDs)
+  const excludeClause = excludeAssignmentIds.length > 0
+    ? `AND id NOT IN (${excludeAssignmentIds.map((_, i) => `$${i + 4}`).join(",")})`
+    : "";
   const { rows: overlapRows } = await pool.query<{ id: string }>(
     `SELECT id FROM hostess_session_assignments
      WHERE hostess_id = $1
        AND status = 'ACTIVE'
        AND session_start < $2
-       AND (session_end > $3 OR session_end IS NULL)`,
-    [hostessProfileId, requiredUntil.toISOString(), requiredFrom.toISOString()]
+       AND (session_end > $3 OR session_end IS NULL)
+       ${excludeClause}`,
+    [hostessProfileId, requiredUntil.toISOString(), requiredFrom.toISOString(), ...excludeAssignmentIds]
   );
 
   if (overlapRows.length > 0) {

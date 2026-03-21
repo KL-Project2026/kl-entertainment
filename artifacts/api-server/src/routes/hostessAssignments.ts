@@ -89,10 +89,12 @@ export async function createHostessAssignmentFromPOS(params: {
   branchId:      string;
   sessionStart?: Date;
   parentAssignmentId?: string;
+  excludeAssignmentIds?: string[];
 }): Promise<{ assignmentId: string; folioEntryId: string }> {
   const {
     reservationId, posOrderId, hostessId, orderType,
     notes, assignedBy, branchId, parentAssignmentId,
+    excludeAssignmentIds = [],
   } = params;
   const sessionStart = params.sessionStart ?? new Date();
 
@@ -104,7 +106,7 @@ export async function createHostessAssignmentFromPOS(params: {
   const requiredUntil = resRows[0]?.end_time ? new Date(resRows[0].end_time) : new Date(sessionStart.getTime() + 2 * 3600 * 1000);
 
   // 2. Availability check
-  const avail = await checkHostessAvailability(hostessId, sessionStart, requiredUntil, branchId);
+  const avail = await checkHostessAvailability(hostessId, sessionStart, requiredUntil, branchId, excludeAssignmentIds);
   if (!avail.available) {
     throw Object.assign(new Error(avail.reason), {
       code: "HOSTESS_NOT_AVAILABLE",
@@ -118,7 +120,7 @@ export async function createHostessAssignmentFromPOS(params: {
 
   // 4. Fetch hostess display name for folio description
   const { rows: nameRows } = await pool.query<{ name: string }>(
-    `SELECT s.name FROM hostess_profiles hp JOIN staff s ON s.id = hp.staff_id WHERE hp.id = $1`,
+    `SELECT s.full_name AS name FROM hostess_profiles hp JOIN staff s ON s.id = hp.staff_id WHERE hp.id = $1`,
     [hostessId]
   );
   const hostessName = nameRows[0]?.name ?? "Hostess";
@@ -243,7 +245,7 @@ router.post(
 
       // Fetch created assignment
       const { rows: asmRows } = await pool.query(
-        `SELECT hsa.*, hp.agency_id, s.name AS hostess_name
+        `SELECT hsa.*, hp.agency_id, s.full_name AS hostess_name
          FROM hostess_session_assignments hsa
          JOIN hostess_profiles hp ON hp.id = hsa.hostess_id
          JOIN staff s ON s.id = hp.staff_id
@@ -309,7 +311,8 @@ router.post(
         const results = [];
         for (const asm of activeAsm) {
           const avail = await checkHostessAvailability(
-            asm.hostess_id, currentEnd, newEnd, reservation.branch_id
+            asm.hostess_id, currentEnd, newEnd, reservation.branch_id,
+            [asm.id] // exclude the current assignment from overlap check
           );
           if (!avail.available) {
             errResp(res, 400, "SHIFT_END_CONFLICT",
@@ -331,14 +334,15 @@ router.post(
           );
 
           const { assignmentId } = await createHostessAssignmentFromPOS({
-            reservationId:       reservationId as string,
-            posOrderId:          orderRows[0].id,
-            hostessId:           asm.hostess_id,
-            orderType:           "EXTENSION",
-            assignedBy:          req.user!.id,
-            branchId:            reservation.branch_id,
-            sessionStart:        currentEnd,
-            parentAssignmentId:  asm.id,
+            reservationId:        reservationId as string,
+            posOrderId:           orderRows[0].id,
+            hostessId:            asm.hostess_id,
+            orderType:            "EXTENSION",
+            assignedBy:           req.user!.id,
+            branchId:             reservation.branch_id,
+            sessionStart:         currentEnd,
+            parentAssignmentId:   asm.id,
+            excludeAssignmentIds: [asm.id],
           });
 
           results.push({ parentId: asm.id, newAssignmentId: assignmentId });
@@ -431,14 +435,14 @@ router.post(
 
       // Fetch names for socket event
       const { rows: outNameRows } = await pool.query<{ name: string }>(
-        `SELECT s.name FROM hostess_session_assignments hsa
+        `SELECT s.full_name AS name FROM hostess_session_assignments hsa
          JOIN hostess_profiles hp ON hp.id = hsa.hostess_id
          JOIN staff s ON s.id = hp.staff_id
          WHERE hsa.id = $1`,
         [outgoing.id]
       );
       const { rows: inNameRows } = await pool.query<{ name: string }>(
-        `SELECT s.name FROM hostess_profiles hp
+        `SELECT s.full_name AS name FROM hostess_profiles hp
          JOIN staff s ON s.id = hp.staff_id
          WHERE hp.id = $1`,
         [replaceId]
@@ -564,7 +568,7 @@ router.get(
         hsa.id, hsa.reservation_id, hsa.hostess_id, hsa.pos_order_id,
         hsa.order_type, hsa.status, hsa.commission_status,
         hsa.session_start, hsa.session_end, hsa.billed_hours,
-        s.name AS hostess_name`;
+        s.full_name AS hostess_name`;
 
       if (isManagerPlus) {
         selectCols += `,
@@ -635,7 +639,7 @@ router.get(
       }
 
       let selectCols = `hsa.id, hsa.reservation_id, hsa.order_type, hsa.status,
-        hsa.session_start, hsa.session_end, hsa.billed_hours, s.name AS hostess_name`;
+        hsa.session_start, hsa.session_end, hsa.billed_hours, s.full_name AS hostess_name`;
       if (isManagerPlus) {
         selectCols += `, hsa.hourly_rate_guest, hsa.commission_rate_pct,
           hsa.gross_commission, hsa.agency_commission, hsa.net_commission,

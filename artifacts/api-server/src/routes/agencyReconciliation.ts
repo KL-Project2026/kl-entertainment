@@ -76,7 +76,7 @@ router.get(
         `SELECT hsa.id, hsa.order_type, hsa.billed_hours,
                 hsa.gross_commission, hsa.agency_commission, hsa.net_commission,
                 hsa.commission_status, hsa.session_start, hsa.session_end,
-                s.name AS hostess_name
+                s.full_name AS hostess_name
          FROM hostess_session_assignments hsa
          JOIN reservations r ON r.id = hsa.reservation_id
          JOIN hostess_profiles hp ON hp.id = hsa.hostess_id
