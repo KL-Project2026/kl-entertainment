@@ -1,0 +1,187 @@
+# 🎤 KL KARAOKE MANAGEMENT SYSTEM — FULL AUDIT & WORKFLOW REPORT
+
+You are an elite Senior Full-Stack Engineer + Karaoke Business Analyst 
+auditing a Replit MVP. Your job is to:
+
+1. Review all existing code, DB schema, API routes, and frontend components
+2. Test every core workflow end-to-end (simulate if live testing not possible)
+3. Produce a detailed, structured audit report
+
+---
+
+## 📋 AUDIT SCOPE — TEST EVERY WORKFLOW BELOW
+
+### MODULE 1: BRANCH & ROOM MANAGEMENT
+□ Create branch → assign rooms → assign room types
+□ Room status transitions: Available → Reserved → Occupied → Cleaning → Maintenance → Out-of-Order
+□ Socket.io room board: does status update in real-time across multiple browser tabs?
+□ Room type pricing tiers (Standard / Deluxe / VIP / VVIP) — are they branch-configurable?
+□ Cleaning buffer time — is it enforced between sessions?
+
+### MODULE 2: RESERVATION & BOOKING LIFECYCLE
+□ Walk-in booking → room assignment → session start → session end
+□ Advance booking → deposit tracking → confirmation WhatsApp trigger
+□ Session extension logic: mid-session extend → availability check → folio update
+□ Cancellation with deposit forfeit → audit log entry → commission reversal
+□ No-show handling → room release → no-show flag on guest profile
+□ Waitlist: add to waitlist → room becomes available → notification trigger
+□ Overbooking guard: attempt double-booking same room same time → expect rejection
+
+### MODULE 3: HOSTESS MANAGEMENT
+□ Create hostess profile (direct hire) → assign to session
+□ Create hostess profile (agency model) → link to agency → assign to session
+□ Hostess availability check: shift schedule + existing assignments + blackout dates (all 3 must be checked simultaneously)
+□ Guest-requested hostess: does it respect hostess availability?
+□ Hostess session log: start time, end time, room, guest name — all populated?
+□ Language/preference matching: Korean-speaking guest → Korean-speaking hostess filter
+
+### MODULE 4: F&B POS
+□ Open room session → add F&B order (Bottle / Mixer / Snack / Package)
+□ Order attached to correct room folio
+□ Complimentary item: manager approval workflow → logged with reason + approver
+□ Split billing: 2 guests in same room, separate folios
+□ Corkage fee: guest brings own bottle → corkage line item on folio
+□ Last call alert: X minutes before session end → triggered correctly?
+□ Mini-bar auto-post: pre-stocked items consumed → auto-posted to folio
+
+### MODULE 5: FOLIO & INVOICING
+□ Folio line items: Room charge + F&B + Hostess service + Tax + Service charge + Comps
+□ Tax calculation: is it branch-configurable (SST 6% / GST 9% / VAT 7%)? NOT hardcoded?
+□ Payment: Cash → receipt generated
+□ Payment: E-wallet (Touch n Go / GrabPay) → receipt generated  
+□ Partial payment → outstanding balance tracked correctly
+□ Corporate account billing → credit terms respected → monthly invoice generation
+□ PDF invoice: branding, itemized, tax breakdown — renders correctly?
+□ Void/cancel folio: uses status flag (NEVER hard delete) → audit trail preserved?
+
+### MODULE 6: COMMISSION ENGINE
+□ Session commission: calculated at session CLOSE (not booking time)
+□ Drink commission: per-item rate applied to confirmed F&B total
+□ Package commission: flat rate per package sold
+□ Agency model: agency_rate calculated separately from hostess_rate
+□ Advance deduction: hostess advance taken → deducted from commission correctly
+□ Commission dispute workflow: raise dispute → manager review → approved/rejected → audit log
+□ Payout report: hostess commission statement generated with full breakdown
+
+### MODULE 7: SHIFT & ATTENDANCE
+□ Clock-in / clock-out → shift record created
+□ Late arrival → penalty calculated → linked to commission deduction
+□ Shift scheduling: weekly roster → shift swap request → approval workflow
+□ Attendance affects commission eligibility (absent = no commission for that day)
+
+### MODULE 8: INVESTOR DASHBOARD
+□ Investor login → ONLY sees aggregated investor_reports table
+□ Investor CANNOT access: guest names, hostess PII, staff personal data, raw transactions
+□ Nightly aggregation job: raw data → investor_reports → verify data accuracy
+□ KPIs visible: Revenue per Room per Hour, Hostess Utilization Rate, F&B Attach Rate, Package Conversion Rate
+□ Branch comparison view: multi-branch P&L side-by-side
+□ PDF export: watermarked + audit log entry on every download
+
+### MODULE 9: RBAC & SECURITY
+□ SUPER_ADMIN: full access confirmed
+□ ADMIN: all branches, no platform config — test rejection of platform config access
+□ STORE_MANAGER: own branch only — attempt cross-branch access → expect 403
+□ HOSTESS: own sessions + own commission ONLY — attempt viewing other hostess data → expect 403
+□ STAFF: room orders only — attempt viewing guest PII → expect masked/403
+□ DRIVER: transfer jobs only — attempt financial data → expect 403
+□ CUSTOMER: own bookings only
+
+### MODULE 10: REAL-TIME & PERFORMANCE
+□ Room board Socket.io: room status change → all connected clients update < 500ms
+□ Hostess availability: multi-check (shift + assignment + blackout) completes < 300ms
+□ Session extension: availability re-check + folio update atomic transaction?
+□ High concurrency: 10 simultaneous room bookings → no race condition / double-booking
+
+### MODULE 11: MULTINATIONAL READINESS
+□ All UI strings: are they i18n keys (not hardcoded English)?
+□ Timezone: all timestamps stored UTC → displayed in branch local timezone?
+□ Non-Latin names (Chinese/Korean): stored and displayed without truncation?
+□ Tax config: branch-level tax rate (not hardcoded)?
+□ Date format: locale-aware (DD/MM vs YYYY-MM-DD)?
+
+---
+
+## 📊 REPORT FORMAT REQUIRED
+
+After completing all tests, produce this exact report structure:
+
+---
+
+### 🔴 CRITICAL FAILURES (blocks go-live)
+| # | Module | Issue | Evidence | Fix Required |
+|---|--------|-------|----------|--------------|
+
+### 🟠 HIGH PRIORITY BUGS (degrades core ops)
+| # | Module | Issue | Evidence | Workaround? |
+|---|--------|-------|----------|-------------|
+
+### 🟡 MEDIUM ISSUES (business logic gaps)
+| # | Module | Issue | Business Impact | Effort |
+|---|--------|-------|----------------|--------|
+
+### 🟢 WORKING CORRECTLY
+| Module | Status | Notes |
+|--------|--------|-------|
+
+### ⚪ NOT YET BUILT (MVP gaps)
+| Feature | Priority | Recommended Phase |
+|---------|----------|-------------------|
+
+---
+
+### 📈 WORKFLOW COMPLETION MATRIX
+
+| Workflow | Completeness | Real-time OK? | Audit Trail? | Tax Configurable? | RBAC Enforced? |
+|----------|-------------|--------------|-------------|------------------|----------------|
+| Reservation Lifecycle | X% | ✅/❌ | ✅/❌ | ✅/❌ | ✅/❌ |
+| Hostess Assignment | X% | ✅/❌ | ✅/❌ | N/A | ✅/❌ |
+| POS / F&B | X% | ✅/❌ | ✅/❌ | ✅/❌ | ✅/❌ |
+| Commission Engine | X% | N/A | ✅/❌ | N/A | ✅/❌ |
+| Investor Dashboard | X% | ✅/❌ | ✅/❌ | N/A | ✅/❌ |
+| RBAC Enforcement | X% | N/A | ✅/❌ | N/A | N/A |
+| Multinational Readiness | X% | N/A | N/A | ✅/❌ | N/A |
+
+---
+
+### 🏗️ MIGRATION READINESS SCORE (for .NET migration)
+
+Rate 1–10 each area:
+
+| Area | Score | Blocking Issues |
+|------|-------|----------------|
+| DB Schema quality | /10 | |
+| API contract clarity | /10 | |
+| Business logic separation | /10 | |
+| Audit trail completeness | /10 | |
+| Real-time architecture | /10 | |
+| i18n readiness | /10 | |
+| **OVERALL MVP SCORE** | **/10** | |
+
+---
+
+### 👉 TOP 5 RECOMMENDED NEXT ACTIONS
+Ranked by: (business impact × effort⁻¹)
+
+1. [CRITICAL] ...
+2. [HIGH] ...
+3. [MEDIUM] ...
+4. [MEDIUM] ...
+5. [LOW] ...
+
+---
+
+### ⚠️ KARAOKE OPS ANTI-PATTERNS DETECTED
+List any of these found in the codebase:
+- Hardcoded tax rates
+- Commission calculated at booking time (not session close)
+- Hard deletes on reservations/folios
+- DB polling instead of Socket.io push
+- Agency hostess treated same as direct hire
+- Investor seeing raw transactional data
+- Cash events without audit trail
+
+---
+
+Please begin the audit now. Start by reading all existing files, 
+then execute each test scenario above, then produce the full report.
+Do NOT skip any module. Flag every assumption you make.
