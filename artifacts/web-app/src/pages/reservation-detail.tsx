@@ -426,15 +426,16 @@ export default function ReservationDetail() {
         </Card>
 
         {/* ── Tabs ── */}
-        <div style={{ display: "flex", gap: 4, borderBottom: "2px solid #e5e7eb", flexWrap: "wrap" }}>
-          {([ ["info", "Reservation Info"], ["folio", "Folio (Live)"] ] as const).map(([key, label]) => (
+        <div style={{ display: "flex", gap: 2, borderBottom: "1px solid rgba(255,255,255,0.08)", flexWrap: "wrap" }}>
+          {([ ["info", "Reservation Info"], ["folio", "Order"] ] as const).map(([key, label]) => (
             <button key={key} onClick={() => setActiveTab(key)} style={{
-              padding: "10px 18px", background: "none", border: "none",
+              padding: "10px 20px", background: "none", border: "none",
               borderBottom: `2px solid ${activeTab === key ? "#D1AE38" : "transparent"}`,
-              marginBottom: -2, fontSize: 14,
-              fontWeight: activeTab === key ? 600 : 400,
+              marginBottom: -1, fontSize: 13,
+              fontWeight: activeTab === key ? 700 : 400,
               color: activeTab === key ? "#D1AE38" : "#6b7280",
               cursor: "pointer", transition: "all 0.15s",
+              letterSpacing: "0.01em",
             }}>{label}</button>
           ))}
         </div>
@@ -569,11 +570,15 @@ export default function ReservationDetail() {
         </>)}
 
         {activeTab === "folio" && (
-          <FolioView
-            reservationId={id!}
-            currency="MYR"
-            isLive={status === "checked_in"}
-          />
+          <Card className="bg-black/40 border-white/5 overflow-hidden">
+            <div className="px-6 py-5">
+              <FolioView
+                reservationId={id!}
+                currency="MYR"
+                isLive={status === "checked_in"}
+              />
+            </div>
+          </Card>
         )}
       </div>
 

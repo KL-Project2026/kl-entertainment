@@ -56,6 +56,29 @@ router.post(
   }
 );
 
+// PATCH /folio/entries/:id/status — 주문 상태 변경 (pending ↔ served)
+router.patch(
+  "/folio/entries/:id/status",
+  authenticate,
+  async (req: Request, res: Response): Promise<void> => {
+    const { order_status } = req.body as Record<string, string>;
+    if (!["pending", "served"].includes(order_status)) {
+      res.status(400).json({ error: "Invalid status" }); return;
+    }
+    try {
+      const { rows } = await pool.query(
+        `UPDATE folio_entries SET order_status = $1 WHERE id = $2 AND is_void = false RETURNING *`,
+        [order_status, req.params.id]
+      );
+      if (!rows.length) { res.status(404).json({ error: "NOT_FOUND" }); return; }
+      res.json({ success: true, data: rows[0] });
+    } catch (err) {
+      console.error("folio status update error:", err);
+      res.status(500).json({ error: "INTERNAL_ERROR" });
+    }
+  }
+);
+
 // DELETE /folio/entries/:id — Folio 항목 취소 (void)
 router.delete(
   "/folio/entries/:id",
