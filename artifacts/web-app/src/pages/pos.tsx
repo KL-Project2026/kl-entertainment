@@ -241,109 +241,128 @@ function AddItemModal({ orderId, onClose, onAdded }: { orderId: string; onClose:
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <Card className="w-full max-w-2xl flex flex-col max-h-[85vh] overflow-hidden">
-        {/* Header */}
-        <div className="flex justify-between items-center p-5 border-b border-white/5 shrink-0">
-          <h3 className="font-display text-lg font-bold">Add Order Item</h3>
-          <button onClick={onClose}><X className="w-4 h-4 text-muted-foreground" /></button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-3">
+      <div className="w-full max-w-5xl h-[90vh] flex flex-col rounded-2xl overflow-hidden border border-white/8 bg-[#0f0f14] shadow-2xl">
+
+        {/* ── Header ── */}
+        <div className="flex justify-between items-center px-6 py-4 border-b border-white/8 shrink-0">
+          <h3 className="font-display text-lg font-bold tracking-tight">Add Order Item</h3>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/8 transition-colors">
+            <X className="w-4 h-4 text-muted-foreground" />
+          </button>
         </div>
 
-        {/* Category tabs */}
-        <div ref={tabsRef} className="flex gap-1 overflow-x-auto px-4 py-3 border-b border-white/5 shrink-0 scrollbar-none">
-          {menuLoading ? (
-            <div className="flex gap-2">{[1,2,3,4].map(i => <div key={i} className="h-7 w-24 rounded-lg bg-white/5 animate-pulse" />)}</div>
-          ) : categories.map(cat => {
-            const marker = catMarker(cat.menuCatName);
-            const isVip = marker === " *";
-            const isSpecial = marker === " **";
-            return (
-              <button
-                key={cat.id}
-                onClick={() => setActiveCatId(cat.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all border ${
-                  activeCatId === cat.id
-                    ? "bg-primary/15 border-primary/40 text-primary"
-                    : "bg-black/30 border-white/10 text-muted-foreground hover:border-white/20 hover:text-foreground"
-                }`}
-              >
-                {cat.name}
-                {marker && (
-                  <span className={`ml-0.5 font-bold ${isSpecial ? "text-rose-400" : isVip ? "text-amber-400" : ""}`}>
-                    {marker.trim()}
+        {/* ── Body: left sidebar (categories) + right content ── */}
+        <div className="flex flex-1 min-h-0">
+
+          {/* Left — Category list (vertical, no scroll) */}
+          <div className="w-48 shrink-0 border-r border-white/8 flex flex-col overflow-y-auto py-2 px-2 gap-0.5">
+            {menuLoading ? (
+              [1,2,3,4,5,6].map(i => <div key={i} className="h-9 rounded-lg bg-white/5 animate-pulse mx-1 mb-1" />)
+            ) : categories.map(cat => {
+              const marker = catMarker(cat.menuCatName);
+              const isVip = marker === " *";
+              const isSpecial = marker === " **";
+              const isActive = activeCatId === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => setActiveCatId(cat.id)}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all flex items-center justify-between gap-1 ${
+                    isActive
+                      ? "bg-primary/15 text-primary font-semibold"
+                      : "text-muted-foreground hover:bg-white/5 hover:text-foreground"
+                  }`}
+                >
+                  <span className="truncate">
+                    {cat.name}
+                    {marker && (
+                      <span className={`ml-0.5 text-xs font-bold ${isSpecial ? "text-rose-400" : isVip ? "text-amber-400" : ""}`}>
+                        {marker.trim()}
+                      </span>
+                    )}
                   </span>
-                )}
-                <span className="ml-1.5 text-[10px] opacity-50">({cat.items.length})</span>
-              </button>
-            );
-          })}
-        </div>
+                  <span className={`text-[10px] shrink-0 ${isActive ? "text-primary/70" : "text-white/25"}`}>
+                    {cat.items.length}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
 
-        {/* Items grid */}
-        <div className="overflow-y-auto flex-1 p-4">
-          {menuLoading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {[1,2,3,4,5,6].map(i => <div key={i} className="h-16 rounded-lg bg-white/5 animate-pulse" />)}
-            </div>
-          ) : activeItems.length === 0 ? (
-            <p className="text-center text-muted-foreground text-sm py-6">No items in this category</p>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {activeItems.map(item => {
-                const isSelected = desc === item.name;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => selectItem(item)}
-                    className={`text-left p-3 rounded-xl border transition-all ${
-                      isSelected
-                        ? "bg-primary/15 border-primary/40"
-                        : "bg-black/40 border-white/8 hover:border-white/20"
-                    }`}
-                  >
-                    <p className={`text-xs font-medium leading-snug ${isSelected ? "text-primary" : "text-foreground"}`}>
-                      {item.name}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground mt-1">
-                      {item.unitPrice > 0 ? `MYR ${item.unitPrice.toFixed(2)}` : "Price TBD"}
-                    </p>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
+          {/* Right — Items grid + form */}
+          <div className="flex-1 flex flex-col min-h-0">
 
-        {/* Entry form */}
-        <div className="p-4 pt-3 border-t border-white/5 space-y-3 shrink-0 bg-black/20">
-          <Input
-            placeholder="Description *"
-            value={desc}
-            onChange={(e) => setDesc(e.target.value)}
-            className="bg-black/40"
-          />
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Unit Price (MYR) *</label>
-              <Input type="number" min={0} step={0.01} value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} className="bg-black/40" />
+            {/* Items area */}
+            <div className="flex-1 overflow-y-auto p-4">
+              {menuLoading ? (
+                <div className="grid grid-cols-3 gap-3">
+                  {[1,2,3,4,5,6].map(i => <div key={i} className="h-20 rounded-xl bg-white/5 animate-pulse" />)}
+                </div>
+              ) : activeItems.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-center py-16">
+                  <ShoppingCart className="w-10 h-10 text-white/15 mb-3" />
+                  <p className="text-muted-foreground text-sm">No items in this category</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 xl:grid-cols-4 gap-3">
+                  {activeItems.map(item => {
+                    const isSelected = desc === item.name;
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => selectItem(item)}
+                        className={`text-left p-4 rounded-xl border transition-all ${
+                          isSelected
+                            ? "bg-primary/15 border-primary/50 shadow-[0_0_0_1px_rgba(var(--primary),0.3)]"
+                            : "bg-white/3 border-white/8 hover:bg-white/6 hover:border-white/15"
+                        }`}
+                      >
+                        <p className={`text-sm font-medium leading-snug ${isSelected ? "text-primary" : "text-foreground"}`}>
+                          {item.name}
+                        </p>
+                        <p className={`text-xs mt-1.5 ${isSelected ? "text-primary/70" : "text-muted-foreground"}`}>
+                          {item.unitPrice > 0 ? `MYR ${item.unitPrice.toFixed(2)}` : "Price TBD"}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Quantity</label>
-              <Input type="number" min={0.5} step={0.5} value={qty} onChange={(e) => setQty(e.target.value)} className="bg-black/40" />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Discount %</label>
-              <Input type="number" min={0} max={100} value={discountPct} onChange={(e) => setDiscountPct(e.target.value)} className="bg-black/40" />
+
+            {/* Bottom form */}
+            <div className="shrink-0 border-t border-white/8 px-4 py-4 space-y-3 bg-black/20">
+              <Input
+                placeholder="Description *"
+                value={desc}
+                onChange={(e) => setDesc(e.target.value)}
+                className="bg-white/5 border-white/10"
+              />
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Unit Price (MYR) *</label>
+                  <Input type="number" min={0} step={0.01} value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} className="bg-white/5 border-white/10" />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Quantity</label>
+                  <Input type="number" min={0.5} step={0.5} value={qty} onChange={(e) => setQty(e.target.value)} className="bg-white/5 border-white/10" />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Discount %</label>
+                  <Input type="number" min={0} max={100} value={discountPct} onChange={(e) => setDiscountPct(e.target.value)} className="bg-white/5 border-white/10" />
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <Button variant="ghost" onClick={onClose} className="flex-1">Cancel</Button>
+                <Button onClick={handleAdd} disabled={addItem.isPending || !desc || !unitPrice} className="flex-1 gap-2">
+                  <Plus className="w-4 h-4" /> {addItem.isPending ? "Adding..." : "Add Item"}
+                </Button>
+              </div>
             </div>
           </div>
-          <div className="flex gap-3">
-            <Button variant="ghost" onClick={onClose} className="flex-1">Cancel</Button>
-            <Button onClick={handleAdd} disabled={addItem.isPending || !desc || !unitPrice} className="flex-1 gap-2">
-              <Plus className="w-4 h-4" /> {addItem.isPending ? "Adding..." : "Add Item"}
-            </Button>
-          </div>
         </div>
-      </Card>
+      </div>
     </div>
   );
 }
