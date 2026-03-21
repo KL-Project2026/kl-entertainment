@@ -318,7 +318,7 @@ router.get(
   authenticate,
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const lang = getLang(req);
+      const lang = "en"; // POS catalog always returns English names
       const role = req.user?.role ?? "";
       let visFilter: string;
       if (ADMIN_ROLES.has(role)) {

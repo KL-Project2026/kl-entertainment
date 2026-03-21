@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useLocation, useSearch } from "wouter";
 import ActiveSessionsList from "@/components/pos/ActiveSessionsList";
 import {
@@ -208,8 +209,11 @@ function AddItemModal({ orderId, onClose, onAdded }: { orderId: string; onClose:
   const [unitPrice, setUnitPrice] = useState("");
   const [qty, setQty] = useState("1");
   const [discountPct, setDiscountPct] = useState("0");
+  const [mounted, setMounted] = useState(false);
   const addItem = useAddOrderItem();
   const tabsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { setMounted(true); }, []);
 
   // Auto-select first category when menu loads
   useEffect(() => {
@@ -240,8 +244,9 @@ function AddItemModal({ orderId, onClose, onAdded }: { orderId: string; onClose:
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-3">
+  if (!mounted) return null;
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-3">
       <div className="w-full max-w-5xl h-[90vh] flex flex-col rounded-2xl overflow-hidden border border-white/8 bg-[#0f0f14] shadow-2xl">
 
         {/* ── Header ── */}
@@ -363,7 +368,8 @@ function AddItemModal({ orderId, onClose, onAdded }: { orderId: string; onClose:
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
