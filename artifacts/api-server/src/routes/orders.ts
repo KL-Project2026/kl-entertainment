@@ -5,6 +5,11 @@ import { requireRole } from "../middleware/rbac";
 import { ROLES } from "../config/constants";
 import { calculateOrderTotals, generateOrderNo, generateReceiptNo } from "../services/order-service";
 import { generateInvoiceHtml } from "../services/document-service";
+import bcrypt from "bcryptjs";
+import { getMaskedDisplayName } from "../utils/invoiceFormatter";
+
+// Roles that are "staff only" — cannot access special categories
+const STAFF_ONLY_ROLES = new Set<string>([ROLES.KITCHEN, ROLES.HALL, ROLES.GENERAL]);
 
 const router: IRouter = Router();
 
@@ -232,6 +237,65 @@ router.post(
         : Math.min(1, Math.max(0, discountPctRaw));
       const lineTotal = Math.round(qty * unitPrice * (1 - discountPct) * 100) / 100;
 
+      // ── Special Category RBAC Gate ────────────────────────────────────────
+      // MIGRATION: convert to EF Core repository pattern
+      let specialCategory: {
+        id: string; name: string;
+        visibility_level: string; invoice_display_mode: string; invoice_alias: string | null;
+      } | null = null;
+
+      if (body.productId) {
+        const { rows: catRows } = await pool.query<{
+          id: string; name: string;
+          visibility_level: string; invoice_display_mode: string; invoice_alias: string | null;
+        }>(
+          `SELECT mc.id, mc.name, mc.visibility_level, mc.invoice_display_mode, mc.invoice_alias
+           FROM menu_items mi
+           JOIN menu_categories mc ON mc.id = mi.category_id
+           WHERE mi.product_id = $1 AND mi.is_deleted = false
+           LIMIT 1`,
+          [body.productId]
+        );
+
+        if (catRows.length > 0 && catRows[0].visibility_level !== "ALL") {
+          specialCategory = catRows[0];
+          const role = req.user!.role;
+
+          // Staff roles are blocked entirely
+          if (STAFF_ONLY_ROLES.has(role)) {
+            res.status(403).json({
+              error: "SPECIAL_CATEGORY_ACCESS_DENIED",
+              message: "Manager authorization required",
+            });
+            return;
+          }
+
+          // Managers must provide their password as PIN confirmation
+          const managerPin = body.managerPin as string | undefined;
+          if (!managerPin) {
+            res.status(200).json({
+              requiresManagerPin: true,
+              specialItemCount: 1,
+              categoryName: specialCategory.name,
+            });
+            return;
+          }
+
+          // Verify PIN against the manager's own password_hash
+          const { rows: staffRows } = await pool.query<{ password_hash: string }>(
+            "SELECT password_hash FROM staff WHERE id = $1 LIMIT 1",
+            [req.user!.id]
+          );
+          const validPin = staffRows.length > 0 &&
+            await bcrypt.compare(managerPin, staffRows[0].password_hash);
+          if (!validPin) {
+            res.status(401).json({ error: "INVALID_MANAGER_PIN" });
+            return;
+          }
+        }
+      }
+      // ── End Special Category Gate ─────────────────────────────────────────
+
       const { rows: itemRows } = await pool.query(
         `INSERT INTO order_items (id, order_id, item_type, product_id, description, quantity, unit_price, discount_pct, line_total, staff_ref_id)
          VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -239,6 +303,45 @@ router.post(
         [req.params.id, body.itemType ?? "product", body.productId ?? null, body.description,
          qty, unitPrice, discountPct, lineTotal, body.staffRefId ?? null]
       );
+
+      // ── Special Order Audit Insert ────────────────────────────────────────
+      // MIGRATION: convert to EF Core repository pattern
+      if (specialCategory) {
+        const newItem = itemRows[0] as Record<string, unknown>;
+        const { rows: orderBranchRows } = await pool.query<{ branch_id: string; reservation_id: string | null }>(
+          "SELECT branch_id, reservation_id FROM orders WHERE id = $1",
+          [req.params.id]
+        );
+        if (orderBranchRows.length > 0) {
+          const maskedDisplay = getMaskedDisplayName(
+            { visibility_level: specialCategory.visibility_level,
+              invoice_display_mode: specialCategory.invoice_display_mode,
+              invoice_alias: specialCategory.invoice_alias },
+            { id: String(newItem.id), description: String(body.description) }
+          );
+          // Never log actual item names — only masked display in console
+          await pool.query(
+            `INSERT INTO special_order_audit
+               (order_item_id, masked_display, actual_item_name, actual_category_name,
+                actual_amount, ordered_by_user_id, authorized_by_user_id,
+                manager_pin_verified, branch_id, session_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            [
+              newItem.id,
+              maskedDisplay,
+              String(body.description),
+              specialCategory.name,
+              lineTotal,
+              req.user!.id,
+              req.user!.id,
+              true,
+              orderBranchRows[0].branch_id,
+              orderBranchRows[0].reservation_id ?? null,
+            ]
+          );
+        }
+      }
+      // ── End Audit Insert ──────────────────────────────────────────────────
 
       await recalculateOrderTotals(req.params.id);
 

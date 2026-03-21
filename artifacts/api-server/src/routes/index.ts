@@ -30,6 +30,7 @@ import hostessProfilesRouter from "./hostess-profiles";
 import agencyMgmtRouter from "./agency-mgmt";
 import roomTablesRouter from "./room-tables";
 import settingsMenuConfigRouter from "./settings-menu-config";
+import menuRouter from "./menu";
 
 const router: IRouter = Router();
 
@@ -64,5 +65,6 @@ router.use(hostessProfilesRouter);
 router.use(agencyMgmtRouter);
 router.use(roomTablesRouter);
 router.use(settingsMenuConfigRouter);
+router.use(menuRouter);
 
 export default router;

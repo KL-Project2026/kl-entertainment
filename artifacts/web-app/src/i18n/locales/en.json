@@ -22,7 +22,9 @@
     "invoices": "Invoices",
     "tables": "Room & Table",
     "daily_report": "Daily Report",
-    "menu_config": "Menu Config"
+    "menu_config": "Menu Config",
+    "menu_standard": "Menu Order",
+    "menu_manager": "Full Menu (Manager)"
   },
   "auth": {
     "sign_in": "Sign In",

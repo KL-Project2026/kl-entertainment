@@ -18,7 +18,9 @@
     "tables": "Room & Table",
     "daily_report": "รายงานประจำวัน",
     "settings": "การตั้งค่า",
-    "menu_config": "ตั้งค่าเมนู"
+    "menu_config": "ตั้งค่าเมนู",
+    "menu_standard": "สั่งเมนู",
+    "menu_manager": "เมนูทั้งหมด (ผู้จัดการ)"
   },
   "auth": {
     "sign_in": "เข้าสู่ระบบ",

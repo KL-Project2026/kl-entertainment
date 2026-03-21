@@ -7,6 +7,7 @@ import {
   ShoppingCart, Users, CalendarCheck, Clock, Handshake, PieChart,
   LineChart, BarChart2, Globe, Receipt, Table2, FileBarChart, Menu, X,
   UserCheck, Briefcase, Settings, ChevronDown, LayoutList,
+  BookOpen, Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
@@ -53,6 +54,8 @@ const NAV_ITEMS: NavItem[] = [
   { path: "/reports",            key: "nav.reports",           icon: BarChart2,       roles: MANAGER_UP },
   { path: "/branches",           key: "nav.branches",          icon: Building2,       roles: ADMIN_UP },
   { path: "/products",           key: "nav.products",          icon: Package,         roles: MANAGER_UP },
+  { path: "/menu/standard",      key: "nav.menu_standard",     icon: BookOpen,        roles: OPS_UP },
+  { path: "/menu/manager",       key: "nav.menu_manager",      icon: Lock,            roles: MANAGER_UP },
 ];
 
 // ── Category definitions ─────────────────────────────────────────────────────
@@ -76,8 +79,10 @@ const CATEGORIES: CategoryDef[] = [
       { path: "/",             key: "nav.dashboard",    icon: LayoutDashboard, roles: OPS_UP },
       { path: "/room-board",   key: "nav.room_board",   icon: Grid,            roles: OPS_UP },
       { path: "/reservations", key: "nav.reservations", icon: CalendarDays,    roles: MANAGER_UP },
-      { path: "/pos",          key: "nav.pos",          icon: ShoppingCart,    roles: OPS_UP },
-      { path: "/products",     key: "nav.products",     icon: Package,         roles: MANAGER_UP },
+      { path: "/pos",            key: "nav.pos",            icon: ShoppingCart, roles: OPS_UP },
+      { path: "/products",       key: "nav.products",       icon: Package,      roles: MANAGER_UP },
+      { path: "/menu/standard",  key: "nav.menu_standard",  icon: BookOpen,     roles: OPS_UP },
+      { path: "/menu/manager",   key: "nav.menu_manager",   icon: Lock,         roles: MANAGER_UP },
     ],
   },
   {

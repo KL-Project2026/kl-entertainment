@@ -17,6 +17,8 @@
     "reports": "报表",
     "branches": "分店管理",
     "products": "菜单",
+    "menu_standard": "菜单点单",
+    "menu_manager": "完整菜单 (经理)",
     "customers": "客户管理",
     "invoices": "发票",
     "tables": "Room & Table",

@@ -18,7 +18,9 @@
     "invoices": "인보이스",
     "tables": "Room & Table",
     "daily_report": "일일 리포트",
-    "menu_config": "메뉴 설정"
+    "menu_config": "메뉴 설정",
+    "menu_standard": "메뉴 오더",
+    "menu_manager": "전체 메뉴 (매니저)"
   },
   "auth": {
     "sign_in": "로그인",

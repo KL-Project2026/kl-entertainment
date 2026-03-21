@@ -240,4 +240,68 @@ router.get(
   }
 );
 
+// ── GET /manager/special-orders-audit ────────────────────────────────────────
+// Returns actual names and amounts of all special category orders.
+// Access is itself audited into the audit_log table.
+// MIGRATION: convert to EF Core repository pattern
+router.get(
+  "/manager/special-orders-audit",
+  authenticate,
+  managerAccess,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const branchId = req.query["branch_id"] as string | undefined;
+      const from     = req.query["from"]      as string | undefined;
+      const to       = req.query["to"]        as string | undefined;
+
+      if (!branchId) {
+        res.status(400).json({ error: "BRANCH_ID_REQUIRED" });
+        return;
+      }
+
+      // Log this access to the audit_log table
+      // TODO: replace with SignalR hub
+      await pool.query(
+        `INSERT INTO audit_log (entity_type, entity_id, action, changed_by, ip_address)
+         VALUES ('special_order_audit', $1::uuid, 'ACCESSED', $2, $3::inet)`,
+        [branchId, req.user!.id, req.ip ?? null]
+      );
+
+      const conditions: string[] = ["soa.branch_id = $1"];
+      const params: unknown[]    = [branchId];
+      let   idx = 2;
+
+      if (from) { conditions.push(`soa.created_at >= $${idx++}`); params.push(from); }
+      if (to)   { conditions.push(`soa.created_at <= $${idx++}`); params.push(to);   }
+
+      const { rows } = await pool.query(
+        `SELECT
+           soa.id,
+           soa.order_item_id,
+           soa.masked_display,
+           soa.actual_item_name,
+           soa.actual_category_name,
+           soa.actual_amount,
+           soa.manager_pin_verified,
+           soa.created_at,
+           soa.session_id,
+           orderer.full_name  AS ordered_by_name,
+           orderer.email      AS ordered_by_email,
+           authorizer.full_name AS authorized_by_name
+         FROM special_order_audit soa
+         LEFT JOIN staff orderer    ON orderer.id    = soa.ordered_by_user_id
+         LEFT JOIN staff authorizer ON authorizer.id = soa.authorized_by_user_id
+         WHERE ${conditions.join(" AND ")}
+         ORDER BY soa.created_at DESC`,
+        params
+      );
+
+      res.json({ data: rows, total: rows.length });
+    } catch (err) {
+      console.error("[Manager] special-orders-audit error:", err);
+      res.status(500).json({ error: "INTERNAL_ERROR" });
+    }
+  }
+);
+
 export default router;

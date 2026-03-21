@@ -1,0 +1,179 @@
+You are working on a Karaoke Business Management System (Node.js + PostgreSQL + Socket.io).
+Do NOT delete any existing code. All changes are ADDITIVE only.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TASK: Menu Category RBAC + Special Category Masking
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## PART 1 — DATABASE MIGRATION
+Run these SQL migrations on the existing menu_categories table:
+
+ALTER TABLE menu_categories 
+  ADD COLUMN IF NOT EXISTS visibility_level VARCHAR(20) NOT NULL DEFAULT 'ALL'
+    CHECK (visibility_level IN ('ALL', 'MANAGER_ONLY', 'ADMIN_ONLY')),
+  ADD COLUMN IF NOT EXISTS invoice_display_mode VARCHAR(20) NOT NULL DEFAULT 'REAL_NAME'
+    CHECK (invoice_display_mode IN ('REAL_NAME', 'MASKED_CODE', 'MASKED_SYMBOL', 'CUSTOM_ALIAS')),
+  ADD COLUMN IF NOT EXISTS invoice_alias VARCHAR(100);
+
+Create a new table:
+
+CREATE TABLE IF NOT EXISTS special_order_audit (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_item_id         UUID NOT NULL,
+  invoice_id            UUID,
+  masked_display        VARCHAR(100) NOT NULL,
+  actual_item_name      VARCHAR(200) NOT NULL,
+  actual_category_name  VARCHAR(100) NOT NULL,
+  actual_amount         NUMERIC(12,2) NOT NULL,
+  ordered_by_user_id    UUID NOT NULL,
+  authorized_by_user_id UUID NOT NULL,
+  manager_pin_verified  BOOLEAN DEFAULT TRUE,
+  branch_id             UUID NOT NULL,
+  session_id            UUID,
+  created_at            TIMESTAMPTZ DEFAULT NOW()
+);
+
+Add delete protection trigger on special_order_audit:
+
+CREATE OR REPLACE RULE no_delete_special_audit AS
+  ON DELETE TO special_order_audit DO INSTEAD NOTHING;
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## PART 2 — BACKEND ROUTES
+Add to existing routes/menu.js (DO NOT modify existing routes):
+
+### GET /api/menu/standard
+- Auth required
+- Roles allowed: STAFF, STORE_MANAGER, ADMIN, SUPER_ADMIN
+- Logic:
+  - If role === 'STAFF' → query only WHERE visibility_level = 'ALL'
+  - If role is STORE_MANAGER or above → query ALL visibility levels
+  - Join menu_items on category_id where is_deleted = false, is_available = true
+  - Group items under their category
+  - Return: { menuType: 'STANDARD' or 'FULL', categories: [...] }
+
+### GET /api/menu/manager
+- Auth required
+- Roles allowed: STORE_MANAGER, ADMIN, SUPER_ADMIN only → return 403 for others
+- Returns ALL categories including MANAGER_ONLY and ADMIN_ONLY
+- Include invoice_display_mode and invoice_alias fields in response
+- Return: { menuType: 'FULL', categories: [...] }
+
+### POST /api/orders (ADD to existing order creation logic)
+Add special category check BEFORE creating the order:
+
+1. Fetch category info for each item in the order
+2. Identify items where visibility_level !== 'ALL' → these are "special items"
+3. If special items exist AND role === 'STAFF':
+   → return 403: { error: 'SPECIAL_CATEGORY_ACCESS_DENIED', message: 'Manager authorization required' }
+4. If special items exist AND role === STORE_MANAGER or above:
+   → check if req.body.managerPin is present
+   → if missing: return 200 { requiresManagerPin: true, specialItemCount: N }
+   → if present: verify PIN against users table (hashed) — if invalid return 401
+   → if valid: proceed with order creation
+5. After order created successfully, for each special item INSERT into special_order_audit:
+   - masked_display = resolved alias (see masking logic below)
+   - actual_item_name = real name
+   - actual_category_name = real category name
+   - ordered_by_user_id = req.user.id
+   - authorized_by_user_id = req.user.id (manager authorized own order)
+
+Masking logic function (add to utils/invoiceFormatter.js, create file if not exists):
+function getMaskedDisplayName(category, orderItem) {
+  switch (category.invoice_display_mode) {
+    case 'MASKED_CODE':
+      return `SVC-${String(orderItem.sequence_no || orderItem.id.slice(0,3)).padStart(3,'0')}`;
+    case 'MASKED_SYMBOL':
+      return 'XXXX';
+    case 'CUSTOM_ALIAS':
+      return category.invoice_alias || '■■■■';
+    default:
+      return orderItem.name;
+  }
+}
+Export this function. Use it in both order creation and invoice generation.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## PART 3 — INVOICE / FOLIO LINE ITEM RENDERING
+In the existing invoice generation logic (wherever folio line items are assembled for PDF or JSON response):
+
+Import getMaskedDisplayName from utils/invoiceFormatter.js
+
+For each order_item being added to the invoice:
+1. Fetch its category (join or cache from order creation)
+2. If category.visibility_level === 'ALL':
+   → use real item name and real category name as-is
+3. If category.visibility_level !== 'ALL':
+   → displayName = getMaskedDisplayName(category, item)
+   → categoryDisplay = '—'  (hide category name too)
+   → do NOT include _internalName or actual name anywhere in the PDF output
+   → amount, quantity, unit price: show as normal (no masking on numbers)
+
+The PDF/invoice JSON output must NEVER contain the real name of special category items.
+The special_order_audit table is the only place real names are stored.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## PART 4 — SIDEBAR / NAVIGATION CONFIG
+In the existing sidebar navigation config (wherever route permissions are defined):
+
+Add two entries under the "Operations" section:
+
+Entry 1 — Standard Menu:
+  label key: 'nav.menu_standard'
+  path: '/operations/menu/standard'
+  icon: 'MenuIcon'
+  roles: ['STAFF', 'STORE_MANAGER', 'ADMIN', 'SUPER_ADMIN']
+
+Entry 2 — Manager Full Menu:
+  label key: 'nav.menu_manager'
+  path: '/operations/menu/manager'
+  icon: 'LockIcon'
+  badge: 'MGR'
+  roles: ['STORE_MANAGER', 'ADMIN', 'SUPER_ADMIN']
+  — this entry must NOT render at all for STAFF role (not just disabled — completely hidden)
+
+Add i18n keys for all 6 languages:
+  nav.menu_standard → EN: "Menu Order" | ZH: "菜单点单" | MS: "Pesanan Menu" | TH: "สั่งเมนู" | KO: "메뉴 오더" | JA: "メニュー注文"
+  nav.menu_manager  → EN: "Full Menu (Manager)" | ZH: "完整菜单 (经理)" | MS: "Menu Penuh (Pengurus)" | TH: "เมนูทั้งหมด (ผู้จัดการ)" | KO: "전체 메뉴 (매니저)" | JA: "全メニュー (マネージャー)"
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## PART 5 — AUDIT LOG QUERY ENDPOINT
+Add new route: GET /api/manager/special-orders-audit
+- Roles allowed: STORE_MANAGER, ADMIN, SUPER_ADMIN only
+- Query special_order_audit table
+- Filter by: branch_id (required), optional date range (from/to)
+- Return full actual names, amounts, who ordered, who authorized
+- This endpoint is the ONLY way to see real names of special items
+- Add to audit_logs table: every access to this endpoint logs { user_id, branch_id, accessed_at, ip_address }
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## CONSTRAINTS — READ BEFORE WRITING CODE
+
+1. DO NOT delete or modify any existing route handlers
+2. DO NOT change existing menu_categories queries that work today — only ADD the new columns to responses
+3. All new routes follow existing auth middleware pattern already in the codebase
+4. Use existing db query helper (whatever pool/client pattern is already in use)
+5. If invoice generation is in a separate service file, modify only that file's line item assembly section
+6. Add // MIGRATION: convert to EF Core repository pattern comment on every new db query function
+7. Add // TODO: replace with SignalR hub comment if any Socket.io emit is added
+8. Every INSERT/UPDATE must include branch_id for multi-tenant safety
+9. Never log or console.log actual special item names — use masked display name in all logs
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## EXPECTED OUTPUT FROM REPLIT
+
+Confirm each part is complete:
+[ ] Part 1: Migration SQL executed, both columns added, audit table created, delete rule applied
+[ ] Part 2: /api/menu/standard and /api/menu/manager routes added, POST /api/orders updated with special item gate
+[ ] Part 3: getMaskedDisplayName utility created, invoice line items use masking
+[ ] Part 4: Sidebar config updated with Menu1/Menu2 split, i18n keys added for 6 languages
+[ ] Part 5: Audit query endpoint added with access logging
+
+Do not proceed to the next part until the current part is confirmed working.
+Start with Part 1.

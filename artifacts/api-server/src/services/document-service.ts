@@ -1,5 +1,6 @@
 import { pool } from "@workspace/db";
 import { formatMYR } from "./order-service";
+import { getMaskedDisplayName } from "../utils/invoiceFormatter";
 
 interface BranchInfo {
   name: string;
@@ -22,12 +23,17 @@ interface ReservationInfo {
 }
 
 interface OrderItemRow {
-  description: string;
-  quantity: number;
-  unit_price: number;
-  discount_pct: number;
-  line_total: number;
-  tax_applicable: boolean;
+  id:                   string;
+  description:          string;
+  quantity:             number;
+  unit_price:           number;
+  discount_pct:         number;
+  line_total:           number;
+  tax_applicable:       boolean;
+  // Category masking fields (nullable — item may not be in a menu_items entry)
+  visibility_level:     string | null;
+  invoice_display_mode: string | null;
+  invoice_alias:        string | null;
 }
 
 interface OrderInfo {
@@ -62,8 +68,12 @@ async function fetchOrderData(orderId: string) {
   const order = orderRows[0] as OrderInfo & BranchInfo & { branch_name: string; reservation_id: string };
 
   const { rows: itemRows } = await pool.query(
-    `SELECT oi.*, p.tax_applicable FROM order_items oi
+    `SELECT oi.*, p.tax_applicable,
+            mc.visibility_level, mc.invoice_display_mode, mc.invoice_alias
+     FROM order_items oi
      LEFT JOIN products p ON p.id = oi.product_id
+     LEFT JOIN menu_items mi ON mi.product_id = oi.product_id AND mi.is_deleted = false
+     LEFT JOIN menu_categories mc ON mc.id = mi.category_id
      WHERE oi.order_id = $1 ORDER BY oi.created_at`,
     [orderId]
   );
@@ -244,14 +254,25 @@ interface DetailedHtmlParams {
 function generateDetailedHtml(p: DetailedHtmlParams): string {
   const itemRows = p.items
     .map(
-      (i) => `
+      (i) => {
+        // Apply special category masking — real names must never appear in PDF output
+        const displayName = getMaskedDisplayName(
+          i.visibility_level
+            ? { visibility_level: i.visibility_level,
+                invoice_display_mode: i.invoice_display_mode ?? "REAL_NAME",
+                invoice_alias: i.invoice_alias ?? null }
+            : null,
+          { id: i.id, description: i.description }
+        );
+        return `
     <tr>
-      <td>${i.description}</td>
+      <td>${displayName}</td>
       <td class="center">${i.quantity}</td>
       <td class="right">${formatMYR(Number(i.unit_price))}</td>
       <td class="right">${Number(i.discount_pct) > 0 ? Math.round(Number(i.discount_pct) * 100) + "%" : "—"}</td>
       <td class="right">${formatMYR(Number(i.line_total))}</td>
-    </tr>`
+    </tr>`;
+      }
     )
     .join("");
 

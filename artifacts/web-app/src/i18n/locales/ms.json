@@ -22,7 +22,9 @@
     "tables": "Room & Table",
     "daily_report": "Laporan Harian",
     "settings": "Tetapan",
-    "menu_config": "Konfigurasi Menu"
+    "menu_config": "Konfigurasi Menu",
+    "menu_standard": "Pesanan Menu",
+    "menu_manager": "Menu Penuh (Pengurus)"
   },
   "auth": {
     "sign_in": "Log Masuk",
