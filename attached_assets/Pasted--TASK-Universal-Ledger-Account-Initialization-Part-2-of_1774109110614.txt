@@ -1,0 +1,321 @@
+# TASK: Universal Ledger — Account Initialization (Part 2 of 5)
+# ※ 실제 DB 스키마 적용 버전
+
+## CRITICAL RULES
+1. INSERT only — 기존 테이블 수정 절대 금지
+2. ON CONFLICT DO NOTHING — 중복 실행 안전
+3. 각 Step마다 COUNT 전후 비교 보고
+4. Error → STOP, report, wait
+
+---
+
+## PRE-CHECK
+```sql
+SELECT COUNT(*) AS ledger_accounts_count FROM ledger_accounts;
+-- 0이어야 함
+
+-- 초기화 대상 수 확인
+SELECT 'hostess_profiles' AS entity, COUNT(*) FROM hostess_profiles
+UNION ALL
+SELECT 'agents',                      COUNT(*) FROM agents
+UNION ALL
+SELECT 'driver (staff)',              COUNT(*) FROM staff WHERE role = 'driver'
+UNION ALL
+SELECT 'staff (general/hall/kitchen)',COUNT(*) FROM staff
+  WHERE role IN ('general','hall','kitchen')
+UNION ALL
+SELECT 'investor (staff)',            COUNT(*) FROM staff WHERE role = 'investor'
+UNION ALL
+SELECT 'branches',                    COUNT(*) FROM branches;
+```
+
+---
+
+## STEP 1: Hostess Ledger Accounts 초기화
+```sql
+-- hostess_profiles 기반 (staff_id 통해 branch/org 조회)
+INSERT INTO ledger_accounts (
+  org_id, branch_id,
+  account_type, entity_id, entity_type,
+  currency, is_active, settings
+)
+SELECT
+  s.org_id,               -- ✅ staff.org_id (organizations 참조)
+  hp.branch_id,
+  'hostess'               AS account_type,
+  hp.id                   AS entity_id,   -- hostess_profiles.id
+  'hostess_profile'       AS entity_type,
+  COALESCE(b.currency, o.base_currency, 'MYR') AS currency,
+  TRUE,
+  jsonb_build_object(
+    'payout_frequency', 'biweekly',
+    'advance_limit',    500,
+    'agent_id',         hp.agency_id  -- agents.id (null이면 direct)
+  )
+FROM hostess_profiles hp
+JOIN staff s       ON s.id  = hp.staff_id
+JOIN organizations o ON o.id = s.org_id
+LEFT JOIN branches b ON b.id = hp.branch_id
+WHERE hp.deleted_at IS NULL
+ON CONFLICT (org_id, account_type, entity_id) DO NOTHING;
+
+SELECT COUNT(*) AS hostess_accounts FROM ledger_accounts
+WHERE account_type = 'hostess';
+```
+
+NOTE: staff 또는 hostess_profiles에 org_id 컬럼이 없으면
+STOP하고 실제 컬럼명 보고.
+
+Report: "✅ Step 1: N hostess accounts created"
+
+---
+
+## STEP 2: Agent Ledger Accounts 초기화
+```sql
+-- ✅ agencies → agents
+INSERT INTO ledger_accounts (
+  org_id, branch_id,
+  account_type, entity_id, entity_type,
+  currency, is_active, settings
+)
+SELECT
+  a.org_id,          -- agents.org_id
+  NULL,              -- Agent는 법인 레벨
+  'agent'            AS account_type,
+  a.id               AS entity_id,
+  'agent'            AS entity_type,
+  COALESCE(o.base_currency, 'MYR'),
+  TRUE,
+  jsonb_build_object(
+    'invoice_frequency', 'monthly',
+    'invoice_day',       1
+  )
+FROM agents a
+JOIN organizations o ON o.id = a.org_id
+WHERE a.deleted_at IS NULL
+ON CONFLICT (org_id, account_type, entity_id) DO NOTHING;
+
+SELECT COUNT(*) AS agent_accounts FROM ledger_accounts
+WHERE account_type = 'agent';
+```
+
+NOTE: agents 테이블에 org_id 또는 deleted_at 컬럼이 없으면
+실제 컬럼명 확인 후 STOP, 보고.
+
+Report: "✅ Step 2: N agent accounts created"
+
+---
+
+## STEP 3: Driver Ledger Accounts 초기화
+```sql
+-- ✅ role = 'driver' (소문자)
+INSERT INTO ledger_accounts (
+  org_id, branch_id,
+  account_type, entity_id, entity_type,
+  currency, is_active, settings
+)
+SELECT
+  s.org_id,
+  s.branch_id,
+  'driver'          AS account_type,
+  s.id              AS entity_id,
+  'staff'           AS entity_type,
+  COALESCE(o.base_currency, 'MYR'),
+  TRUE,
+  jsonb_build_object('payout_frequency', 'weekly')
+FROM staff s
+JOIN organizations o ON o.id = s.org_id
+WHERE s.role = 'driver'
+  AND s.is_active = TRUE
+  AND s.deleted_at IS NULL
+ON CONFLICT (org_id, account_type, entity_id) DO NOTHING;
+
+SELECT COUNT(*) AS driver_accounts FROM ledger_accounts
+WHERE account_type = 'driver';
+```
+
+Report: "✅ Step 3: N driver accounts created"
+
+---
+
+## STEP 4: Staff Ledger Accounts 초기화
+```sql
+-- ✅ role IN ('general','hall','kitchen','manager','branch_manager')
+INSERT INTO ledger_accounts (
+  org_id, branch_id,
+  account_type, entity_id, entity_type,
+  currency, is_active, settings
+)
+SELECT
+  s.org_id,
+  s.branch_id,
+  'staff'           AS account_type,
+  s.id              AS entity_id,
+  'staff'           AS entity_type,
+  COALESCE(o.base_currency, 'MYR'),
+  TRUE,
+  jsonb_build_object('payout_frequency', 'monthly')
+FROM staff s
+JOIN organizations o ON o.id = s.org_id
+WHERE s.role IN ('general','hall','kitchen','manager','branch_manager')
+  AND s.is_active = TRUE
+  AND s.deleted_at IS NULL
+ON CONFLICT (org_id, account_type, entity_id) DO NOTHING;
+
+SELECT COUNT(*) AS staff_accounts FROM ledger_accounts
+WHERE account_type = 'staff';
+```
+
+Report: "✅ Step 4: N staff accounts created"
+
+---
+
+## STEP 5: Investor Ledger Accounts 초기화
+```sql
+-- ✅ role = 'investor' — 집계 전용 계정
+-- 기존 investors/branch_shareholders 테이블과 별도
+INSERT INTO ledger_accounts (
+  org_id, branch_id,
+  account_type, entity_id, entity_type,
+  currency, is_active, settings
+)
+SELECT
+  s.org_id,
+  NULL,             -- 투자자는 법인 레벨
+  'investor'        AS account_type,
+  s.id              AS entity_id,
+  'staff'           AS entity_type,
+  COALESCE(o.base_currency, 'MYR'),
+  TRUE,
+  jsonb_build_object(
+    'access_level',       'aggregated_only',
+    'dividend_frequency', 'monthly',
+    'profit_share_pct',   0
+  )
+FROM staff s
+JOIN organizations o ON o.id = s.org_id
+WHERE s.role = 'investor'
+  AND s.deleted_at IS NULL
+ON CONFLICT (org_id, account_type, entity_id) DO NOTHING;
+
+SELECT COUNT(*) AS investor_accounts FROM ledger_accounts
+WHERE account_type = 'investor';
+```
+
+Report: "✅ Step 5: N investor accounts created"
+
+---
+
+## STEP 6: Branch Internal Accounts 초기화
+```sql
+INSERT INTO ledger_accounts (
+  org_id, branch_id,
+  account_type, entity_id, entity_type,
+  currency, is_active, settings
+)
+SELECT
+  b.org_id,         -- ✅ branches.org_id
+  b.id,
+  'branch'          AS account_type,
+  b.id              AS entity_id,
+  'branch'          AS entity_type,
+  COALESCE(b.currency, o.base_currency, 'MYR'),
+  TRUE,
+  jsonb_build_object('reporting_currency', 'MYR')
+FROM branches b
+JOIN organizations o ON o.id = b.org_id
+WHERE b.deleted_at IS NULL
+ON CONFLICT (org_id, account_type, entity_id) DO NOTHING;
+
+SELECT COUNT(*) AS branch_accounts FROM ledger_accounts
+WHERE account_type = 'branch';
+```
+
+Report: "✅ Step 6: N branch accounts created"
+
+---
+
+## STEP 7: 기존 미지급 잔액 확인 (Opening Balance 사정)
+```sql
+-- 기존 hostess_payouts 미지급 현황
+SELECT
+  'hostess_payouts'    AS source,
+  COUNT(*)             AS unpaid_count,
+  SUM(amount)          AS unpaid_total
+FROM hostess_payouts
+WHERE status NOT IN ('paid','cancelled')
+
+UNION ALL
+
+-- 기존 agent_payouts 미지급 현황
+SELECT
+  'agent_payouts',
+  COUNT(*),
+  SUM(amount)
+FROM agent_payouts
+WHERE status NOT IN ('paid','cancelled')
+
+UNION ALL
+
+-- 기존 agent_invoices 미지급 현황
+SELECT
+  'agent_invoices',
+  COUNT(*),
+  SUM(total_amount)
+FROM agent_invoices
+WHERE status NOT IN ('paid','cancelled');
+```
+
+결과를 보고하라.
+미지급 잔액이 있으면 opening_balance 마이그레이션이
+필요하므로 결과를 공유하고 지시 대기.
+0이면 그냥 진행.
+
+Report: "✅ Step 7: Opening balance assessment complete"
+
+---
+
+## POST-INITIALIZATION VERIFICATION
+```sql
+-- 전체 계정 현황
+SELECT account_type, COUNT(*) AS count
+FROM ledger_accounts
+GROUP BY account_type
+ORDER BY account_type;
+
+-- 누락된 Hostess 확인 (0행이어야 함)
+SELECT hp.id, hp.staff_id
+FROM hostess_profiles hp
+LEFT JOIN ledger_accounts la
+  ON la.entity_id   = hp.id
+  AND la.account_type = 'hostess'
+WHERE la.id IS NULL
+  AND hp.deleted_at IS NULL;
+
+-- 누락된 Agent 확인 (0행이어야 함)
+SELECT a.id
+FROM agents a
+LEFT JOIN ledger_accounts la
+  ON la.entity_id   = a.id
+  AND la.account_type = 'agent'
+WHERE la.id IS NULL
+  AND a.deleted_at IS NULL;
+
+-- 기존 테이블 데이터 변화 없음 확인
+SELECT relname, n_live_tup
+FROM pg_stat_user_tables
+WHERE relname IN (
+  'hostess_profiles','agents','staff',
+  'branches','organizations'
+)
+ORDER BY relname;
+```
+
+SUCCESS CRITERIA:
+- [ ] 모든 hostess_profiles에 ledger_account 생성
+- [ ] 모든 agents에 ledger_account 생성
+- [ ] driver / staff / investor / branch 계정 생성
+- [ ] 기존 테이블 데이터 변화 없음
+
+⛔ 실패 → 즉시 중단, 보고, 대기
+✅ 통과 → "✅ Part 2 완료. Part 3 진행 가능" 출력
