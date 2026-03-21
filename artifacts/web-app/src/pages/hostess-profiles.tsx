@@ -21,6 +21,7 @@ interface HostessProfile {
   staffCode: string;
   branchId: string;
   branchName: string;
+  allowedBranchIds: string[];
   nationality: string | null;
   nationalityCode: string | null;
   languagesSpoken: string[];
@@ -32,6 +33,10 @@ interface HostessProfile {
   serviceCount: number;
   minServicePrice: number | null;
   age: number | null;
+  agencyId: string | null;
+  agentName: string | null;
+  agencyCommissionRate: number | null;
+  agencyCommissionType: string | null;
 }
 
 interface Branch { id: string; name: string; internalCode: string; }
@@ -132,10 +137,34 @@ function HostessCard({
           </div>
         )}
 
+        {/* Agency + Commission */}
+        {profile.agentName ? (
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[10px] bg-violet-500/15 border border-violet-500/30 text-violet-300 px-1.5 py-0.5 rounded truncate">
+              🏢 {profile.agentName}
+            </span>
+            {profile.agencyCommissionRate !== null && (
+              <span className="text-[10px] text-amber-400/80">
+                Commission: {(profile.agencyCommissionRate * 100).toFixed(0)}%
+                {profile.agencyCommissionType === "pct" ? "" : ` (${profile.agencyCommissionType})`}
+              </span>
+            )}
+          </div>
+        ) : (
+          <span className="text-[10px] text-muted-foreground/60">Direct Hire</span>
+        )}
+
+        {/* Multi-branch indicator */}
+        {profile.allowedBranchIds.length > 1 && (
+          <span className="text-[10px] bg-blue-500/15 border border-blue-500/30 text-blue-300 px-1.5 py-0.5 rounded">
+            🏬 {profile.allowedBranchIds.length} branches
+          </span>
+        )}
+
         {/* Services price */}
         {profile.minServicePrice !== null && (
           <p className="text-xs text-primary/80">
-            Services from <strong>MYR {profile.minServicePrice.toFixed(0)}/hr</strong>
+            From <strong>MYR {profile.minServicePrice.toFixed(0)}/hr</strong>
           </p>
         )}
 

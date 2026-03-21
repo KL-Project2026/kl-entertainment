@@ -47,6 +47,7 @@ function serializeProfile(row: Record<string, unknown>, requestingRole: string) 
     staffCode: row.employee_code,
     branchId: row.branch_id,
     branchName: row.branch_name,
+    allowedBranchIds: row.allowed_branch_ids ?? [],
     nationality: row.nationality,
     nationalityCode: row.nationality_code,
     languagesSpoken: row.languages_spoken ?? [],
@@ -59,6 +60,8 @@ function serializeProfile(row: Record<string, unknown>, requestingRole: string) 
     agencyId: row.agency_id,
     agentName: row.agent_name,
     agencyHostessCode: row.agency_hostess_code,
+    agencyCommissionRate: row.agency_commission_rate ? parseFloat(row.agency_commission_rate as string) : null,
+    agencyCommissionType: row.agency_commission_type ?? null,
     pdpaConsentGiven: row.pdpa_consent_given,
     pdpaConsentDate: row.pdpa_consent_date,
     createdAt: row.created_at,
@@ -110,6 +113,8 @@ router.get("/hostess-profiles", authenticate, async (req: Request, res: Response
               s.full_name, s.employee_code,
               b.name AS branch_name,
               a.name AS agent_name,
+              a.commission_rate AS agency_commission_rate,
+              a.commission_type AS agency_commission_type,
               EXTRACT(YEAR FROM AGE(NOW(), hp.date_of_birth)) AS age,
               (SELECT storage_key FROM hostess_photos ph
                WHERE ph.hostess_profile_id = hp.id AND ph.is_primary = true
@@ -175,6 +180,8 @@ router.get("/hostess-profiles/:id", authenticate, async (req: Request, res: Resp
               s.full_name, s.employee_code,
               b.name AS branch_name,
               a.name AS agent_name,
+              a.commission_rate AS agency_commission_rate,
+              a.commission_type AS agency_commission_type,
               EXTRACT(YEAR FROM AGE(NOW(), hp.date_of_birth)) AS age
        FROM hostess_profiles hp
        JOIN staff s ON s.id = hp.staff_id
@@ -271,10 +278,16 @@ router.patch(
         availableToday: "available_today", displayOrder: "display_order",
         isFeatured: "is_featured", agencyId: "agency_id",
         agencyHostessCode: "agency_hostess_code",
+        allowedBranchIds: "allowed_branch_ids",
       };
 
+      const jsonbArrayFields = new Set(["allowed_branch_ids"]);
       for (const [k, col] of Object.entries(map)) {
-        if (body[k] !== undefined) { fields.push(`${col} = $${p++}`); params.push(body[k]); }
+        if (body[k] !== undefined) {
+          fields.push(`${col} = $${p++}`);
+          const val = body[k];
+          params.push(jsonbArrayFields.has(col) && Array.isArray(val) ? JSON.stringify(val) : val);
+        }
       }
 
       if (!fields.length) { res.status(400).json({ error: "NO_FIELDS" }); return; }

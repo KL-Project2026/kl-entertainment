@@ -20,7 +20,12 @@ import {
 // ─── Types ───────────────────────────────────────────────────────
 interface HostessProfile {
   id: string; staffId: string; staffName: string; staffCode: string;
-  branchId: string; branchName: string; nationality: string | null;
+  branchId: string; branchName: string;
+  allowedBranchIds: string[];
+  agencyId: string | null; agentName: string | null;
+  agencyHostessCode: string | null;
+  agencyCommissionRate: number | null; agencyCommissionType: string | null;
+  nationality: string | null;
   nationalityCode: string | null; dateOfBirth: string | null;
   heightCm: number | null; weightKg: number | null; bodySize: string | null;
   bustCm: number | null; waistCm: number | null; hipCm: number | null;
@@ -30,6 +35,9 @@ interface HostessProfile {
   primaryPhoto: string | null; photoCount: number;
   pdpaConsentGiven: boolean; pdpaConsentDate: string | null;
 }
+
+interface Agent { id: string; name: string; commissionRate: number | null; commissionType: string | null; }
+interface Branch { id: string; name: string; internalCode: string; }
 
 interface HostessService {
   id: string; serviceCode: string; serviceName: string;
@@ -95,6 +103,25 @@ export default function HostessProfileDetail() {
   });
   const profile: HostessProfile | null = profileData?.data ?? null;
 
+  // ─── Fetch agents ───────────────────────────────────────────
+  const { data: agentsData } = useQuery({
+    queryKey: ["agents"],
+    queryFn: () => fetch("/api/agents", { headers: authH }).then(r => r.json()),
+  });
+  const agents: Agent[] = (agentsData?.data ?? []).map((a: Record<string, unknown>) => ({
+    id: a.id,
+    name: a.name,
+    commissionRate: a.commissionRate ?? a.commission_rate ?? null,
+    commissionType: a.commissionType ?? a.commission_type ?? null,
+  }));
+
+  // ─── Fetch branches ──────────────────────────────────────────
+  const { data: branchesData } = useQuery({
+    queryKey: ["branches"],
+    queryFn: () => fetch("/api/branches", { headers: authH }).then(r => r.json()),
+  });
+  const branches: Branch[] = branchesData?.data ?? [];
+
   // ─── Form state ─────────────────────────────────────────────
   const [form, setForm] = useState<Partial<HostessProfile>>({});
   const f = (k: keyof HostessProfile, v: unknown) => setForm(prev => ({ ...prev, [k]: v }));
@@ -125,6 +152,7 @@ export default function HostessProfileDetail() {
         "nationality", "nationalityCode", "dateOfBirth", "heightCm", "weightKg",
         "bodySize", "bustCm", "waistCm", "hipCm", "introText", "introTranslations",
         "languagesSpoken", "status", "availableToday", "displayOrder", "isFeatured",
+        "agencyId", "agencyHostessCode", "allowedBranchIds",
       ];
       for (const k of keys) {
         if (form[k] !== undefined) body[k] = form[k];
@@ -255,7 +283,7 @@ export default function HostessProfileDetail() {
             </div>
           )}
         </div>
-        <div className="flex-1 grid grid-cols-4 gap-4 text-sm">
+        <div className="flex-1 grid grid-cols-5 gap-4 text-sm">
           <div>
             <p className="text-xs text-muted-foreground">Nationality</p>
             <p className="font-medium">{countryInfo ? `${countryInfo.flag} ${countryInfo.name}` : profile.nationality ?? "—"}</p>
@@ -263,6 +291,19 @@ export default function HostessProfileDetail() {
           <div>
             <p className="text-xs text-muted-foreground">Age / Height</p>
             <p className="font-medium">{merged.age ?? "—"} yr / {merged.heightCm ?? "—"} cm</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Agency</p>
+            <p className="font-medium truncate" title={profile.agentName ?? "—"}>
+              {profile.agentName
+                ? <><span className="text-violet-400">🏢</span> {profile.agentName}</>
+                : <span className="text-muted-foreground/60">Direct Hire</span>}
+            </p>
+            {profile.agencyCommissionRate !== null && (
+              <p className="text-[10px] text-amber-400/80 mt-0.5">
+                {(profile.agencyCommissionRate * 100).toFixed(0)}% commission
+              </p>
+            )}
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Photos</p>
@@ -427,6 +468,99 @@ export default function HostessProfileDetail() {
               />
               <span className="text-sm">Available Today</span>
             </label>
+          </div>
+
+          {/* ── Agency & Commission ── */}
+          <div className="pt-2 border-t border-white/8">
+            <p className="text-xs text-muted-foreground font-semibold mb-3 uppercase tracking-wide">Agency & Commission</p>
+            <div className="grid grid-cols-2 gap-4">
+              {/* Agent */}
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground font-medium">Agency / Agent</label>
+                <Select
+                  value={merged.agencyId ?? "__none__"}
+                  onValueChange={v => f("agencyId", v === "__none__" ? null : v)}
+                >
+                  <SelectTrigger><SelectValue placeholder="— No Agency —" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— Direct Hire —</SelectItem>
+                    {agents.map(a => (
+                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Agency Hostess Code */}
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground font-medium">Agency Hostess Code</label>
+                <Input
+                  placeholder="e.g. AGT-007"
+                  value={merged.agencyHostessCode ?? ""}
+                  onChange={e => f("agencyHostessCode", e.target.value || null)}
+                />
+              </div>
+            </div>
+
+            {/* Show agency commission rate (read-only from agent record) */}
+            {merged.agencyId && (() => {
+              const agent = agents.find(a => a.id === (form.agencyId ?? merged.agencyId));
+              const rate = agent?.commissionRate ?? merged.agencyCommissionRate;
+              const type = agent?.commissionType ?? merged.agencyCommissionType;
+              if (rate === null || rate === undefined) return null;
+              const pct = type === "pct" || !type ? `${(rate * 100).toFixed(0)}%` : `${rate}`;
+              return (
+                <p className="mt-2 text-xs text-amber-400/90">
+                  Agency commission rate: <strong>{pct}</strong>
+                  {type && type !== "pct" ? ` (${type})` : ""}
+                  {" "}<span className="text-muted-foreground">— per-service rates configurable in the Services tab</span>
+                </p>
+              );
+            })()}
+          </div>
+
+          {/* ── Multi-Branch Assignments ── */}
+          <div className="pt-2 border-t border-white/8">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Allowed Branch Assignments</p>
+              <span className="text-[10px] text-muted-foreground">Primary branch auto-included</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {branches.map(b => {
+                const isPrimary = b.id === merged.branchId;
+                const allowed: string[] = merged.allowedBranchIds ?? [];
+                const isChecked = isPrimary || allowed.includes(b.id);
+                return (
+                  <button
+                    key={b.id}
+                    disabled={isPrimary}
+                    onClick={() => {
+                      if (isPrimary) return;
+                      const cur: string[] = merged.allowedBranchIds ?? [];
+                      const next = cur.includes(b.id) ? cur.filter(x => x !== b.id) : [...cur, b.id];
+                      f("allowedBranchIds", next);
+                    }}
+                    className={`text-xs px-3 py-1.5 rounded-lg border transition-colors flex items-center gap-1.5 ${
+                      isChecked
+                        ? isPrimary
+                          ? "bg-primary/20 border-primary/50 text-primary cursor-default"
+                          : "bg-blue-500/20 border-blue-500/50 text-blue-300"
+                        : "border-white/15 text-muted-foreground hover:border-white/30"
+                    }`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${isChecked ? (isPrimary ? "bg-primary" : "bg-blue-400") : "bg-white/20"}`} />
+                    {b.name}
+                    {isPrimary && <span className="text-[9px] opacity-60 ml-0.5">(Primary)</span>}
+                  </button>
+                );
+              })}
+            </div>
+            {(merged.allowedBranchIds ?? []).length > 0 && (
+              <p className="mt-2 text-xs text-blue-400/70">
+                This hostess can be scheduled at {((merged.allowedBranchIds ?? []).length + 1)} branch
+                {(merged.allowedBranchIds ?? []).length > 0 ? "es" : ""}.
+              </p>
+            )}
           </div>
         </Card>
       )}
