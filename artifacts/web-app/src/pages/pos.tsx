@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation, useSearch } from "wouter";
 import ActiveSessionsList from "@/components/pos/ActiveSessionsList";
 import {
@@ -16,7 +16,7 @@ import { getListOrdersQueryKey } from "@workspace/api-client-react";
 import { useAuthStore } from "@/lib/auth";
 import { Card, Button, Input, Badge } from "@/components/ui";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import {
   ShoppingCart,
   Plus,
@@ -32,17 +32,24 @@ import {
 } from "lucide-react";
 import type { Order, OrderItem } from "@workspace/api-client-react";
 
-const QUICK_ITEMS = [
-  { description: "Room Charge", itemType: "room", unitPrice: 0 },
-  { description: "Beer (1 bottle)", itemType: "beverage", unitPrice: 25 },
-  { description: "Whiskey (1 bottle)", itemType: "beverage", unitPrice: 380 },
-  { description: "Soft Drink", itemType: "beverage", unitPrice: 12 },
-  { description: "Fruit Platter", itemType: "food", unitPrice: 88 },
-  { description: "Chips & Snacks", itemType: "food", unitPrice: 35 },
-  { description: "Red Bull", itemType: "beverage", unitPrice: 18 },
-  { description: "Mineral Water", itemType: "beverage", unitPrice: 8 },
-  { description: "Service Charge Override", itemType: "charge", unitPrice: 0 },
-];
+type CatalogItem = { id: string; name: string; unitPrice: number; sortOrder: number; };
+type CatalogGroup = { id: string; name: string; sortOrder: number; items: CatalogItem[]; };
+
+function usePosCatalog() {
+  const token = useAuthStore.getState().token;
+  return useQuery<CatalogGroup[]>({
+    queryKey: ["pos-catalog"],
+    queryFn: async () => {
+      const resp = await fetch("/api/pos/catalog", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!resp.ok) throw new Error("Failed to load catalog");
+      const data = await resp.json() as { data: CatalogGroup[] };
+      return data.data ?? [];
+    },
+    staleTime: 60_000,
+  });
+}
 
 function PaymentModal({ order, onClose, onSuccess }: { order: Order; onClose: () => void; onSuccess: (receiptId: string) => void }) {
   const [method, setMethod] = useState("cash");
@@ -187,11 +194,28 @@ function OrderItemRow({ item, orderId, pending, onRemove }: {
 }
 
 function AddItemModal({ orderId, onClose, onAdded }: { orderId: string; onClose: () => void; onAdded: () => void }) {
+  const { data: categories = [], isLoading: menuLoading } = usePosCatalog();
+  const [activeCatId, setActiveCatId] = useState<string | null>(null);
   const [desc, setDesc] = useState("");
   const [unitPrice, setUnitPrice] = useState("");
   const [qty, setQty] = useState("1");
   const [discountPct, setDiscountPct] = useState("0");
   const addItem = useAddOrderItem();
+  const tabsRef = useRef<HTMLDivElement>(null);
+
+  // Auto-select first category when menu loads
+  useEffect(() => {
+    if (categories.length > 0 && !activeCatId) {
+      setActiveCatId(categories[0].id);
+    }
+  }, [categories.length]);
+
+  const activeItems = categories.find(c => c.id === activeCatId)?.items ?? [];
+
+  const selectItem = (item: CatalogItem) => {
+    setDesc(item.name);
+    setUnitPrice(item.unitPrice > 0 ? String(item.unitPrice) : "");
+  };
 
   const handleAdd = async () => {
     if (!desc || !unitPrice) return;
@@ -208,54 +232,98 @@ function AddItemModal({ orderId, onClose, onAdded }: { orderId: string; onClose:
     onClose();
   };
 
-  const selectQuick = (q: typeof QUICK_ITEMS[0]) => {
-    setDesc(q.description);
-    if (q.unitPrice > 0) setUnitPrice(String(q.unitPrice));
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <Card className="w-full max-w-lg space-y-4 p-6">
-        <div className="flex justify-between items-center">
+      <Card className="w-full max-w-2xl flex flex-col max-h-[85vh] overflow-hidden">
+        {/* Header */}
+        <div className="flex justify-between items-center p-5 border-b border-white/5 shrink-0">
           <h3 className="font-display text-lg font-bold">Add Order Item</h3>
           <button onClick={onClose}><X className="w-4 h-4 text-muted-foreground" /></button>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {QUICK_ITEMS.map(q => (
+        {/* Category tabs */}
+        <div ref={tabsRef} className="flex gap-1 overflow-x-auto px-4 py-3 border-b border-white/5 shrink-0 scrollbar-none">
+          {menuLoading ? (
+            <div className="flex gap-2">{[1,2,3,4].map(i => <div key={i} className="h-7 w-24 rounded-lg bg-white/5 animate-pulse" />)}</div>
+          ) : categories.map(cat => (
             <button
-              key={q.description}
-              onClick={() => selectQuick(q)}
-              className="text-xs px-3 py-1.5 rounded-lg bg-black/40 border border-white/10 hover:border-primary/40 hover:text-primary transition-colors"
+              key={cat.id}
+              onClick={() => setActiveCatId(cat.id)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all border ${
+                activeCatId === cat.id
+                  ? "bg-primary/15 border-primary/40 text-primary"
+                  : "bg-black/30 border-white/10 text-muted-foreground hover:border-white/20 hover:text-foreground"
+              }`}
             >
-              {q.description}
+              {cat.name}
+              <span className="ml-1.5 text-[10px] opacity-60">({cat.items.length})</span>
             </button>
           ))}
         </div>
 
-        <div className="space-y-3">
-          <Input placeholder="Description *" value={desc} onChange={(e) => setDesc(e.target.value)} />
+        {/* Items grid */}
+        <div className="overflow-y-auto flex-1 p-4">
+          {menuLoading ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {[1,2,3,4,5,6].map(i => <div key={i} className="h-16 rounded-lg bg-white/5 animate-pulse" />)}
+            </div>
+          ) : activeItems.length === 0 ? (
+            <p className="text-center text-muted-foreground text-sm py-6">No items in this category</p>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {activeItems.map(item => {
+                const isSelected = desc === item.name;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => selectItem(item)}
+                    className={`text-left p-3 rounded-xl border transition-all ${
+                      isSelected
+                        ? "bg-primary/15 border-primary/40"
+                        : "bg-black/40 border-white/8 hover:border-white/20"
+                    }`}
+                  >
+                    <p className={`text-xs font-medium leading-snug ${isSelected ? "text-primary" : "text-foreground"}`}>
+                      {item.name}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      {item.unitPrice > 0 ? `MYR ${item.unitPrice.toFixed(2)}` : "Price TBD"}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Entry form */}
+        <div className="p-4 pt-3 border-t border-white/5 space-y-3 shrink-0 bg-black/20">
+          <Input
+            placeholder="Description *"
+            value={desc}
+            onChange={(e) => setDesc(e.target.value)}
+            className="bg-black/40"
+          />
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Unit Price (MYR) *</label>
-              <Input type="number" min={0} step={0.01} value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} />
+              <Input type="number" min={0} step={0.01} value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} className="bg-black/40" />
             </div>
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Quantity</label>
-              <Input type="number" min={0.5} step={0.5} value={qty} onChange={(e) => setQty(e.target.value)} />
+              <Input type="number" min={0.5} step={0.5} value={qty} onChange={(e) => setQty(e.target.value)} className="bg-black/40" />
             </div>
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Discount %</label>
-              <Input type="number" min={0} max={100} value={discountPct} onChange={(e) => setDiscountPct(e.target.value)} />
+              <Input type="number" min={0} max={100} value={discountPct} onChange={(e) => setDiscountPct(e.target.value)} className="bg-black/40" />
             </div>
           </div>
-        </div>
-
-        <div className="flex gap-3">
-          <Button variant="ghost" onClick={onClose} className="flex-1">Cancel</Button>
-          <Button onClick={handleAdd} disabled={addItem.isPending || !desc || !unitPrice} className="flex-1 gap-2">
-            <Plus className="w-4 h-4" /> {addItem.isPending ? "Adding..." : "Add Item"}
-          </Button>
+          <div className="flex gap-3">
+            <Button variant="ghost" onClick={onClose} className="flex-1">Cancel</Button>
+            <Button onClick={handleAdd} disabled={addItem.isPending || !desc || !unitPrice} className="flex-1 gap-2">
+              <Plus className="w-4 h-4" /> {addItem.isPending ? "Adding..." : "Add Item"}
+            </Button>
+          </div>
         </div>
       </Card>
     </div>

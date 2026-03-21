@@ -310,4 +310,80 @@ function formatProduct(row: Record<string, unknown>, lang: string) {
   };
 }
 
+// ── GET /pos/catalog ──────────────────────────────────────────────────────────
+// Returns active product groups with their active products for POS Add-Item modal.
+// Applies the same visibility filter as /products/groups.
+router.get(
+  "/pos/catalog",
+  authenticate,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const lang = getLang(req);
+      const role = req.user?.role ?? "";
+      let visFilter: string;
+      if (ADMIN_ROLES.has(role)) {
+        visFilter = "";
+      } else if (MANAGER_ROLES.has(role)) {
+        visFilter = `AND (mc.visibility_level IS NULL OR mc.visibility_level IN ('ALL','MANAGER_ONLY'))`;
+      } else {
+        visFilter = `AND (mc.visibility_level IS NULL OR mc.visibility_level = 'ALL')`;
+      }
+
+      // Groups
+      const { rows: groupRows } = await pool.query<Record<string, unknown>>(
+        `SELECT pg.id, pg.name, pg.sort_order
+         FROM product_groups pg
+         LEFT JOIN menu_categories mc ON mc.id = pg.menu_category_id
+         WHERE pg.is_active = true ${visFilter}
+         ORDER BY pg.sort_order, pg.name->>'en'`
+      );
+
+      // Products linked through product_types → product_groups
+      const { rows: productRows } = await pool.query<Record<string, unknown>>(
+        `SELECT p.id, p.name, p.unit_price, p.sort_order, pt.group_id
+         FROM products p
+         JOIN product_types pt ON pt.id = p.type_id
+         LEFT JOIN product_groups pg ON pg.id = pt.group_id
+         LEFT JOIN menu_categories mc ON mc.id = pg.menu_category_id
+         WHERE p.is_active = true
+           AND p.deleted_at IS NULL
+           AND pt.is_active = true
+           AND (pg.is_active IS NULL OR pg.is_active = true)
+           ${visFilter.replace(/pg\./g, "pg.")}
+         ORDER BY pt.group_id, p.sort_order, p.name->>'en'`
+      );
+
+      const productsByGroup: Record<string, { id: string; name: string; unitPrice: number; sortOrder: number }[]> = {};
+      for (const p of productRows) {
+        const gid = p.group_id as string;
+        if (!productsByGroup[gid]) productsByGroup[gid] = [];
+        const nameObj = p.name as Record<string, string>;
+        productsByGroup[gid].push({
+          id: p.id as string,
+          name: nameObj[lang] ?? nameObj["en"] ?? "",
+          unitPrice: parseFloat(p.unit_price as string),
+          sortOrder: (p.sort_order as number) ?? 0,
+        });
+      }
+
+      const result = groupRows
+        .map(g => {
+          const nameObj = g.name as Record<string, string>;
+          return {
+            id: g.id as string,
+            name: nameObj[lang] ?? nameObj["en"] ?? "",
+            sortOrder: (g.sort_order as number) ?? 0,
+            items: productsByGroup[g.id as string] ?? [],
+          };
+        })
+        .filter(g => g.items.length > 0);
+
+      res.json({ data: result });
+    } catch (err) {
+      console.error("POS catalog error:", err);
+      res.status(500).json({ error: "INTERNAL_ERROR" });
+    }
+  }
+);
+
 export default router;
