@@ -9,6 +9,7 @@ import {
   calculateCommission,
   calculateCommissionForReservation,
 } from "../services/hostessCommissionService";
+import { onSessionClose as ledgerOnSessionClose } from "../services/ledger/commissionLedgerHook";
 import type { Server as SocketServer } from "socket.io";
 
 const router: IRouter = Router();
@@ -545,6 +546,19 @@ router.post(
       }
 
       res.json({ success: true, data: summary });
+
+      // === LEDGER HOOK START (non-blocking — existing logic unaffected) ===
+      // MIGRATION: Replace with C# DomainEvent in SessionSlice
+      ledgerOnSessionClose(
+        reservationId,
+        resRows[0].branch_id,
+        req.user!.id,
+        req.ip ?? null,
+      ).catch((ledgerErr: unknown) => {
+        console.error("[LEDGER HOOK] Non-blocking error:", ledgerErr instanceof Error ? ledgerErr.message : ledgerErr);
+      });
+      // === LEDGER HOOK END ===
+
     } catch (err) {
       console.error("[hostess-assignments/close-session]", err);
       errResp(res, 500, "INTERNAL_ERROR", "Unexpected error");

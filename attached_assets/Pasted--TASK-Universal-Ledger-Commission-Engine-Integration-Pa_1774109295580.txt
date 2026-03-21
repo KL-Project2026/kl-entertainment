@@ -1,0 +1,714 @@
+# TASK: Universal Ledger — Commission Engine Integration (Part 3 of 5)
+# ※ 실제 DB 스키마 적용 버전
+
+## CRITICAL RULES
+1. 기존 커미션 로직 수정 금지 — Hook 추가만
+2. Ledger 실패 = 로그 + 계속 (non-blocking)
+3. 모든 신규 파일은 /services/ledger/ 에 생성
+4. 기존 파일: ADD only, 절대 overwrite 없음
+5. 시작 전 기존 파일 구조 먼저 보고
+
+---
+
+## PRE-CHECK
+```javascript
+// 실행 전 아래를 먼저 확인하고 결과 보고:
+// 1. /services/ 디렉토리 파일 목록
+// 2. commission 관련 파일명
+// 3. session close / checkout 핸들러 파일명
+// 4. 기존 db 연결 객체명 (db, pool, client 등)
+// 5. 기존 auth 미들웨어 파일명/함수명
+
+// 확인 후 보고 형식:
+// "Commission service: [파일명]"
+// "Session close handler: [파일명:함수명]"
+// "DB object: [변수명]"
+// "Auth middleware: [파일명:함수명]"
+```
+
+보고 후 아래 파일 생성 진행.
+
+---
+
+## STEP 1: /services/ledger/ledgerService.js 생성
+```javascript
+// /services/ledger/ledgerService.js
+// Universal Ledger Core Service
+// ✅ tenants→organizations, users→staff, agencies→agents
+// MIGRATION: Convert to C# LedgerService in LedgerSlice
+
+'use strict';
+
+const { v4: uuidv4 } = require('uuid');
+
+/**
+ * 단일 원장 항목 기록
+ * NON-BLOCKING — 실패해도 기존 로직 중단 없음
+ */
+async function postEntry(db, {
+  orgId,              // ✅ tenantId → orgId
+  branchId,
+  accountId,
+  entryType,
+  direction,
+  amount,
+  currency        = 'MYR',
+  grossAmount     = null,
+  agentShare      = 0,     // ✅ agencyShare → agentShare
+  hostessNet      = null,
+  sourceType      = null,
+  sourceId        = null,
+  contraAccountId = null,
+  effectiveDate   = null,
+  accountingPeriod= null,
+  description     = null,
+  referenceNo     = null,
+  auditNote       = null,
+  postedBy,              // ✅ staff.id
+  ipAddress       = null,
+}) {
+  try {
+    if (!accountId)  throw new Error('accountId required');
+    if (!entryType)  throw new Error('entryType required');
+    if (!['DR','CR'].includes(direction))
+                     throw new Error('direction must be DR or CR');
+    if (!amount || amount <= 0)
+                     throw new Error('amount must be positive');
+    if (!postedBy)   throw new Error('postedBy (staff.id) required');
+
+    const today   = new Date();
+    const effDate = effectiveDate
+                    || today.toISOString().split('T')[0];
+    const period  = accountingPeriod
+                    || `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
+
+    const result = await db.query(`
+      INSERT INTO ledger_entries (
+        id, org_id, branch_id, account_id,
+        entry_type, direction, amount, currency,
+        gross_amount, agent_share, hostess_net,
+        source_type, source_id,
+        contra_account_id,
+        effective_date, accounting_period,
+        description, reference_no,
+        audit_note, ip_address,
+        posted_by, posted_at, status,
+        created_at
+      ) VALUES (
+        $1,  $2,  $3,  $4,
+        $5,  $6,  $7,  $8,
+        $9,  $10, $11,
+        $12, $13,
+        $14,
+        $15, $16,
+        $17, $18,
+        $19, $20,
+        $21, NOW(), 'posted', NOW()
+      ) RETURNING id
+    `, [
+      uuidv4(), orgId, branchId, accountId,
+      entryType, direction, amount, currency,
+      grossAmount, agentShare, hostessNet,
+      sourceType, sourceId,
+      contraAccountId,
+      effDate, period,
+      description, referenceNo,
+      auditNote, ipAddress,
+      postedBy,
+    ]);
+
+    await updateBalanceCache(db, accountId, direction, amount);
+
+    return { success: true, entryId: result.rows[0].id };
+
+  } catch (err) {
+    console.error('[LEDGER] postEntry failed:', {
+      error: err.message,
+      accountId, entryType, amount,
+    });
+
+    // 실패 큐에 저장 (재시도용)
+    try {
+      await db.query(`
+        INSERT INTO failed_ledger_queue
+          (org_id, entry_type, payload, error_message)
+        VALUES ($1, $2, $3, $4)
+      `, [
+        orgId, entryType,
+        JSON.stringify({ orgId, branchId, accountId, entryType,
+                         direction, amount, currency, sourceType,
+                         sourceId, effectiveDate, postedBy }),
+        err.message,
+      ]);
+    } catch (qErr) {
+      console.error('[LEDGER] Queue insert failed:', qErr.message);
+    }
+
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * 커미션 기록 + Agent Share 자동 분리
+ * ✅ agencyShare → agentShare, agencies → agents
+ */
+async function postCommission(db, {
+  orgId,
+  branchId,
+  hostessProfileId,  // ✅ hostess_profiles.id
+  sessionId,
+  entryType,
+  grossAmount,
+  agentId         = null,  // ✅ agencyId → agentId
+  contractId      = null,
+  agentFeeRate    = 0,     // ✅ agencyFeeRate → agentFeeRate
+  currency        = 'MYR',
+  postedBy,
+  ipAddress       = null,
+}) {
+  try {
+    // Hostess 계정 조회
+    const hostessAcct = await db.query(`
+      SELECT id FROM ledger_accounts
+      WHERE account_type = 'hostess'
+        AND entity_id    = $1
+        AND org_id       = $2
+        AND is_active    = TRUE
+      LIMIT 1
+    `, [hostessProfileId, orgId]);
+
+    if (!hostessAcct.rows.length) {
+      throw new Error(`No ledger account for hostess_profile: ${hostessProfileId}`);
+    }
+
+    // Agent share 계산
+    let agentShare = 0;
+    let hostessNet = grossAmount;
+
+    if (agentId && agentFeeRate > 0) {
+      agentShare = parseFloat((grossAmount * agentFeeRate).toFixed(2));
+      hostessNet = parseFloat((grossAmount - agentShare).toFixed(2));
+    }
+
+    const today   = new Date();
+    const period  = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
+    const effDate = today.toISOString().split('T')[0];
+
+    // Hostess 원장 기록
+    const hostessResult = await postEntry(db, {
+      orgId, branchId,
+      accountId:        hostessAcct.rows[0].id,
+      entryType,
+      direction:        'CR',
+      amount:           hostessNet,
+      currency,
+      grossAmount,
+      agentShare,
+      hostessNet,
+      sourceType:       'hostess_session',
+      sourceId:         sessionId,
+      effectiveDate:    effDate,
+      accountingPeriod: period,
+      description:      `${entryType} — session ${sessionId}`,
+      auditNote:        contractId
+                          ? `agent_contract:${contractId}`
+                          : 'direct_hire',
+      postedBy, ipAddress,
+    });
+
+    // Agent accrual 기록
+    let agentResult = { success: true, skipped: true };
+    if (agentId && agentShare > 0) {
+      const agentAcct = await db.query(`
+        SELECT id FROM ledger_accounts
+        WHERE account_type = 'agent'
+          AND entity_id    = $1
+          AND org_id       = $2
+          AND is_active    = TRUE
+        LIMIT 1
+      `, [agentId, orgId]);
+
+      if (agentAcct.rows.length) {
+        agentResult = await postEntry(db, {
+          orgId, branchId,
+          accountId:        agentAcct.rows[0].id,
+          entryType:        'fee_accrued',
+          direction:        'CR',
+          amount:           agentShare,
+          currency,
+          sourceType:       'hostess_session',
+          sourceId:         sessionId,
+          contraAccountId:  hostessAcct.rows[0].id,
+          effectiveDate:    effDate,
+          accountingPeriod: period,
+          description:
+            `Agent fee accrual — ${entryType} — session ${sessionId}`,
+          auditNote:
+            `hostess_profile:${hostessProfileId} rate:${agentFeeRate}`,
+          postedBy, ipAddress,
+        });
+      }
+    }
+
+    return {
+      success:      hostessResult.success,
+      hostessEntry: hostessResult.entryId,
+      agentEntry:   agentResult.entryId || null,
+      grossAmount, agentShare, hostessNet,
+    };
+
+  } catch (err) {
+    console.error('[LEDGER] postCommission failed:', err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * 선지급(Advance) 기록
+ */
+async function postAdvance(db, {
+  orgId, branchId, hostessProfileId,
+  amount, currency = 'MYR',
+  approvedBy, postedBy,
+  description = '선지급',
+  ipAddress = null,
+}) {
+  const acct = await db.query(`
+    SELECT id FROM ledger_accounts
+    WHERE account_type = 'hostess'
+      AND entity_id    = $1
+      AND org_id       = $2
+    LIMIT 1
+  `, [hostessProfileId, orgId]);
+
+  if (!acct.rows.length) {
+    return { success: false, error: 'Hostess account not found' };
+  }
+
+  return postEntry(db, {
+    orgId, branchId,
+    accountId:   acct.rows[0].id,
+    entryType:   'advance',
+    direction:   'DR',
+    amount, currency,
+    sourceType:  'manual',
+    description,
+    auditNote:   `approved_by:${approvedBy}`,
+    postedBy, ipAddress,
+  });
+}
+
+/**
+ * 역분개 (취소/수정)
+ */
+async function reverseEntry(db, {
+  originalEntryId, reason, postedBy, ipAddress = null,
+}) {
+  try {
+    const orig = await db.query(
+      'SELECT * FROM ledger_entries WHERE id = $1',
+      [originalEntryId]
+    );
+
+    if (!orig.rows.length) {
+      throw new Error(`Entry not found: ${originalEntryId}`);
+    }
+
+    const o = orig.rows[0];
+    if (o.status === 'reversed') {
+      throw new Error('Entry already reversed');
+    }
+
+    const reverseResult = await postEntry(db, {
+      orgId:       o.org_id,
+      branchId:    o.branch_id,
+      accountId:   o.account_id,
+      entryType:   o.entry_type,
+      direction:   o.direction === 'CR' ? 'DR' : 'CR',
+      amount:      o.amount,
+      currency:    o.currency,
+      sourceType:  o.source_type,
+      sourceId:    o.source_id,
+      effectiveDate: new Date().toISOString().split('T')[0],
+      description: `REVERSAL: ${o.description || o.entry_type}`,
+      auditNote:   `reversal_of:${originalEntryId} reason:${reason}`,
+      postedBy, ipAddress,
+    });
+
+    if (reverseResult.success) {
+      await db.query(`
+        UPDATE ledger_entries
+        SET status               = 'reversed',
+            reversed_by_entry_id = $1,
+            reversal_reason      = $2
+        WHERE id = $3
+      `, [reverseResult.entryId, reason, originalEntryId]);
+
+      await recalculateBalance(db, o.account_id);
+    }
+
+    return reverseResult;
+
+  } catch (err) {
+    console.error('[LEDGER] reverseEntry failed:', err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+async function updateBalanceCache(db, accountId, direction, amount) {
+  try {
+    const delta = direction === 'CR' ? amount : -amount;
+    await db.query(`
+      UPDATE ledger_accounts
+      SET balance_cache      = balance_cache + $1,
+          balance_updated_at = NOW(),
+          updated_at         = NOW()
+      WHERE id = $2
+    `, [delta, accountId]);
+  } catch (err) {
+    console.error('[LEDGER] updateBalanceCache failed:', err.message);
+  }
+}
+
+async function recalculateBalance(db, accountId) {
+  try {
+    const result = await db.query(`
+      SELECT COALESCE(SUM(
+        CASE
+          WHEN direction = 'CR' THEN  amount
+          WHEN direction = 'DR' THEN -amount
+        END
+      ), 0.00) AS true_balance
+      FROM ledger_entries
+      WHERE account_id = $1 AND status = 'posted'
+    `, [accountId]);
+
+    const trueBalance = result.rows[0].true_balance;
+
+    await db.query(`
+      UPDATE ledger_accounts
+      SET balance_cache      = $1,
+          balance_updated_at = NOW(),
+          updated_at         = NOW()
+      WHERE id = $2
+    `, [trueBalance, accountId]);
+
+    return { success: true, balance: trueBalance };
+  } catch (err) {
+    console.error('[LEDGER] recalculateBalance failed:', err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+async function getBalance(db, { orgId, accountType, entityId }) {
+  try {
+    const result = await db.query(`
+      SELECT id, balance_cache, balance_updated_at
+      FROM ledger_accounts
+      WHERE org_id       = $1
+        AND account_type = $2
+        AND entity_id    = $3
+        AND is_active    = TRUE
+      LIMIT 1
+    `, [orgId, accountType, entityId]);
+
+    if (!result.rows.length) {
+      return { success: false, error: 'Account not found' };
+    }
+
+    const acct = result.rows[0];
+    const ageMs = acct.balance_updated_at
+      ? Date.now() - new Date(acct.balance_updated_at).getTime()
+      : Infinity;
+
+    if (ageMs > 3600000) {
+      const recalc = await recalculateBalance(db, acct.id);
+      return { success: true, balance: recalc.balance, source: 'recalculated' };
+    }
+
+    return { success: true, balance: acct.balance_cache, source: 'cache' };
+
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+module.exports = {
+  postEntry, postCommission, postAdvance,
+  reverseEntry, recalculateBalance, getBalance,
+  updateBalanceCache,
+};
+```
+
+Report: "✅ Step 1 complete: ledgerService.js created"
+
+---
+
+## STEP 2: /services/ledger/commissionLedgerHook.js 생성
+```javascript
+// /services/ledger/commissionLedgerHook.js
+// Session close → Ledger 자동 기록 Hook
+// ✅ hostess_sessions / hostess_session_assignments 기반
+// MIGRATION: C# DomainEvent handler
+
+'use strict';
+
+const ledger = require('./ledgerService');
+
+/**
+ * 세션 종료 시 호출 — 기존 로직 완료 후 호출
+ * hostess_session_assignments 기반으로 커미션 기록
+ */
+async function onSessionClose(db, {
+  orgId,
+  branchId,
+  sessionId,          // hostess_sessions.id
+  hostessAssignments, // 기존 커미션 계산 결과 배열
+  /*
+  [{
+    hostessProfileId,  // hostess_profiles.id
+    agentId,           // agents.id (null이면 direct)
+    contractId,        // agent_hostess_contracts.id
+    agentFeeRate,      // 0.0~1.0
+    sessionCommission,
+    drinkCommission,
+    packageCommission,
+  }]
+  */
+  postedBy,   // staff.id
+  ipAddress,
+}) {
+  const results = [];
+
+  for (const a of hostessAssignments) {
+    const {
+      hostessProfileId,
+      agentId           = null,
+      contractId        = null,
+      agentFeeRate      = 0,
+      sessionCommission = 0,
+      drinkCommission   = 0,
+      packageCommission = 0,
+    } = a;
+
+    if (sessionCommission > 0) {
+      results.push(await ledger.postCommission(db, {
+        orgId, branchId, sessionId,
+        hostessProfileId,
+        entryType:   'commission_session',
+        grossAmount: sessionCommission,
+        agentId, contractId, agentFeeRate,
+        postedBy, ipAddress,
+      }));
+    }
+
+    if (drinkCommission > 0) {
+      results.push(await ledger.postCommission(db, {
+        orgId, branchId, sessionId,
+        hostessProfileId,
+        entryType:   'commission_drink',
+        grossAmount: drinkCommission,
+        agentId, contractId, agentFeeRate,
+        postedBy, ipAddress,
+      }));
+    }
+
+    if (packageCommission > 0) {
+      results.push(await ledger.postCommission(db, {
+        orgId, branchId, sessionId,
+        hostessProfileId,
+        entryType:   'commission_package',
+        grossAmount: packageCommission,
+        agentId, contractId, agentFeeRate,
+        postedBy, ipAddress,
+      }));
+    }
+  }
+
+  const ok   = results.filter(r => r.success).length;
+  const fail = results.filter(r => !r.success).length;
+  console.log(`[LEDGER HOOK] Session ${sessionId}: ${ok} ok, ${fail} failed`);
+
+  return results;
+}
+
+/**
+ * 팁 기록
+ */
+async function onTipRecorded(db, {
+  orgId, branchId, hostessProfileId,
+  sessionId, tipAmount, currency = 'MYR',
+  postedBy, ipAddress,
+}) {
+  if (!tipAmount || tipAmount <= 0) return;
+
+  const acct = await db.query(`
+    SELECT id FROM ledger_accounts
+    WHERE account_type = 'hostess'
+      AND entity_id    = $1
+      AND org_id       = $2
+    LIMIT 1
+  `, [hostessProfileId, orgId]);
+
+  if (!acct.rows.length) return;
+
+  return ledger.postEntry(db, {
+    orgId, branchId,
+    accountId:   acct.rows[0].id,
+    entryType:   'tip',
+    direction:   'CR',
+    amount:      tipAmount,
+    currency,
+    sourceType:  'hostess_session',
+    sourceId:    sessionId,
+    description: `Tip — session ${sessionId}`,
+    postedBy, ipAddress,
+  });
+}
+
+/**
+ * 픽업 수당 기록
+ * ✅ reservation_pickups 연동
+ */
+async function onPickupCompleted(db, {
+  orgId, branchId, driverStaffId,  // staff.id where role='driver'
+  pickupId,   // reservation_pickups.id
+  feeAmount, currency = 'MYR',
+  postedBy, ipAddress,
+}) {
+  if (!feeAmount || feeAmount <= 0) return;
+
+  const acct = await db.query(`
+    SELECT id FROM ledger_accounts
+    WHERE account_type = 'driver'
+      AND entity_id    = $1
+      AND org_id       = $2
+    LIMIT 1
+  `, [driverStaffId, orgId]);
+
+  if (!acct.rows.length) return;
+
+  return ledger.postEntry(db, {
+    orgId, branchId,
+    accountId:   acct.rows[0].id,
+    entryType:   'pickup_fee',
+    direction:   'CR',
+    amount:      feeAmount,
+    currency,
+    sourceType:  'reservation_pickup',
+    sourceId:    pickupId,
+    description: `Pickup fee — ${pickupId}`,
+    postedBy, ipAddress,
+  });
+}
+
+module.exports = {
+  onSessionClose,
+  onTipRecorded,
+  onPickupCompleted,
+};
+```
+
+Report: "✅ Step 2 complete: commissionLedgerHook.js created"
+
+---
+
+## STEP 3: 기존 Session Close 핸들러에 Hook 연결
+
+기존 세션 종료 / 체크아웃 핸들러 파일을 찾아서
+파일명과 함수명을 먼저 보고하라.
+
+기존 코드 변경 없이 함수 마지막에 아래를 ADD:
+```javascript
+// === LEDGER HOOK START (추가됨 — 기존 로직 영향 없음) ===
+// MIGRATION: Replace with C# DomainEvent in SessionSlice
+try {
+  const { onSessionClose } = require('./ledger/commissionLedgerHook');
+
+  // 기존 커미션 결과 변수명을 실제 코드에 맞게 교체
+  await onSessionClose(db, {
+    orgId:    session.org_id,          // 실제 컬럼명으로 교체
+    branchId: session.branch_id,
+    sessionId: session.id,
+    hostessAssignments: (commissionResults || []).map(c => ({
+      hostessProfileId:  c.hostess_profile_id || c.hostessProfileId,
+      agentId:           c.agent_id           || null,
+      contractId:        c.contract_id        || null,
+      agentFeeRate:      c.agent_fee_rate      || 0,
+      sessionCommission: c.session_commission  || 0,
+      drinkCommission:   c.drink_commission    || 0,
+      packageCommission: c.package_commission  || 0,
+    })),
+    postedBy:  req.user.id,
+    ipAddress: req.ip,
+  });
+} catch (ledgerErr) {
+  console.error('[LEDGER HOOK] Non-blocking error:', ledgerErr.message);
+}
+// === LEDGER HOOK END ===
+```
+
+기존 변수명과 맞지 않으면 STOP, 실제 변수명 보고.
+
+Report: "✅ Step 3 complete: hook connected to [filename:line]"
+
+---
+
+## STEP 4: 연결 테스트 엔드포인트 추가
+
+기존 admin/test route에 ADD (신규 파일 불필요):
+```javascript
+// GET /api/ledger/health
+router.get('/ledger/health',
+  requireAuth,
+  requireRole(['admin','super_admin','branch_manager']),
+  async (req, res) => {
+    try {
+      const checks = await Promise.all([
+        db.query('SELECT COUNT(*) FROM ledger_accounts WHERE org_id=$1',
+          [req.user.org_id]),
+        db.query('SELECT COUNT(*) FROM ledger_entries WHERE org_id=$1',
+          [req.user.org_id]),
+        db.query('SELECT COUNT(*) FROM failed_ledger_queue WHERE org_id=$1',
+          [req.user.org_id]),
+      ]);
+
+      const sample = await db.query(`
+        SELECT la.account_type, COUNT(*) as count,
+               SUM(la.balance_cache) as total_balance
+        FROM ledger_accounts la
+        WHERE la.org_id = $1 AND la.is_active = TRUE
+        GROUP BY la.account_type
+        ORDER BY la.account_type
+      `, [req.user.org_id]);
+
+      res.json({
+        status:          'ok',
+        ledger_accounts: parseInt(checks[0].rows[0].count),
+        ledger_entries:  parseInt(checks[1].rows[0].count),
+        failed_queue:    parseInt(checks[2].rows[0].count),
+        by_type:         sample.rows,
+        timestamp:       new Date().toISOString(),
+      });
+    } catch (err) {
+      res.status(500).json({ status: 'error', message: err.message });
+    }
+  }
+);
+```
+
+그런 다음 GET /api/ledger/health 호출하고 결과 보고.
+
+Report: "✅ Step 4 complete. Health response: [결과]"
+
+---
+
+SUCCESS CRITERIA:
+- [ ] ledgerService.js 생성 (org_id, agent_share 사용)
+- [ ] commissionLedgerHook.js 생성
+- [ ] 기존 세션 종료에 hook 연결
+- [ ] /api/ledger/health 정상 응답
+- [ ] 기존 API regression 없음
+
+⛔ 실패 → 즉시 중단, 보고, 대기
+✅ 통과 → "✅ Part 3 완료. Part 4 진행 가능" 출력
