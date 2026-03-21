@@ -283,9 +283,37 @@ function AddItemModal({
         },
         body: JSON.stringify({ reservationId, hostessId: selectedHostess.id }),
       });
-      const body = await resp.json() as { success?: boolean; error?: string; message?: string };
+      // API returns { success: false, error: { code, message, detail } } on failure
+      const body = await resp.json() as {
+        success?: boolean;
+        message?: string;
+        error?: string | { code?: string; message?: string; detail?: unknown };
+      };
       if (!resp.ok || !body.success) {
-        setHostessError(body.message ?? body.error ?? "Assignment failed");
+        const err = body.error;
+        const rawCode =
+          typeof err === "object" && err !== null ? err.code : undefined;
+        const rawMsg =
+          typeof err === "object" && err !== null
+            ? err.message ?? err.code
+            : typeof err === "string"
+            ? err
+            : body.message;
+        // Human-readable error mapping
+        const friendlyErrors: Record<string, string> = {
+          ALREADY_ASSIGNED:       "This hostess is already assigned to another session right now.",
+          NOT_SCHEDULED:          "This hostess has no scheduled shift at this time.",
+          SHIFT_END_CONFLICT:     "Assignment would exceed the hostess's shift end time.",
+          AGENCY_RESTRICTION:     "This hostess's agency is currently inactive.",
+          RESERVATION_NOT_OCCUPIED: "The reservation is not active (must be checked-in).",
+          HOSTESS_NOT_AVAILABLE:  "Hostess is not available at this time.",
+        };
+        const errMsg =
+          (rawCode && friendlyErrors[rawCode]) ??
+          (rawMsg && friendlyErrors[rawMsg as string]) ??
+          rawMsg ??
+          "Assignment failed — please try again.";
+        setHostessError(errMsg);
         return;
       }
       onAdded();
@@ -452,7 +480,10 @@ function AddItemModal({
                       </div>
                     </div>
                     {hostessError && (
-                      <p className="text-xs text-destructive px-1">{hostessError}</p>
+                      <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-destructive/10 border border-destructive/30 text-xs text-destructive">
+                        <span className="shrink-0 font-bold mt-0.5">!</span>
+                        <span>{hostessError}</span>
+                      </div>
                     )}
                     <div className="flex gap-3">
                       <Button variant="ghost" onClick={onClose} className="flex-1">Cancel</Button>
