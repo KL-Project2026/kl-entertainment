@@ -1,0 +1,624 @@
+# TASK: Universal Ledger — Database Schema (Part 1 of 5)
+# ※ 이 버전은 실제 DB 스키마에 맞게 완전히 수정된 버전입니다.
+
+## CRITICAL RULES
+1. DO NOT modify any existing tables. STRICTLY additive only.
+2. DO NOT drop, alter, or rename anything existing.
+3. Error or conflict → STOP immediately, report, wait.
+4. After EVERY step → report "✅ Step N complete" or "⛔ Step N failed: [reason]"
+
+---
+
+## PRE-CHECK — 실행 후 결과 보고, 이상 없으면 진행
+```sql
+-- A. 신규 테이블명 충돌 없음 확인
+SELECT table_name
+FROM information_schema.tables
+WHERE table_schema = 'public'
+  AND table_name IN (
+    'ledger_accounts',
+    'ledger_entries',
+    'payslips',
+    'financial_resolutions',
+    'failed_ledger_queue'
+  );
+-- 반드시 0행이어야 진행 가능
+
+-- B. 핵심 참조 테이블 존재 확인
+SELECT table_name
+FROM information_schema.tables
+WHERE table_schema = 'public'
+  AND table_name IN (
+    'organizations','branches','staff',
+    'hostess_profiles','agents'
+  );
+-- 반드시 5행이어야 진행 가능
+
+-- C. 현재 행 수 스냅샷 (무결성 감지용)
+SELECT relname AS table_name, n_live_tup AS row_count
+FROM pg_stat_user_tables
+ORDER BY relname;
+```
+
+충돌 없음 + 5개 테이블 존재 확인 후 아래 진행.
+
+---
+
+## STEP 1: ledger_accounts 테이블 생성
+```sql
+CREATE TABLE ledger_accounts (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  -- ✅ tenants → organizations, tenant_id → org_id
+  org_id              UUID NOT NULL
+                        REFERENCES organizations(id) ON DELETE RESTRICT,
+  branch_id           UUID
+                        REFERENCES branches(id) ON DELETE RESTRICT,
+
+  -- 계정 주체 타입
+  account_type        VARCHAR(30) NOT NULL,
+  CONSTRAINT chk_la_account_type CHECK (account_type IN (
+    'hostess',      -- 커미션/급여
+    'agent',        -- 수수료 정산 (agencies → agents)
+    'investor',     -- 수익 배분 집계 전용
+    'driver',       -- 픽업 수당
+    'staff',        -- 일반 직원 급여
+    'branch',       -- 지점 내부 계정
+    'corporate',    -- 법인 고객 선불
+    'guest_wallet'  -- VIP 선불 크레딧
+  )),
+
+  -- 실제 엔티티 참조 (유연한 다형성 참조)
+  entity_id           UUID NOT NULL,
+  entity_type         VARCHAR(30) NOT NULL,
+  -- entity_type 값:
+  --   'hostess_profile' → hostess_profiles.id
+  --   'agent'           → agents.id
+  --   'staff'           → staff.id
+  --   'branch'          → branches.id
+
+  currency            CHAR(3) NOT NULL DEFAULT 'MYR',
+  is_active           BOOLEAN NOT NULL DEFAULT TRUE,
+
+  -- 잔액 캐시 (성능용 — 원장으로 언제든 재계산 가능)
+  balance_cache       NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+  balance_updated_at  TIMESTAMPTZ,
+
+  -- 계정별 설정 메타데이터
+  settings            JSONB NOT NULL DEFAULT '{}',
+  /*
+  hostess:  {"payout_frequency":"biweekly","advance_limit":500}
+  agent:    {"invoice_frequency":"monthly","invoice_day":1}
+  investor: {"profit_share_pct":0,"access_level":"aggregated_only"}
+  driver:   {"payout_frequency":"weekly"}
+  */
+
+  -- ✅ users → staff
+  created_by          UUID REFERENCES staff(id),
+
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  -- 동일 엔티티 중복 계정 방지
+  UNIQUE(org_id, account_type, entity_id)
+);
+
+CREATE INDEX idx_la_org      ON ledger_accounts(org_id);
+CREATE INDEX idx_la_branch   ON ledger_accounts(branch_id);
+CREATE INDEX idx_la_entity   ON ledger_accounts(entity_id, entity_type);
+CREATE INDEX idx_la_type     ON ledger_accounts(account_type);
+CREATE INDEX idx_la_active   ON ledger_accounts(is_active);
+```
+
+Report: "✅ Step 1 complete" or "⛔ Step 1 failed: [reason]"
+
+---
+
+## STEP 2: ledger_entries 테이블 생성
+```sql
+CREATE TABLE ledger_entries (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  -- ✅ org_id 패턴
+  org_id                UUID NOT NULL
+                          REFERENCES organizations(id) ON DELETE RESTRICT,
+  branch_id             UUID REFERENCES branches(id),
+  account_id            UUID NOT NULL
+                          REFERENCES ledger_accounts(id) ON DELETE RESTRICT,
+
+  -- 거래 유형
+  entry_type            VARCHAR(50) NOT NULL,
+  /*
+  Hostess:  'commission_session' | 'commission_drink'
+            | 'commission_package' | 'tip' | 'bonus'
+            | 'advance' | 'advance_repayment'
+            | 'penalty' | 'agent_deduction' | 'payout'
+  Agent:    'fee_accrued' | 'invoice_issued'
+            | 'payment_received' | 'credit_note'
+  Investor: 'profit_allocation' | 'dividend_paid'
+            | 'capital_contribution'
+  Driver:   'pickup_fee' | 'expense_claim' | 'payout'
+  Staff:    'base_salary' | 'allowance' | 'deduction' | 'payout'
+  Common:   'manual_adjustment' | 'opening_balance'
+            | 'fx_adjustment'
+  */
+
+  direction             CHAR(2) NOT NULL,
+  CONSTRAINT chk_le_direction CHECK (direction IN ('DR','CR')),
+  -- CR = 계정에 이익 (수령)
+  -- DR = 계정에서 차감 (지급/공제)
+
+  amount                NUMERIC(12,2) NOT NULL,
+  CONSTRAINT chk_le_amount CHECK (amount > 0),
+
+  currency              CHAR(3) NOT NULL DEFAULT 'MYR',
+
+  -- 멀티통화 FX 환산
+  reporting_currency    CHAR(3),
+  reporting_amount      NUMERIC(12,2),
+  fx_rate               NUMERIC(10,6),
+
+  -- 원천 추적 (어떤 운영 이벤트에서 발생했나)
+  source_type           VARCHAR(40),
+  /*
+  'reservation'      → reservations.id
+  'hostess_session'  → hostess_sessions.id
+  'folio_entry'      → folio_entries.id
+  'agent_invoice'    → agent_invoices.id  (agencies→agents)
+  'hostess_payout'   → hostess_payouts.id
+  'agent_payout'     → agent_payouts.id
+  'expense'          → expenses.id
+  'manual'           → staff.id (승인자)
+  */
+  source_id             UUID,
+
+  -- 상대 계정 (복식부기 균형)
+  contra_account_id     UUID REFERENCES ledger_accounts(id),
+
+  -- Gross → Net 분리 (Hostess 커미션 + Agent 수수료)
+  gross_amount          NUMERIC(12,2),
+  agent_share           NUMERIC(12,2) DEFAULT 0,
+  -- ✅ agency_share → agent_share (agents 테이블 매핑)
+  hostess_net           NUMERIC(12,2),
+  CONSTRAINT chk_le_gross_split CHECK (
+    gross_amount IS NULL OR
+    ROUND(COALESCE(agent_share, 0) + COALESCE(hostess_net, 0), 2)
+    = ROUND(gross_amount, 2)
+  ),
+
+  -- 회계 기간
+  effective_date        DATE NOT NULL,
+  accounting_period     CHAR(7),  -- 'YYYY-MM'
+
+  -- 문서 연결
+  document_type         VARCHAR(30),
+  -- 'payslip' | 'resolution' | 'invoice' | 'receipt'
+  document_id           UUID,
+
+  -- 상태
+  status                VARCHAR(20) NOT NULL DEFAULT 'posted',
+  CONSTRAINT chk_le_status CHECK (status IN (
+    'pending','posted','disputed','reversed','void'
+  )),
+
+  -- 역분개 연결
+  reversed_by_entry_id  UUID REFERENCES ledger_entries(id),
+  reversal_reason       TEXT,
+
+  -- ✅ 감사 추적 — posted_by, approved_by → staff.id
+  posted_by             UUID NOT NULL REFERENCES staff(id),
+  approved_by           UUID REFERENCES staff(id),
+  approved_at           TIMESTAMPTZ,
+  posted_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  audit_note            TEXT,
+  ip_address            INET,
+
+  description           TEXT,
+  reference_no          VARCHAR(100),
+
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_le_account    ON ledger_entries(account_id);
+CREATE INDEX idx_le_org        ON ledger_entries(org_id);
+CREATE INDEX idx_le_branch     ON ledger_entries(branch_id);
+CREATE INDEX idx_le_period     ON ledger_entries(accounting_period);
+CREATE INDEX idx_le_effective  ON ledger_entries(effective_date);
+CREATE INDEX idx_le_source     ON ledger_entries(source_type, source_id);
+CREATE INDEX idx_le_status     ON ledger_entries(status);
+CREATE INDEX idx_le_type       ON ledger_entries(entry_type);
+CREATE INDEX idx_le_posted_at  ON ledger_entries(posted_at);
+```
+
+Report: "✅ Step 2 complete" or "⛔ Step 2 failed: [reason]"
+
+---
+
+## STEP 3: payslips 테이블 생성
+```sql
+CREATE TABLE payslips (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  org_id                UUID NOT NULL REFERENCES organizations(id),
+  branch_id             UUID REFERENCES branches(id),
+  account_id            UUID NOT NULL REFERENCES ledger_accounts(id),
+
+  entity_type           VARCHAR(30) NOT NULL,
+  CONSTRAINT chk_ps_entity CHECK (
+    entity_type IN (
+      'hostess_profile',  -- hostess_profiles.id
+      'driver',           -- staff.id where role='driver'
+      'staff'             -- staff.id where role IN general roles
+    )
+  ),
+  entity_id             UUID NOT NULL,
+  entity_name           VARCHAR(200),  -- 스냅샷 (이름 변경 대비)
+
+  -- 급여 기간
+  period_start          DATE NOT NULL,
+  period_end            DATE NOT NULL,
+  pay_date              DATE,
+
+  -- 집계 금액
+  gross_earnings        NUMERIC(10,2) NOT NULL DEFAULT 0,
+  total_deductions      NUMERIC(10,2) NOT NULL DEFAULT 0,
+  net_payable           NUMERIC(10,2) NOT NULL DEFAULT 0,
+  CONSTRAINT chk_ps_net CHECK (
+    ROUND(net_payable, 2) =
+    ROUND(gross_earnings - total_deductions, 2)
+  ),
+
+  -- 항목 상세 스냅샷 (PDF 생성용)
+  earnings_breakdown    JSONB NOT NULL DEFAULT '{}',
+  /*
+  {
+    "commission_session":  1200.00,
+    "commission_drink":     340.00,
+    "commission_package":   150.00,
+    "tip":                   80.00,
+    "bonus":                200.00,
+    "pickup_fee":           120.00
+  }
+  */
+  deductions_breakdown  JSONB NOT NULL DEFAULT '{}',
+  /*
+  {
+    "advance_repayment":   300.00,
+    "agent_share":         350.00,
+    "penalty":              50.00
+  }
+  */
+
+  ledger_entry_ids      UUID[] DEFAULT '{}',
+
+  -- 문서
+  pdf_url               TEXT,
+  pdf_generated_at      TIMESTAMPTZ,
+
+  -- 수령 확인 (Hostess 본인 확인)
+  acknowledged_at       TIMESTAMPTZ,
+  acknowledged_by       UUID REFERENCES staff(id),
+
+  status                VARCHAR(20) NOT NULL DEFAULT 'draft',
+  CONSTRAINT chk_ps_status CHECK (status IN (
+    'draft','issued','acknowledged','disputed','paid','cancelled'
+  )),
+
+  dispute_note          TEXT,
+  created_by            UUID REFERENCES staff(id),
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  UNIQUE(account_id, period_start, period_end)
+);
+
+CREATE INDEX idx_ps_org      ON payslips(org_id);
+CREATE INDEX idx_ps_account  ON payslips(account_id);
+CREATE INDEX idx_ps_entity   ON payslips(entity_id, entity_type);
+CREATE INDEX idx_ps_period   ON payslips(period_start, period_end);
+CREATE INDEX idx_ps_status   ON payslips(status);
+```
+
+Report: "✅ Step 3 complete" or "⛔ Step 3 failed: [reason]"
+
+---
+
+## STEP 4: financial_resolutions 테이블 생성
+```sql
+CREATE TABLE financial_resolutions (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  org_id              UUID NOT NULL REFERENCES organizations(id),
+  branch_id           UUID REFERENCES branches(id),
+
+  resolution_type     VARCHAR(40) NOT NULL,
+  CONSTRAINT chk_fr_type CHECK (resolution_type IN (
+    'payout_approval',        -- 급여 일괄 지급 승인
+    'agent_payment',          -- Agent 수수료 지급 승인
+    'investor_dividend',      -- 투자자 배당 승인
+    'expense_approval',       -- 지출 승인
+    'commission_adjustment',  -- 커미션 수동 조정 승인
+    'advance_approval'        -- 선지급 승인
+  )),
+
+  title               TEXT NOT NULL,
+  description         TEXT,
+  period_start        DATE NOT NULL,
+  period_end          DATE NOT NULL,
+
+  total_amount        NUMERIC(12,2) NOT NULL,
+  currency            CHAR(3) NOT NULL DEFAULT 'MYR',
+
+  -- 대상 계정 스냅샷 (PII 최소화)
+  affected_accounts   JSONB NOT NULL DEFAULT '[]',
+  /*
+  [
+    {
+      "account_id":  "uuid",
+      "entity_name": "Kim Soo Yeon",
+      "entity_type": "hostess_profile",
+      "amount":      1200.00,
+      "payslip_id":  "uuid"
+    }
+  ]
+  */
+
+  -- 승인 워크플로우
+  status              VARCHAR(20) NOT NULL DEFAULT 'pending',
+  CONSTRAINT chk_fr_status CHECK (status IN (
+    'pending','approved','rejected','paid','cancelled'
+  )),
+
+  -- ✅ users → staff
+  requested_by        UUID NOT NULL REFERENCES staff(id),
+  approved_by         UUID REFERENCES staff(id),
+  rejected_by         UUID REFERENCES staff(id),
+  rejection_reason    TEXT,
+
+  requested_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  approved_at         TIMESTAMPTZ,
+  paid_at             TIMESTAMPTZ,
+
+  ledger_entry_ids    UUID[] DEFAULT '{}',
+
+  pdf_url             TEXT,
+  pdf_generated_at    TIMESTAMPTZ,
+  notes               TEXT,
+
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_fr_org      ON financial_resolutions(org_id);
+CREATE INDEX idx_fr_branch   ON financial_resolutions(branch_id);
+CREATE INDEX idx_fr_status   ON financial_resolutions(status);
+CREATE INDEX idx_fr_type     ON financial_resolutions(resolution_type);
+CREATE INDEX idx_fr_period   ON financial_resolutions(period_start, period_end);
+```
+
+Report: "✅ Step 4 complete" or "⛔ Step 4 failed: [reason]"
+
+---
+
+## STEP 5: failed_ledger_queue 테이블 생성
+```sql
+CREATE TABLE failed_ledger_queue (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id          UUID NOT NULL REFERENCES organizations(id),
+  entry_type      VARCHAR(50),
+  payload         JSONB NOT NULL,
+  error_message   TEXT,
+  retry_count     INT  NOT NULL DEFAULT 0,
+  last_error      TEXT,
+  next_retry_at   TIMESTAMPTZ DEFAULT NOW(),
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_flq_org    ON failed_ledger_queue(org_id);
+CREATE INDEX idx_flq_retry  ON failed_ledger_queue(next_retry_at);
+CREATE INDEX idx_flq_count  ON failed_ledger_queue(retry_count);
+```
+
+Report: "✅ Step 5 complete" or "⛔ Step 5 failed: [reason]"
+
+---
+
+## STEP 6: 집계 뷰 생성
+```sql
+-- 계정별 실시간 잔액
+CREATE OR REPLACE VIEW v_account_balances AS
+SELECT
+  la.id               AS account_id,
+  la.org_id,
+  la.branch_id,
+  la.account_type,
+  la.entity_id,
+  la.entity_type,
+  la.currency,
+  COALESCE(SUM(
+    CASE
+      WHEN le.direction = 'CR' THEN  le.amount
+      WHEN le.direction = 'DR' THEN -le.amount
+    END
+  ), 0.00)            AS current_balance,
+  COUNT(le.id)        AS transaction_count,
+  MAX(le.posted_at)   AS last_transaction_at,
+  la.is_active
+FROM ledger_accounts la
+LEFT JOIN ledger_entries le
+  ON le.account_id = la.id
+  AND le.status = 'posted'
+GROUP BY
+  la.id, la.org_id, la.branch_id,
+  la.account_type, la.entity_id,
+  la.entity_type, la.currency, la.is_active;
+
+-- 기간별 커미션 분배 현황
+CREATE OR REPLACE VIEW v_commission_distribution AS
+SELECT
+  le.org_id,
+  le.branch_id,
+  le.accounting_period,
+  le.effective_date,
+  la.account_type,
+  la.entity_id,
+  le.entry_type,
+  COUNT(le.id)                      AS entry_count,
+  SUM(le.gross_amount)              AS total_gross,
+  SUM(le.agent_share)               AS total_agent_share,
+  SUM(le.hostess_net)               AS total_hostess_net,
+  SUM(CASE
+    WHEN le.direction = 'CR' THEN  le.amount
+    WHEN le.direction = 'DR' THEN -le.amount
+  END)                              AS net_amount
+FROM ledger_entries le
+JOIN ledger_accounts la ON la.id = le.account_id
+WHERE le.status = 'posted'
+GROUP BY
+  le.org_id, le.branch_id,
+  le.accounting_period, le.effective_date,
+  la.account_type, la.entity_id, le.entry_type;
+
+-- 미지급 잔액 (정산 대기)
+CREATE OR REPLACE VIEW v_unpaid_balances AS
+SELECT
+  la.org_id,
+  la.branch_id,
+  la.account_type,
+  la.entity_id,
+  la.entity_type,
+  la.currency,
+  COALESCE(SUM(
+    CASE
+      WHEN le.direction = 'CR' THEN  le.amount
+      WHEN le.direction = 'DR' THEN -le.amount
+    END
+  ), 0.00)              AS unpaid_balance,
+  MIN(le.effective_date) AS oldest_entry_date,
+  COUNT(le.id)           AS pending_entry_count
+FROM ledger_accounts la
+LEFT JOIN ledger_entries le
+  ON le.account_id = la.id
+  AND le.status = 'posted'
+  AND le.document_id IS NULL
+GROUP BY
+  la.org_id, la.branch_id,
+  la.account_type, la.entity_id,
+  la.entity_type, la.currency
+HAVING COALESCE(SUM(
+  CASE
+    WHEN le.direction = 'CR' THEN  le.amount
+    WHEN le.direction = 'DR' THEN -le.amount
+  END
+), 0.00) > 0;
+
+-- Agent 미청구 발생액
+CREATE OR REPLACE VIEW v_agent_unbilled AS
+SELECT
+  le.org_id,
+  le.branch_id,
+  la.entity_id    AS agent_account_id,
+  le.accounting_period,
+  SUM(le.agent_share) AS unbilled_agent_amount,
+  COUNT(le.id)        AS transaction_count
+FROM ledger_entries le
+JOIN ledger_accounts la ON la.id = le.account_id
+WHERE le.status = 'posted'
+  AND le.agent_share > 0
+  AND le.document_id IS NULL
+GROUP BY
+  le.org_id, le.branch_id,
+  la.entity_id, le.accounting_period;
+
+-- Investor 집계 전용 뷰 (PII 없음)
+CREATE OR REPLACE VIEW v_investor_summary AS
+SELECT
+  le.org_id,
+  le.branch_id,
+  le.accounting_period,
+  SUM(CASE WHEN le.entry_type LIKE 'commission_%'
+       AND le.direction = 'CR' THEN le.amount ELSE 0 END)
+                              AS total_commission_cost,
+  SUM(CASE WHEN le.entry_type = 'fee_accrued'
+       AND le.direction = 'CR' THEN le.amount ELSE 0 END)
+                              AS total_agent_cost,
+  SUM(CASE WHEN le.entry_type = 'payout'
+       AND le.direction = 'DR' THEN le.amount ELSE 0 END)
+                              AS total_payout_made,
+  COUNT(DISTINCT le.account_id) AS active_accounts
+FROM ledger_entries le
+WHERE le.status = 'posted'
+GROUP BY le.org_id, le.branch_id, le.accounting_period;
+```
+
+Report: "✅ Step 6 complete" or "⛔ Step 6 failed: [reason]"
+
+---
+
+## POST-CREATION VERIFICATION
+```sql
+-- 1. 신규 테이블 5개 확인
+SELECT table_name,
+  (SELECT COUNT(*)
+   FROM information_schema.columns c
+   WHERE c.table_name   = t.table_name
+     AND c.table_schema = 'public'
+  ) AS column_count
+FROM information_schema.tables t
+WHERE table_schema = 'public'
+  AND table_name IN (
+    'ledger_accounts','ledger_entries','payslips',
+    'financial_resolutions','failed_ledger_queue'
+  )
+ORDER BY table_name;
+-- 반드시 5행 출력
+
+-- 2. 뷰 5개 확인
+SELECT viewname FROM pg_views
+WHERE viewname IN (
+  'v_account_balances',
+  'v_commission_distribution',
+  'v_unpaid_balances',
+  'v_agent_unbilled',
+  'v_investor_summary'
+)
+ORDER BY viewname;
+-- 반드시 5행 출력
+
+-- 3. 기존 48개 테이블 행 수 변화 없음 확인
+SELECT relname, n_live_tup
+FROM pg_stat_user_tables
+WHERE relname NOT IN (
+  'ledger_accounts','ledger_entries','payslips',
+  'financial_resolutions','failed_ledger_queue'
+)
+ORDER BY relname;
+-- PRE-CHECK C 결과와 동일해야 함
+
+-- 4. FK 무결성 확인
+SELECT
+  tc.table_name,
+  kcu.column_name,
+  ccu.table_name  AS references_table
+FROM information_schema.table_constraints tc
+JOIN information_schema.key_column_usage kcu
+  ON tc.constraint_name = kcu.constraint_name
+JOIN information_schema.constraint_column_usage ccu
+  ON ccu.constraint_name = tc.constraint_name
+WHERE tc.constraint_type = 'FOREIGN KEY'
+  AND tc.table_name IN (
+    'ledger_accounts','ledger_entries',
+    'payslips','financial_resolutions'
+  )
+ORDER BY tc.table_name, kcu.column_name;
+-- organizations, branches, staff 참조 확인
+```
+
+SUCCESS CRITERIA:
+- [ ] 신규 테이블 5개 생성
+- [ ] 뷰 5개 생성
+- [ ] FK가 organizations, branches, staff 참조 확인
+- [ ] 기존 48개 테이블 행 수 변화 없음
+
+⛔ 실패 → 즉시 중단, 결과 보고, 대기
+✅ 통과 → "✅ Part 1 완료. Part 2 진행 가능" 출력
