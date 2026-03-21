@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/select";
 import { motion } from "framer-motion";
 import {
-  Plus, Pencil, Trash2, ChevronUp, ChevronDown, Tag,
+  Plus, Pencil, ChevronUp, ChevronDown, Tag,
   ToggleLeft, ToggleRight, Eye, EyeOff, Settings2, Layers, BookOpen,
   GitBranch, RotateCcw, Shield, ScrollText, Filter, ChevronRight,
   User, Clock, MapPin,
@@ -908,7 +908,6 @@ export default function SettingsMenuConfig() {
   const [activeTab, setActiveTab] = useState<"types" | "settings" | "branches">("types");
   const [catModal, setCatModal] = useState<{ open: boolean; editing: Category | null }>({ open: false, editing: null });
   const [typeModal, setTypeModal] = useState<{ open: boolean; editing: SubType | null }>({ open: false, editing: null });
-  const [deleteConfirm, setDeleteConfirm] = useState<{ type: "cat" | "subtype"; id: string } | null>(null);
 
   // ── Data fetching ───────────────────────────────────────────────────────────
   const { data: catsData, isLoading: catsLoading } = useQuery<{ data: Category[] }>({
@@ -968,59 +967,19 @@ export default function SettingsMenuConfig() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["menu-config-cats"] }),
   });
 
-  const { mutate: deleteCat } = useMutation({
-    mutationFn: async (id: string) => {
-      const r = await fetch(`${BASE}/categories/${id}`, { method: "DELETE", headers: authH });
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({})) as Record<string, unknown>;
-        throw Object.assign(new Error(String(err.message ?? "Failed")), { code: err.error, itemCount: err.itemCount });
-      }
+  const { mutate: toggleType } = useMutation({
+    mutationFn: async (t: SubType) => {
+      await fetch(`${BASE}/types/${t.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...authH },
+        body: JSON.stringify({ isActive: !t.isActive }),
+      });
     },
-    onSuccess: () => {
-      toast({ title: "Category deactivated" });
-      void qc.invalidateQueries({ queryKey: ["menu-config-cats"] });
-      if (selectedCatId === deleteConfirm?.id) setSelectedCatId(null);
-      setDeleteConfirm(null);
-    },
-    onError: (err: Error & { code?: unknown; itemCount?: number }) => {
-      if (err.code === "CATEGORY_HAS_ITEMS") {
-        toast({
-          title: "Cannot deactivate category",
-          description: `This category has ${err.itemCount ?? "active"} item(s). Move or deactivate items first.`,
-          variant: "destructive",
-        });
-      } else {
-        toast({ title: err.message || "Failed to deactivate", variant: "destructive" });
-      }
-      setDeleteConfirm(null);
-    },
-  });
-
-  const { mutate: deleteType } = useMutation({
-    mutationFn: async (id: string) => {
-      const r = await fetch(`${BASE}/types/${id}`, { method: "DELETE", headers: authH });
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({})) as Record<string, unknown>;
-        throw Object.assign(new Error(String(err.message ?? "Failed")), { code: err.error, itemCount: err.itemCount });
-      }
-    },
-    onSuccess: () => {
-      toast({ title: "Sub-type deactivated" });
+    onSuccess: (_d, t) => {
+      toast({ title: t.isActive ? "Sub-type deactivated" : "Sub-type activated" });
       void qc.invalidateQueries({ queryKey: ["menu-config-types", selectedCatId] });
-      setDeleteConfirm(null);
     },
-    onError: (err: Error & { code?: unknown; itemCount?: number }) => {
-      if (err.code === "SUBTYPE_HAS_ITEMS") {
-        toast({
-          title: "Cannot deactivate sub-type",
-          description: `This sub-type has ${err.itemCount ?? "active"} item(s). Move or deactivate items first.`,
-          variant: "destructive",
-        });
-      } else {
-        toast({ title: err.message || "Failed to deactivate", variant: "destructive" });
-      }
-      setDeleteConfirm(null);
-    },
+    onError: () => toast({ title: "Failed to update sub-type", variant: "destructive" }),
   });
 
   const { mutate: toggleOverride } = useMutation({
@@ -1187,10 +1146,6 @@ export default function SettingsMenuConfig() {
                                 className="p-1.5 rounded-lg hover:bg-white/5 transition-colors" title="Edit">
                                 <Pencil className="w-3.5 h-3.5" />
                               </button>
-                              <button onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ type: "cat", id: cat.id }); }}
-                                className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors" title="Deactivate">
-                                <Trash2 className="w-3.5 h-3.5 text-destructive/60 hover:text-destructive" />
-                              </button>
                             </div>
                           )}
                         </div>
@@ -1290,13 +1245,15 @@ export default function SettingsMenuConfig() {
                                     <td className="px-4 py-3">
                                       <div className="flex items-center gap-1 justify-end">
                                         <Button variant="ghost" size="icon" className="h-7 w-7"
+                                          title={t.isActive ? "Deactivate" : "Activate"}
+                                          onClick={() => toggleType(t)}>
+                                          {t.isActive
+                                            ? <Eye className="w-3.5 h-3.5 text-green-400" />
+                                            : <EyeOff className="w-3.5 h-3.5 text-gray-500" />}
+                                        </Button>
+                                        <Button variant="ghost" size="icon" className="h-7 w-7"
                                           onClick={() => setTypeModal({ open: true, editing: t })}>
                                           <Pencil className="w-3.5 h-3.5" />
-                                        </Button>
-                                        <Button variant="ghost" size="icon"
-                                          className="h-7 w-7 hover:text-destructive hover:bg-destructive/10"
-                                          onClick={() => setDeleteConfirm({ type: "subtype", id: t.id })}>
-                                          <Trash2 className="w-3.5 h-3.5" />
                                         </Button>
                                       </div>
                                     </td>
@@ -1438,23 +1395,6 @@ export default function SettingsMenuConfig() {
         categoryId={selectedCatId ?? ""}
         editing={typeModal.editing}
       />
-      <Dialog open={!!deleteConfirm} onOpenChange={(v) => { if (!v) setDeleteConfirm(null); }}>
-        <DialogContent className="sm:max-w-sm bg-[#0c0c10] border border-white/10">
-          <DialogHeader><DialogTitle>Confirm Deactivation</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground py-2">
-            This will deactivate the {deleteConfirm?.type === "cat" ? "category" : "sub-type"}.
-            Existing menu items will not be deleted.
-          </p>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setDeleteConfirm(null)}>Cancel</Button>
-            <Button variant="destructive" onClick={() => {
-              if (!deleteConfirm) return;
-              if (deleteConfirm.type === "cat") deleteCat(deleteConfirm.id);
-              else deleteType(deleteConfirm.id);
-            }}>Deactivate</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
       {/* ── Audit Log Sheet ─────────────────────────────────────────────────── */}
       {isAdmin && (
         <AuditLogSheet
@@ -1564,7 +1504,7 @@ function CategorySettingView({ authH, isAdmin }: { authH: Record<string, string>
   const [edits, setEdits] = useState<Record<string, MenuCatEdits>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [newModal, setNewModal] = useState(false);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [toggling, setToggling] = useState<Record<string, boolean>>({});
 
   const { data, isLoading } = useQuery<{ data: MenuCat[] }>({
     queryKey: ["menu-cats-setting"],
@@ -1612,18 +1552,23 @@ function CategorySettingView({ authH, isAdmin }: { authH: Record<string, string>
     }
   }
 
-  const { mutate: doDelete, isPending: deleting } = useMutation({
-    mutationFn: async (id: string) => {
-      const r = await fetch(`${BASE}/menu-categories/${id}`, { method: "DELETE", headers: authH });
-      if (!r.ok) { const e = await r.json().catch(() => ({})) as Record<string, string & { itemCount?: number }>; throw Object.assign(new Error(e.message ?? "Failed"), { code: (e as Record<string, string>).error, itemCount: (e as unknown as Record<string, number>).itemCount }); }
-    },
-    onSuccess: () => { toast({ title: "Category deactivated" }); setDeleteId(null); void qc.invalidateQueries({ queryKey: ["menu-cats-setting"] }); },
-    onError:   (e: Error & { code?: string; itemCount?: number }) => {
-      if (e.code === "CATEGORY_HAS_ITEMS") toast({ title: `Cannot deactivate — ${e.itemCount} active item(s)`, variant: "destructive" });
-      else toast({ title: e.message ?? "Failed", variant: "destructive" });
-      setDeleteId(null);
-    },
-  });
+  async function toggleMenuCat(cat: MenuCat) {
+    setToggling((p) => ({ ...p, [cat.id]: true }));
+    try {
+      const r = await fetch(`${BASE}/menu-categories/${cat.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authH },
+        body: JSON.stringify({ isActive: !cat.isActive }),
+      });
+      if (!r.ok) { const e = await r.json().catch(() => ({})) as Record<string, string>; throw new Error(e.message ?? "Failed"); }
+      toast({ title: cat.isActive ? "Category deactivated" : "Category activated" });
+      void qc.invalidateQueries({ queryKey: ["menu-cats-setting"] });
+    } catch (err: unknown) {
+      toast({ title: (err as Error).message ?? "Failed", variant: "destructive" });
+    } finally {
+      setToggling((p) => ({ ...p, [cat.id]: false }));
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -1761,11 +1706,14 @@ function CategorySettingView({ authH, isAdmin }: { authH: Record<string, string>
                         </Button>
                       )}
                       <button
-                        onClick={() => setDeleteId(cat.id)}
-                        className="p-1.5 rounded hover:bg-destructive/10 transition-colors"
-                        title="Deactivate"
+                        onClick={() => toggleMenuCat(cat)}
+                        disabled={toggling[cat.id]}
+                        className="p-1.5 rounded hover:bg-white/5 transition-colors"
+                        title={cat.isActive ? "Deactivate" : "Activate"}
                       >
-                        <Trash2 className="w-3.5 h-3.5 text-destructive/60 hover:text-destructive" />
+                        {cat.isActive
+                          ? <Eye className="w-3.5 h-3.5 text-green-400" />
+                          : <EyeOff className="w-3.5 h-3.5 text-gray-500" />}
                       </button>
                     </div>
                   )}
@@ -1784,21 +1732,6 @@ function CategorySettingView({ authH, isAdmin }: { authH: Record<string, string>
         authH={authH}
       />
 
-      {/* Deactivate confirm */}
-      <Dialog open={!!deleteId} onOpenChange={(v) => { if (!v) setDeleteId(null); }}>
-        <DialogContent className="sm:max-w-sm bg-[#0c0c10] border border-white/10">
-          <DialogHeader><DialogTitle>Deactivate Category?</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground py-2">
-            The category will be hidden from the menu. Items inside are preserved.
-          </p>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setDeleteId(null)}>Cancel</Button>
-            <Button variant="destructive" disabled={deleting} onClick={() => deleteId && doDelete(deleteId)}>
-              {deleting ? "Deactivating…" : "Deactivate"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
