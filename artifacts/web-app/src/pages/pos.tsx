@@ -279,6 +279,8 @@ export default function POS() {
   const [showDiscount, setShowDiscount] = useState(false);
   const [discountPct, setDiscountPct] = useState("10");
   const [receiptId, setReceiptId] = useState<string | null>(null);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [addingOrder, setAddingOrder] = useState(false);
 
   const { data: branchesData } = useListBranches();
   const branches = branchesData?.data || [];
@@ -298,6 +300,17 @@ export default function POS() {
   const orders = ordersData?.data || [];
   const activeOrder = orders.find(o => o.paymentStatus === "pending") || orders[0];
 
+  // Auto-select: prefer pending order, fall back to first
+  useEffect(() => {
+    if (orders.length === 0) return;
+    setSelectedOrderId(prev => {
+      if (prev && orders.find(o => o.id === prev)) return prev;
+      return (orders.find(o => o.paymentStatus === "pending") || orders[0]).id;
+    });
+  }, [orders.map(o => o.id).join(",")]);
+
+  const currentOrder = orders.find(o => o.id === selectedOrderId) || activeOrder;
+
   const createOrder = useCreateOrder();
   const removeItem = useRemoveOrderItem();
   const applyDiscount = useApplyOrderDiscount();
@@ -306,7 +319,6 @@ export default function POS() {
   const invalidateOrders = () => queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
 
   const handleNewOrder = async () => {
-    // Read latest search params directly from window at click time (most reliable)
     const clickTimeParams = new URLSearchParams(
       typeof window !== "undefined" ? window.location.search : ""
     );
@@ -316,50 +328,54 @@ export default function POS() {
 
     const canCreate = effectiveBranchId || effectiveReservationId;
     if (!canCreate) return;
+    setAddingOrder(true);
+    try {
+      let orderUrl = "/api/orders";
+      if (effectiveReservationId) {
+        orderUrl += `?reservationId=${encodeURIComponent(effectiveReservationId)}`;
+      }
 
-    // Build URL with reservationId as query param for server-side fallback resolution
-    let orderUrl = "/api/orders";
-    if (effectiveReservationId) {
-      orderUrl += `?reservationId=${encodeURIComponent(effectiveReservationId)}`;
+      const token = useAuthStore.getState().token;
+      const resp = await fetch(orderUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          branchId: effectiveBranchId,
+          reservationId: effectiveReservationId,
+        }),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error || `HTTP ${resp.status}`);
+      }
+      const newOrderData = await resp.json() as { data?: { id?: string } };
+      invalidateOrders();
+      if (newOrderData?.data?.id) setSelectedOrderId(newOrderData.data.id);
+    } finally {
+      setAddingOrder(false);
     }
-
-    // Use direct fetch so server always gets reservationId via URL params
-    const token = useAuthStore.getState().token;
-    const resp = await fetch(orderUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({
-        branchId: effectiveBranchId,
-        reservationId: effectiveReservationId,
-      }),
-    });
-
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      throw new Error((err as { error?: string }).error || `HTTP ${resp.status}`);
-    }
-    invalidateOrders();
   };
 
   const handleRemoveItem = async (itemId: string) => {
-    if (!activeOrder) return;
-    await removeItem.mutateAsync({ id: activeOrder.id, itemId });
+    if (!currentOrder) return;
+    await removeItem.mutateAsync({ id: currentOrder.id, itemId });
     invalidateOrders();
   };
 
   const handleApplyDiscount = async () => {
-    if (!activeOrder) return;
-    await applyDiscount.mutateAsync({ id: activeOrder.id, data: { discount_pct: parseFloat(discountPct) } });
+    if (!currentOrder) return;
+    await applyDiscount.mutateAsync({ id: currentOrder.id, data: { discount_pct: parseFloat(discountPct) } });
     invalidateOrders();
     setShowDiscount(false);
   };
 
   const handleFinalize = async () => {
-    if (!activeOrder) return;
-    await finalizeOrder.mutateAsync({ id: activeOrder.id });
+    if (!currentOrder) return;
+    await finalizeOrder.mutateAsync({ id: currentOrder.id });
     invalidateOrders();
   };
 
@@ -370,9 +386,9 @@ export default function POS() {
     window.open(`/api/receipts/${rId}?mode=detailed`, "_blank");
   };
 
-  const isPaid = activeOrder?.paymentStatus === "paid";
-  const isFinalized = !!activeOrder?.finalizedAt;
-  const items = activeOrder?.items || [];
+  const isPaid = currentOrder?.paymentStatus === "paid";
+  const isFinalized = !!currentOrder?.finalizedAt;
+  const items = currentOrder?.items || [];
 
   // NEW: If no reservationId — show Active Sessions List as POS entry point
   if (!reservationId) {
@@ -417,80 +433,123 @@ export default function POS() {
             <div className="space-y-3">
               {[1,2,3].map(i => <div key={i} className="h-16 bg-card rounded-xl animate-pulse" />)}
             </div>
-          ) : !activeOrder ? (
+          ) : !currentOrder ? (
             <Card className="p-10 text-center bg-black/40">
               <ShoppingCart className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
               <p className="text-muted-foreground mb-4">No active order</p>
-              <Button onClick={handleNewOrder} disabled={createOrder.isPending || (!branchId && !reservationId)} className="gap-2">
-                <Plus className="w-4 h-4" /> {createOrder.isPending ? "Creating..." : "Open New Order"}
+              <Button onClick={handleNewOrder} disabled={addingOrder || (!branchId && !reservationId)} className="gap-2">
+                <Plus className="w-4 h-4" /> {addingOrder ? "Creating..." : "Open New Order"}
               </Button>
             </Card>
           ) : (
-            <Card className="bg-black/40 border-white/5">
-              <div className="p-4 border-b border-white/5 flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                  <span className="font-display font-bold">{activeOrder.orderNo}</span>
-                  <span className={`text-xs px-2 py-0.5 rounded-full border font-medium capitalize ${
-                    isPaid ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" :
-                    isFinalized ? "bg-blue-500/15 text-blue-400 border-blue-500/30" :
-                    "bg-amber-500/15 text-amber-400 border-amber-500/30"
-                  }`}>{activeOrder.paymentStatus}</span>
-                </div>
-                {!isFinalized && !isPaid && (
-                  <Button size="sm" onClick={() => setShowAddItem(true)} className="gap-1.5">
-                    <Plus className="w-3.5 h-3.5" /> Add Item
-                  </Button>
+            <>
+              {/* Order tabs */}
+              <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
+                {orders.map((o, idx) => {
+                  const tabPaid = o.paymentStatus === "paid";
+                  const tabFinalized = !!o.finalizedAt;
+                  const isSelected = o.id === selectedOrderId;
+                  return (
+                    <button
+                      key={o.id}
+                      onClick={() => { setSelectedOrderId(o.id); setShowDiscount(false); }}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all border ${
+                        isSelected
+                          ? "bg-primary/15 border-primary/40 text-primary"
+                          : "bg-black/30 border-white/10 text-muted-foreground hover:border-white/20 hover:text-foreground"
+                      }`}
+                    >
+                      <span>Order {idx + 1}</span>
+                      <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${
+                        tabPaid ? "bg-emerald-500/20 text-emerald-400"
+                        : tabFinalized ? "bg-blue-500/20 text-blue-400"
+                        : "bg-amber-500/20 text-amber-400"
+                      }`}>
+                        {tabPaid ? "Paid" : tabFinalized ? "Finalized" : "Open"}
+                      </span>
+                    </button>
+                  );
+                })}
+                {/* Add New Order button */}
+                {reservationId && (
+                  <button
+                    onClick={handleNewOrder}
+                    disabled={addingOrder}
+                    title="Add new order"
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all border border-dashed border-white/20 text-muted-foreground hover:border-primary/40 hover:text-primary disabled:opacity-40"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    {addingOrder ? "Adding…" : "New Order"}
+                  </button>
                 )}
               </div>
-              <div className="p-4">
-                {items.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8 text-sm">No items added yet</p>
-                ) : (
-                  <div>
-                    {items.map((item) => (
-                      <OrderItemRow
-                        key={item.id}
-                        item={item}
-                        orderId={activeOrder.id}
-                        pending={removeItem.isPending}
-                        onRemove={handleRemoveItem}
-                      />
-                    ))}
+
+              <Card className="bg-black/40 border-white/5">
+                <div className="p-4 border-b border-white/5 flex justify-between items-center">
+                  <div className="flex items-center gap-3">
+                    <span className="font-display font-bold">{currentOrder.orderNo}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full border font-medium capitalize ${
+                      isPaid ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" :
+                      isFinalized ? "bg-blue-500/15 text-blue-400 border-blue-500/30" :
+                      "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                    }`}>{currentOrder.paymentStatus}</span>
                   </div>
-                )}
-              </div>
-            </Card>
+                  {!isFinalized && !isPaid && (
+                    <Button size="sm" onClick={() => setShowAddItem(true)} className="gap-1.5">
+                      <Plus className="w-3.5 h-3.5" /> Add Item
+                    </Button>
+                  )}
+                </div>
+                <div className="p-4">
+                  {items.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-8 text-sm">No items added yet</p>
+                  ) : (
+                    <div>
+                      {items.map((item) => (
+                        <OrderItemRow
+                          key={item.id}
+                          item={item}
+                          orderId={currentOrder.id}
+                          pending={removeItem.isPending}
+                          onRemove={handleRemoveItem}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </Card>
+            </>
           )}
         </div>
 
         {/* Totals + Actions Panel */}
         <div className="space-y-4">
-          {activeOrder && (
+          {currentOrder && (
             <>
               <Card className="p-5 bg-black/40 border-white/5 space-y-3">
                 <h4 className="font-display font-semibold text-sm text-primary uppercase tracking-wider">Order Summary</h4>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between text-muted-foreground">
                     <span>Subtotal</span>
-                    <span>MYR {Number(activeOrder.subtotal).toFixed(2)}</span>
+                    <span>MYR {Number(currentOrder.subtotal).toFixed(2)}</span>
                   </div>
-                  {Number(activeOrder.discountAmount) > 0 && (
+                  {Number(currentOrder.discountAmount) > 0 && (
                     <div className="flex justify-between text-emerald-400">
                       <span>Discount</span>
-                      <span>-MYR {Number(activeOrder.discountAmount).toFixed(2)}</span>
+                      <span>-MYR {Number(currentOrder.discountAmount).toFixed(2)}</span>
                     </div>
                   )}
                   <div className="flex justify-between text-muted-foreground">
                     <span>Service Charge (10%)</span>
-                    <span>MYR {Number(activeOrder.serviceCharge).toFixed(2)}</span>
+                    <span>MYR {Number(currentOrder.serviceCharge).toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between text-muted-foreground">
                     <span>SST (6%)</span>
-                    <span>MYR {Number(activeOrder.sstAmount).toFixed(2)}</span>
+                    <span>MYR {Number(currentOrder.sstAmount).toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between font-bold text-base pt-2 border-t border-white/10">
                     <span>Total</span>
-                    <span className="text-primary">MYR {Number(activeOrder.totalAmount).toFixed(2)}</span>
+                    <span className="text-primary">MYR {Number(currentOrder.totalAmount).toFixed(2)}</span>
                   </div>
                 </div>
               </Card>
@@ -552,7 +611,7 @@ export default function POS() {
                 <div className="space-y-3">
                   <div className="text-center p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
                     <p className="text-emerald-400 font-semibold">Payment Complete</p>
-                    <p className="text-sm text-muted-foreground mt-1">via {activeOrder.paymentMethod?.replace("_"," ")}</p>
+                    <p className="text-sm text-muted-foreground mt-1">via {currentOrder.paymentMethod?.replace("_"," ")}</p>
                   </div>
                   {receiptId && (
                     <Button
@@ -570,17 +629,17 @@ export default function POS() {
         </div>
       </div>
 
-      {showAddItem && activeOrder && (
+      {showAddItem && currentOrder && (
         <AddItemModal
-          orderId={activeOrder.id}
+          orderId={currentOrder.id}
           onClose={() => setShowAddItem(false)}
           onAdded={invalidateOrders}
         />
       )}
 
-      {showPayment && activeOrder && (
+      {showPayment && currentOrder && (
         <PaymentModal
-          order={activeOrder}
+          order={currentOrder}
           onClose={() => setShowPayment(false)}
           onSuccess={handlePaymentSuccess}
         />
