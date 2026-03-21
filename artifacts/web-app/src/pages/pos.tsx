@@ -470,18 +470,33 @@ export default function POS() {
                     </button>
                   );
                 })}
-                {/* Add New Order button */}
-                {reservationId && (
-                  <button
-                    onClick={handleNewOrder}
-                    disabled={addingOrder}
-                    title="Add new order"
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all border border-dashed border-white/20 text-muted-foreground hover:border-primary/40 hover:text-primary disabled:opacity-40"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    {addingOrder ? "Adding…" : "New Order"}
-                  </button>
-                )}
+                {/* Add New Order button — only enabled when all existing orders are finalized/paid */}
+                {reservationId && (() => {
+                  const existingOpen = orders.find(o => o.paymentStatus === "pending" && !o.finalizedAt);
+                  const blocked = !!existingOpen;
+                  return (
+                    <button
+                      onClick={() => {
+                        if (blocked) {
+                          // Switch to the existing open order instead
+                          setSelectedOrderId(existingOpen!.id);
+                        } else {
+                          handleNewOrder();
+                        }
+                      }}
+                      disabled={addingOrder}
+                      title={blocked ? "An open order already exists — using it" : "Add new order"}
+                      className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all border ${
+                        blocked
+                          ? "border-amber-500/30 text-amber-400/60 cursor-not-allowed opacity-60"
+                          : "border-dashed border-white/20 text-muted-foreground hover:border-primary/40 hover:text-primary"
+                      } disabled:opacity-40`}
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      {addingOrder ? "Adding…" : "New Order"}
+                    </button>
+                  );
+                })()}
               </div>
 
               <Card className="bg-black/40 border-white/5">
