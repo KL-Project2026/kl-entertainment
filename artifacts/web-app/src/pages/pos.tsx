@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useSearch } from "wouter";
 import ActiveSessionsList from "@/components/pos/ActiveSessionsList";
@@ -21,7 +21,6 @@ import { useQueryClient, useQuery } from "@tanstack/react-query";
 import {
   ShoppingCart,
   Plus,
-  Minus,
   Trash2,
   X,
   ArrowLeft,
@@ -30,11 +29,43 @@ import {
   CreditCard,
   Banknote,
   Wallet,
+  Users,
+  Clock,
+  CheckCircle2,
 } from "lucide-react";
 import type { Order, OrderItem } from "@workspace/api-client-react";
 
 type CatalogItem = { id: string; name: string; unitPrice: number; sortOrder: number; isHostess?: boolean; };
 type CatalogGroup = { id: string; name: string; sortOrder: number; menuCatName: string | null; items: CatalogItem[]; };
+type HostessAssignment = {
+  id: string;
+  hostess_id: string;
+  hostess_name: string;
+  status: string;
+  session_start: string;
+  session_end: string | null;
+  hourly_rate_guest: string;
+  order_type: string;
+};
+
+function useHostessAssignments(reservationId?: string) {
+  const token = useAuthStore.getState().token;
+  return useQuery<HostessAssignment[]>({
+    queryKey: ["hostess-assignments-reservation", reservationId ?? ""],
+    queryFn: async () => {
+      if (!reservationId) return [];
+      const resp = await fetch(`/api/hostess-assignments/reservation/${reservationId}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!resp.ok) return [];
+      const data = await resp.json() as { data: HostessAssignment[] };
+      return data.data ?? [];
+    },
+    enabled: !!reservationId,
+    refetchInterval: 30_000,
+    staleTime: 10_000,
+  });
+}
 
 function catMarker(menuCatName: string | null): string {
   if (!menuCatName) return "";
@@ -209,12 +240,14 @@ function AddItemModal({
   reservationId,
   onClose,
   onAdded,
+  onHostessAssigned,
 }: {
   orderId: string;
   branchId?: string;
   reservationId?: string;
   onClose: () => void;
   onAdded: () => void;
+  onHostessAssigned?: (name: string) => void;
 }) {
   const { data: categories = [], isLoading: menuLoading } = usePosCatalog(branchId);
   const [activeCatId, setActiveCatId] = useState<string | null>(null);
@@ -317,6 +350,7 @@ function AddItemModal({
         return;
       }
       onAdded();
+      onHostessAssigned?.(selectedHostess.name);
       onClose();
     } catch {
       setHostessError("Network error — please retry");
@@ -564,9 +598,19 @@ export default function POS() {
   const [receiptId, setReceiptId] = useState<string | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [addingOrder, setAddingOrder] = useState(false);
+  const [assignedToast, setAssignedToast] = useState<string | null>(null);
 
   const { data: branchesData } = useListBranches();
   const branches = branchesData?.data || [];
+
+  const { data: hostessAssignments = [], refetch: refetchAssignments } = useHostessAssignments(reservationId);
+  const activeAssignments = hostessAssignments.filter(a => a.status === "ACTIVE");
+
+  const handleHostessAssigned = useCallback((name: string) => {
+    setAssignedToast(name);
+    refetchAssignments();
+    setTimeout(() => setAssignedToast(null), 4000);
+  }, [refetchAssignments]);
 
   const { data: reservationData } = useGetReservation(reservationId!, {
     query: { enabled: !!reservationId },
@@ -581,18 +625,20 @@ export default function POS() {
   }, { query: { enabled: !!reservationId || !!branchId } });
 
   const orders = ordersData?.data || [];
-  const activeOrder = orders.find(o => o.paymentStatus === "pending") || orders[0];
+  // Reservation orders (ORD-...) go into tabs; hostess orders (HOS-...) are tracked separately
+  const reservationOrders = orders.filter(o => !String(o.orderNo ?? "").startsWith("HOS-"));
+  const activeOrder = reservationOrders.find(o => o.paymentStatus === "pending") || reservationOrders[0];
 
-  // Auto-select: prefer pending order, fall back to first
+  // Auto-select: prefer pending reservation order, fall back to first reservation order
   useEffect(() => {
-    if (orders.length === 0) return;
+    if (reservationOrders.length === 0) return;
     setSelectedOrderId(prev => {
-      if (prev && orders.find(o => o.id === prev)) return prev;
-      return (orders.find(o => o.paymentStatus === "pending") || orders[0]).id;
+      if (prev && reservationOrders.find(o => o.id === prev)) return prev;
+      return (reservationOrders.find(o => o.paymentStatus === "pending") || reservationOrders[0]).id;
     });
-  }, [orders.map(o => o.id).join(",")]);
+  }, [reservationOrders.map(o => o.id).join(",")]);
 
-  const currentOrder = orders.find(o => o.id === selectedOrderId) || activeOrder;
+  const currentOrder = reservationOrders.find(o => o.id === selectedOrderId) || activeOrder;
 
   const createOrder = useCreateOrder();
   const removeItem = useRemoveOrderItem();
@@ -680,6 +726,15 @@ export default function POS() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
+      {/* Success toast */}
+      {assignedToast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-3 px-5 py-3 rounded-xl bg-emerald-900/90 border border-emerald-500/40 text-emerald-300 shadow-2xl backdrop-blur-sm animate-in slide-in-from-top-2">
+          <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-400" />
+          <span className="text-sm font-medium"><strong>{assignedToast}</strong> has been assigned successfully.</span>
+          <button onClick={() => setAssignedToast(null)} className="text-emerald-500 hover:text-emerald-300 ml-1"><X className="w-4 h-4" /></button>
+        </div>
+      )}
+
       <div className="flex items-center gap-4">
         <button onClick={() => navigate(reservationId ? "/reservations" : "/pos")}
           className="text-muted-foreground hover:text-foreground transition-colors">
@@ -726,9 +781,9 @@ export default function POS() {
             </Card>
           ) : (
             <>
-              {/* Order tabs */}
+              {/* Order tabs — only show reservation-type orders in tabs */}
               <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
-                {orders.map((o, idx) => {
+                {orders.filter(o => !String(o.orderNo ?? "").startsWith("HOS-")).map((o, idx) => {
                   const tabPaid = o.paymentStatus === "paid";
                   const tabFinalized = !!o.finalizedAt;
                   const isSelected = o.id === selectedOrderId;
@@ -755,7 +810,7 @@ export default function POS() {
                 })}
                 {/* Add New Order button — only enabled when all existing orders are finalized/paid */}
                 {reservationId && (() => {
-                  const existingOpen = orders.find(o => o.paymentStatus === "pending" && !o.finalizedAt);
+                  const existingOpen = reservationOrders.find(o => o.paymentStatus === "pending" && !o.finalizedAt);
                   const blocked = !!existingOpen;
                   return (
                     <button
@@ -822,6 +877,48 @@ export default function POS() {
 
         {/* Totals + Actions Panel */}
         <div className="space-y-4">
+          {/* Active Hostesses Panel — shown whenever reservation has assignments */}
+          {reservationId && (
+            <Card className="p-4 bg-black/40 border-white/5 space-y-3">
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-pink-400" />
+                <h4 className="font-display font-semibold text-sm text-pink-400 uppercase tracking-wider">
+                  Assigned Hostesses
+                </h4>
+                {activeAssignments.length > 0 && (
+                  <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 font-semibold">
+                    {activeAssignments.length} active
+                  </span>
+                )}
+              </div>
+              {activeAssignments.length === 0 ? (
+                <p className="text-xs text-muted-foreground italic">No hostesses assigned yet. Use Add Item → Hostess to assign.</p>
+              ) : (
+                <div className="space-y-2">
+                  {activeAssignments.map(a => {
+                    const since = new Date(a.session_start);
+                    const sinceStr = since.toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit", hour12: true });
+                    return (
+                      <div key={a.id} className="flex items-center gap-3 py-2 border-b border-white/5 last:border-0">
+                        <div className="w-7 h-7 rounded-full bg-pink-500/20 flex items-center justify-center shrink-0">
+                          <span className="text-[10px] font-bold text-pink-300">{a.hostess_name.charAt(0)}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-foreground truncate">{a.hostess_name}</p>
+                          <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+                            <Clock className="w-2.5 h-2.5" />
+                            Since {sinceStr} · MYR {Number(a.hourly_rate_guest).toFixed(0)}/hr
+                          </p>
+                        </div>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-pink-500/15 text-pink-400 font-semibold shrink-0">Active</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Card>
+          )}
+
           {currentOrder && (
             <>
               <Card className="p-5 bg-black/40 border-white/5 space-y-3">
@@ -934,6 +1031,7 @@ export default function POS() {
           reservationId={reservationId}
           onClose={() => setShowAddItem(false)}
           onAdded={invalidateOrders}
+          onHostessAssigned={handleHostessAssigned}
         />
       )}
 
