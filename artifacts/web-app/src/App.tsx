@@ -38,6 +38,8 @@ import InvoiceDetail from "@/pages/invoice-detail";
 import Tables from "@/pages/tables";
 import TableDetail from "@/pages/table-detail";
 import DailyReport from "@/pages/daily-report";
+import MenuStandard from "@/pages/menu-standard";
+import MenuManager from "@/pages/menu-manager";
 import { DashboardLayout } from "@/components/layout";
 
 // Customer portal pages
@@ -160,6 +162,8 @@ function Router() {
       <Route path="/tables" component={() => <AuthRoute component={Tables} />} />
       <Route path="/tables/:id" component={() => <AuthRoute component={TableDetail} />} />
       <Route path="/reports/daily" component={() => <AuthRoute component={DailyReport} />} />
+      <Route path="/menu/standard" component={() => <ProtectedRoute component={MenuStandard} />} />
+      <Route path="/menu/manager"  component={() => <ProtectedRoute component={MenuManager} />} />
 
       {/* Customer portal */}
       <Route path="/customer/login" component={CustomerLogin} />
