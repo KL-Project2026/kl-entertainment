@@ -1,0 +1,299 @@
+```
+You are working on an existing Karaoke Business Management System.
+
+Stack: Node.js + Express.js, PostgreSQL, Socket.io, JWT + RBAC (7 roles)
+
+Existing tables: reservations, folios, folio_items, hostesses, 
+hostess_schedules, agencies, branches, rooms, pos_orders, pos_order_items
+
+---
+
+## RULES — NEVER VIOLATE
+
+1. ADDITIVE ONLY — never delete or modify existing working code
+2. Store all timestamps as UTC
+3. Never calculate commission at booking time — only at session close or replacement
+4. Never poll — always emit via Socket.io on every state change
+5. Every write operation must insert a row into audit_logs
+6. Never hardcode tax, currency, or timezone — always read from branch config
+7. All money values must be DECIMAL(10,2) — never float
+8. Add comment // MIGRATION: wherever .NET / SignalR equivalent applies
+
+---
+
+## TASK
+
+Implement Hostess Assignment Order System integrated with POS.
+
+Covers 4 order types:
+- INITIAL    : hostess assigned at reservation time
+- ADD_ON     : additional hostess ordered mid-session via POS
+- EXTENSION  : session extended, same hostess continues
+- REPLACEMENT: session extended, hostess swapped out
+
+---
+
+## STEP 1 — DATABASE MIGRATION
+
+Run this migration. Do not touch any existing tables.
+
+CREATE TABLE IF NOT EXISTS hostess_session_assignments (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  reservation_id        UUID NOT NULL REFERENCES reservations(id),
+  folio_id              UUID NOT NULL REFERENCES folios(id),
+  hostess_id            UUID NOT NULL REFERENCES hostesses(id),
+  agency_id             UUID REFERENCES agencies(id),
+  pos_order_id          UUID REFERENCES pos_orders(id),
+
+  assigned_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  session_start         TIMESTAMPTZ NOT NULL,
+  session_end           TIMESTAMPTZ,
+  billed_hours          DECIMAL(5,2),
+
+  order_type            VARCHAR(20) NOT NULL
+                        CHECK (order_type IN ('INITIAL','ADD_ON','EXTENSION','REPLACEMENT')),
+  parent_assignment_id  UUID REFERENCES hostess_session_assignments(id),
+
+  hourly_rate_guest     DECIMAL(10,2) NOT NULL,
+  commission_rate_pct   DECIMAL(5,2)  NOT NULL,
+  agency_rate_pct       DECIMAL(5,2),
+
+  status                VARCHAR(20) NOT NULL DEFAULT 'ACTIVE'
+                        CHECK (status IN ('ACTIVE','COMPLETED','CANCELLED','DISPUTED')),
+  commission_status     VARCHAR(20) NOT NULL DEFAULT 'PENDING'
+                        CHECK (commission_status IN ('PENDING','CALCULATED','APPROVED','PAID','DISPUTED')),
+
+  gross_commission      DECIMAL(10,2),
+  agency_commission     DECIMAL(10,2),
+  net_commission        DECIMAL(10,2),
+
+  assigned_by           UUID REFERENCES users(id),
+  notes                 TEXT,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_hsa_reservation ON hostess_session_assignments(reservation_id, status);
+CREATE INDEX IF NOT EXISTS idx_hsa_hostess_date ON hostess_session_assignments(hostess_id, session_start);
+CREATE INDEX IF NOT EXISTS idx_hsa_folio ON hostess_session_assignments(folio_id);
+CREATE INDEX IF NOT EXISTS idx_hsa_pos_order ON hostess_session_assignments(pos_order_id) WHERE pos_order_id IS NOT NULL;
+
+---
+
+## STEP 2 — AVAILABILITY CHECK SERVICE
+
+Create /services/hostessAvailabilityService.js
+
+Export one function:
+checkHostessAvailability(hostessId, requiredFrom, requiredUntil, branchId)
+
+Check in this order and return { available, reason, detail }:
+
+1. Hostess has a schedule for this date with status SCHEDULED or CLOCKED_IN
+2. requiredUntil does not exceed schedule.shift_end
+3. No existing ACTIVE assignment overlaps the time window
+   overlap condition:
+   existing.session_start < requiredUntil
+   AND (existing.session_end > requiredFrom OR existing.session_end IS NULL)
+4. No blackout date entry for this hostess on this date
+5. If hostess has agency_id, check agency_assignment_rules for restrictions
+
+Return reason codes:
+NOT_SCHEDULED / SHIFT_END_CONFLICT / ALREADY_ASSIGNED / BLACKOUT_DATE / AGENCY_RESTRICTION
+
+// MIGRATION: .NET — IHostessAvailabilityService
+
+---
+
+## STEP 3 — COMMISSION CALCULATOR SERVICE
+
+Create /services/hostessCommissionService.js
+
+Export:
+
+calculateCommission(assignmentId)
+  1. Fetch assignment, validate status === 'COMPLETED' and session_end is not null
+  2. billed_hours = CEIL((session_end - session_start) in minutes / 60), minimum 1.0
+  3. gross_commission = billed_hours × hourly_rate_guest × (commission_rate_pct / 100)
+  4. agency_commission = agency_rate_pct
+       ? gross_commission × (agency_rate_pct / 100)
+       : 0
+  5. net_commission = gross_commission - agency_commission
+  6. UPDATE assignment with calculated values, commission_status = 'CALCULATED'
+  7. Write audit_log
+
+calculateCommissionForReservation(reservationId)
+  Calls calculateCommission for all COMPLETED assignments on this reservation.
+  Returns { totalGross, totalAgency, totalNet, assignmentCount }
+
+// MIGRATION: .NET — ICommissionCalculationService
+
+---
+
+## STEP 4 — POS INTEGRATION
+
+When a POS order contains a hostess item (pos_order_items.category = 'HOSTESS'),
+the POS order creation flow must trigger hostess assignment automatically.
+
+In the existing POS order creation handler, add this after the order is saved:
+
+  const hostessItems = order.items.filter(i => i.category === 'HOSTESS')
+  for (const item of hostessItems) {
+    await createHostessAssignmentFromPOS({
+      reservationId: order.reservation_id,
+      folioId:       order.folio_id,
+      posOrderId:    order.id,
+      hostessId:     item.hostess_id,
+      orderType:     item.is_extension ? 'EXTENSION' : 'ADD_ON',
+      notes:         item.notes
+    })
+  }
+
+createHostessAssignmentFromPOS must:
+1. Call checkHostessAvailability — reject POS item if not available
+2. Fetch rate snapshot from hostess contract
+3. INSERT hostess_session_assignments with pos_order_id linked
+4. INSERT folio_item:
+     category    = 'HOSTESS'
+     description = Hostess [name] — [order_type] from [local session_start time]
+     unit_price  = hourly_rate_guest
+     quantity    = 0  (updated at session close)
+     reference_id = assignment.id
+5. Update hostess_schedules: current_assignment_id = assignment.id
+6. Write audit_log
+7. Emit Socket.io event hostess:assigned to room branch:[branchId]
+
+---
+
+## STEP 5 — API ROUTES
+
+Create /routes/hostessAssignments.js and register in the main app.
+
+RBAC: STORE_MANAGER, ADMIN, SUPER_ADMIN can create and modify.
+HOSTESS role can read own assignments only.
+STAFF role sees hostess name only — no rates, no commission data.
+
+---
+
+POST /api/hostess-assignments/add-on
+Body: { reservationId, hostessId, notes }
+
+1. Validate reservation status === 'OCCUPIED'
+2. Get open folio for this reservation
+3. session_start = NOW(), requiredUntil = reservation.scheduled_end
+4. checkHostessAvailability → 400 if not available
+5. Create POS order with one HOSTESS line item, category = 'HOSTESS'
+6. POS creation triggers createHostessAssignmentFromPOS (Step 4 above)
+7. Return assignment
+
+---
+
+POST /api/hostess-assignments/extend
+Body: { reservationId, extensionMinutes, replaceHostessId (nullable) }
+
+If replaceHostessId is null — EXTENSION (same hostess):
+  1. Find ACTIVE assignments for reservation
+  2. checkHostessAvailability for each up to new end time
+  3. INSERT EXTENSION assignment, session_start = current reservation end
+  4. parent_assignment_id = original assignment id
+  5. Re-fetch rate snapshot for extension (may differ from original)
+  6. INSERT folio_item for extension
+  7. Emit Socket.io hostess:extended
+
+If replaceHostessId is provided — REPLACEMENT:
+  1. Find current ACTIVE assignment
+  2. Close it: session_end = NOW(), status = COMPLETED
+     call calculateCommission immediately
+     update folio_item quantity to actual billed_hours
+  3. checkHostessAvailability for new hostess
+  4. INSERT REPLACEMENT assignment, parent_assignment_id = closed assignment id
+  5. INSERT new folio_item from this point
+  6. Release old hostess schedule (current_assignment_id = NULL)
+  7. Assign new hostess schedule
+  8. Write audit_log for both close and new open
+  9. Emit Socket.io hostess:replaced
+
+---
+
+POST /api/hostess-assignments/close-session
+Body: { reservationId }
+
+1. Find all ACTIVE assignments for this reservation
+2. For each:
+   a. session_end = NOW()
+   b. status = COMPLETED
+   c. calculateCommission(assignmentId)
+   d. Update folio_item quantity = billed_hours
+3. Call calculateCommissionForReservation → attach to response
+4. Emit Socket.io hostess:session-closed
+5. Return full settlement summary
+
+---
+
+GET /api/hostess-assignments/reservation/:reservationId
+GET /api/hostess-assignments/hostess/:hostessId
+  Pagination: ?page=1&limit=20
+  Filters: ?status=COMPLETED&from=2026-01-01&to=2026-03-31
+
+GET /api/agency/reconciliation
+  ADMIN and SUPER_ADMIN only
+  Query: ?agencyId=uuid&month=2026-03&branchId=uuid
+  Returns: { agency, period, summary { totalAssignments, totalBilledHours,
+             totalGrossCommission, totalAgencyFee, totalHostessNet },
+             byOrderType { INITIAL, ADD_ON, EXTENSION, REPLACEMENT } }
+
+---
+
+## STEP 6 — SOCKET.IO EVENTS
+
+Add these emitters to the existing Socket.io setup.
+Do not modify any existing events.
+
+Emit to room branch:[branchId]:
+
+hostess:assigned      → { roomId, hostessId, hostessName, orderType, assignmentId, sessionStart }
+hostess:extended      → { roomId, assignmentId, newEnd, extensionMinutes, hostessName }
+hostess:replaced      → { roomId,
+                           outgoing: { hostessId, hostessName, billedHours },
+                           incoming: { hostessId, hostessName, assignmentId } }
+hostess:session-closed → { roomId, reservationId, assignmentCount, totalBilledHours, totalNetCommission }
+
+// MIGRATION: .NET SignalR — HostessAvailabilityHub
+
+---
+
+## STEP 7 — ERROR RESPONSES
+
+All errors must return:
+{
+  "success": false,
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human readable message",
+    "detail": {}
+  }
+}
+
+Error codes:
+HOSTESS_NOT_AVAILABLE / RESERVATION_NOT_OCCUPIED / FOLIO_NOT_OPEN /
+ASSIGNMENT_NOT_FOUND / COMMISSION_ALREADY_CALCULATED /
+AGENCY_RESTRICTION_VIOLATED / SHIFT_END_CONFLICT
+
+---
+
+## FILES TO CREATE
+
+/services/hostessAvailabilityService.js
+/services/hostessCommissionService.js
+/routes/hostessAssignments.js
+/routes/agencyReconciliation.js
+/migrations/004_hostess_session_assignments.sql
+
+---
+
+## DO NOT
+
+- Do not build any frontend UI
+- Do not modify reservations, folios, or pos_orders tables or their existing routes
+- Do not set commission_status to APPROVED — that is a separate manager approval flow
+```

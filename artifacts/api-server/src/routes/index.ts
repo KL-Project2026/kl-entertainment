@@ -31,6 +31,8 @@ import agencyMgmtRouter from "./agency-mgmt";
 import roomTablesRouter from "./room-tables";
 import settingsMenuConfigRouter from "./settings-menu-config";
 import menuRouter from "./menu";
+import hostessAssignmentsRouter from "./hostessAssignments";
+import agencyReconciliationRouter from "./agencyReconciliation";
 
 const router: IRouter = Router();
 
@@ -66,5 +68,7 @@ router.use(agencyMgmtRouter);
 router.use(roomTablesRouter);
 router.use(settingsMenuConfigRouter);
 router.use(menuRouter);
+router.use(hostessAssignmentsRouter);
+router.use(agencyReconciliationRouter);
 
 export default router;
