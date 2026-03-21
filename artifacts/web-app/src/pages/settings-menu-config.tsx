@@ -76,6 +76,25 @@ interface Branch {
   name: string;
 }
 
+interface MenuCat {
+  id: string;
+  name: string;
+  description: string | null;
+  sortOrder: number;
+  isActive: boolean;
+  visibilityLevel: "ALL" | "MANAGER_ONLY" | "ADMIN_ONLY";
+  invoiceDisplayMode: "REAL_NAME" | "MASKED_CODE" | "MASKED_SYMBOL" | "CUSTOM_ALIAS";
+  invoiceAlias: string | null;
+  itemCount: number;
+}
+
+interface MenuCatEdits {
+  name?: string;
+  visibilityLevel?: string;
+  invoiceDisplayMode?: string;
+  invoiceAlias?: string;
+}
+
 // ── API base url ──────────────────────────────────────────────────────────────
 const BASE = "/api/settings/menu-config";
 
@@ -871,7 +890,7 @@ export default function SettingsMenuConfig() {
   const userRole      = user?.role ?? "";
 
   // Top-level view mode
-  const [viewMode, setViewMode] = useState<"categories" | "branch-overrides">("categories");
+  const [viewMode, setViewMode] = useState<"categories" | "branch-overrides" | "category-setting">("categories");
 
   // Audit log sheet
   const [auditOpen, setAuditOpen] = useState(false);
@@ -1062,8 +1081,9 @@ export default function SettingsMenuConfig() {
         {/* ── Top-level View Tabs ───────────────────────────────────────────── */}
         <div className="flex items-center gap-1 border-b border-white/8 pb-0">
           {([
-            { key: "categories",      label: "Categories",      icon: Layers },
+            { key: "categories",       label: "Categories",       icon: Layers    },
             { key: "branch-overrides", label: "Branch Overrides", icon: GitBranch },
+            { key: "category-setting", label: "Category Setting", icon: Shield    },
           ] as const).map(({ key, label, icon: Icon }) => (
             (key === "branch-overrides" && !canOverride) ? null :
             <button
@@ -1081,6 +1101,11 @@ export default function SettingsMenuConfig() {
             </button>
           ))}
         </div>
+
+        {/* ── CATEGORY SETTING VIEW ────────────────────────────────────────── */}
+        {viewMode === "category-setting" && (
+          <CategorySettingView authH={authH} isAdmin={isAdmin} />
+        )}
 
         {/* ── BRANCH OVERRIDES VIEW ─────────────────────────────────────────── */}
         {viewMode === "branch-overrides" && (
@@ -1441,6 +1466,340 @@ export default function SettingsMenuConfig() {
         />
       )}
     </>
+  );
+}
+
+// ── Category Setting View ─────────────────────────────────────────────────────
+const VIS_OPTIONS = [
+  { value: "ALL",           label: "All Staff",    color: "text-green-400",  dot: "bg-green-400" },
+  { value: "MANAGER_ONLY",  label: "Manager +",    color: "text-amber-400",  dot: "bg-amber-400" },
+  { value: "ADMIN_ONLY",    label: "Admin Only",   color: "text-red-400",    dot: "bg-red-400"   },
+] as const;
+
+const DISP_OPTIONS = [
+  { value: "REAL_NAME",     label: "Real Name" },
+  { value: "MASKED_CODE",   label: "Masked Code (SVC-XXX)" },
+  { value: "MASKED_SYMBOL", label: "Masked Symbol (XXXX)" },
+  { value: "CUSTOM_ALIAS",  label: "Custom Alias" },
+] as const;
+
+interface MenuCatCreateModalProps {
+  open: boolean; onClose: () => void; onSaved: () => void; authH: Record<string, string>;
+}
+function MenuCatCreateModal({ open, onClose, onSaved, authH }: MenuCatCreateModalProps) {
+  const { toast } = useToast();
+  const [name, setName] = useState("");
+  const [desc, setDesc] = useState("");
+  const [vis,  setVis]  = useState("ALL");
+  const [disp, setDisp] = useState("REAL_NAME");
+  const [alias, setAlias] = useState("");
+
+  useEffect(() => { if (open) { setName(""); setDesc(""); setVis("ALL"); setDisp("REAL_NAME"); setAlias(""); } }, [open]);
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: async () => {
+      const r = await fetch(`${BASE}/menu-categories`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authH },
+        body: JSON.stringify({ name: name.trim(), description: desc.trim() || null, visibilityLevel: vis, invoiceDisplayMode: disp, invoiceAlias: disp === "CUSTOM_ALIAS" ? alias.trim() : null }),
+      });
+      if (!r.ok) { const e = await r.json().catch(() => ({})) as Record<string, string>; throw new Error(e.message ?? "Failed"); }
+    },
+    onSuccess: () => { toast({ title: "Category created" }); onSaved(); onClose(); },
+    onError:   (e: Error) => toast({ title: e.message ?? "Failed", variant: "destructive" }),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent className="sm:max-w-md bg-[#0c0c10] border border-white/10">
+        <DialogHeader><DialogTitle>New Menu Category</DialogTitle></DialogHeader>
+        <div className="space-y-4 py-1">
+          <div className="space-y-1.5">
+            <Label>Name <span className="text-destructive">*</span></Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Premium Services" className="bg-black/30 border-white/10" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Description</Label>
+            <Input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Optional" className="bg-black/30 border-white/10" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Who can see this category?</Label>
+            <Select value={vis} onValueChange={setVis}>
+              <SelectTrigger className="bg-black/30 border-white/10"><SelectValue /></SelectTrigger>
+              <SelectContent className="bg-[#0c0c10] border-white/10">
+                {VIS_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Invoice Display Mode</Label>
+            <Select value={disp} onValueChange={setDisp}>
+              <SelectTrigger className="bg-black/30 border-white/10"><SelectValue /></SelectTrigger>
+              <SelectContent className="bg-[#0c0c10] border-white/10">
+                {DISP_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          {disp === "CUSTOM_ALIAS" && (
+            <div className="space-y-1.5">
+              <Label>Custom Alias</Label>
+              <Input value={alias} onChange={(e) => setAlias(e.target.value)} placeholder="e.g. SVC-PREMIUM" className="bg-black/30 border-white/10" />
+            </div>
+          )}
+        </div>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onClose} disabled={isPending}>Cancel</Button>
+          <Button onClick={() => mutate()} disabled={isPending || !name.trim()}>
+            {isPending ? "Creating…" : "Create Category"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CategorySettingView({ authH, isAdmin }: { authH: Record<string, string>; isAdmin: boolean }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [edits, setEdits] = useState<Record<string, MenuCatEdits>>({});
+  const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const [newModal, setNewModal] = useState(false);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  const { data, isLoading } = useQuery<{ data: MenuCat[] }>({
+    queryKey: ["menu-cats-setting"],
+    queryFn: async () => {
+      const r = await fetch(`${BASE}/menu-categories`, { headers: authH });
+      return r.json() as Promise<{ data: MenuCat[] }>;
+    },
+  });
+  const cats = data?.data ?? [];
+
+  function getField<K extends keyof MenuCatEdits>(cat: MenuCat, key: K): string {
+    const e = edits[cat.id];
+    if (e && key in e) return e[key] as string;
+    if (key === "name")               return cat.name;
+    if (key === "visibilityLevel")    return cat.visibilityLevel;
+    if (key === "invoiceDisplayMode") return cat.invoiceDisplayMode;
+    if (key === "invoiceAlias")       return cat.invoiceAlias ?? "";
+    return "";
+  }
+
+  function setField(catId: string, key: keyof MenuCatEdits, val: string) {
+    setEdits((prev) => ({ ...prev, [catId]: { ...prev[catId], [key]: val } }));
+  }
+
+  function isDirty(catId: string) { return !!edits[catId] && Object.keys(edits[catId]).length > 0; }
+
+  async function save(cat: MenuCat) {
+    const e = edits[cat.id];
+    if (!e) return;
+    setSaving((p) => ({ ...p, [cat.id]: true }));
+    try {
+      const r = await fetch(`${BASE}/menu-categories/${cat.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authH },
+        body: JSON.stringify(e),
+      });
+      if (!r.ok) { const err = await r.json().catch(() => ({})) as Record<string, string>; throw new Error(err.message ?? "Failed"); }
+      toast({ title: "Saved" });
+      setEdits((p) => { const n = { ...p }; delete n[cat.id]; return n; });
+      void qc.invalidateQueries({ queryKey: ["menu-cats-setting"] });
+    } catch (err: unknown) {
+      toast({ title: (err as Error).message ?? "Save failed", variant: "destructive" });
+    } finally {
+      setSaving((p) => ({ ...p, [cat.id]: false }));
+    }
+  }
+
+  const { mutate: doDelete, isPending: deleting } = useMutation({
+    mutationFn: async (id: string) => {
+      const r = await fetch(`${BASE}/menu-categories/${id}`, { method: "DELETE", headers: authH });
+      if (!r.ok) { const e = await r.json().catch(() => ({})) as Record<string, string & { itemCount?: number }>; throw Object.assign(new Error(e.message ?? "Failed"), { code: (e as Record<string, string>).error, itemCount: (e as unknown as Record<string, number>).itemCount }); }
+    },
+    onSuccess: () => { toast({ title: "Category deactivated" }); setDeleteId(null); void qc.invalidateQueries({ queryKey: ["menu-cats-setting"] }); },
+    onError:   (e: Error & { code?: string; itemCount?: number }) => {
+      if (e.code === "CATEGORY_HAS_ITEMS") toast({ title: `Cannot deactivate — ${e.itemCount} active item(s)`, variant: "destructive" });
+      else toast({ title: e.message ?? "Failed", variant: "destructive" });
+      setDeleteId(null);
+    },
+  });
+
+  return (
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium">Menu Category Access Control</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Set who can see each category in the Operations → Menu page and how items appear on invoices.
+          </p>
+        </div>
+        {isAdmin && (
+          <Button size="sm" className="gap-2" onClick={() => setNewModal(true)}>
+            <Plus className="w-4 h-4" /> New Category
+          </Button>
+        )}
+      </div>
+
+      {/* Legend */}
+      <div className="flex items-center gap-4 flex-wrap text-xs text-muted-foreground">
+        {VIS_OPTIONS.map((o) => (
+          <div key={o.value} className="flex items-center gap-1.5">
+            <span className={`w-2 h-2 rounded-full ${o.dot}`} />
+            <span>{o.label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Category list */}
+      {isLoading ? (
+        <div className="py-12 text-center text-muted-foreground text-sm">Loading…</div>
+      ) : cats.length === 0 ? (
+        <Card className="p-8 text-center text-muted-foreground text-sm">
+          <Shield className="w-8 h-8 mx-auto mb-3 opacity-20" />
+          No menu categories yet. Create one to get started.
+        </Card>
+      ) : (
+        <div className="space-y-2">
+          {cats.map((cat) => {
+            const dirty   = isDirty(cat.id);
+            const isSaving = saving[cat.id] ?? false;
+            const visVal  = getField(cat, "visibilityLevel");
+            const dispVal = getField(cat, "invoiceDisplayMode");
+            const visMeta = VIS_OPTIONS.find((o) => o.value === visVal) ?? VIS_OPTIONS[0];
+
+            return (
+              <Card key={cat.id} className={cn(
+                "p-4 border transition-all duration-150",
+                dirty ? "border-primary/40 bg-primary/5" : "border-white/8 bg-card/40",
+                !cat.isActive && "opacity-50"
+              )}>
+                <div className="flex items-start gap-4 flex-wrap lg:flex-nowrap">
+                  {/* Status dot + name */}
+                  <div className="flex items-center gap-2 min-w-[180px]">
+                    <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${visMeta.dot}`} />
+                    <div className="min-w-0">
+                      {isAdmin ? (
+                        <Input
+                          value={getField(cat, "name")}
+                          onChange={(e) => setField(cat.id, "name", e.target.value)}
+                          className="h-7 text-sm bg-transparent border-transparent hover:border-white/20 focus:border-white/30 px-1 py-0"
+                        />
+                      ) : (
+                        <span className="text-sm font-medium">{cat.name}</span>
+                      )}
+                      <p className="text-[11px] text-muted-foreground ml-1">
+                        {cat.itemCount} item{cat.itemCount !== 1 ? "s" : ""}
+                        {!cat.isActive && " · Inactive"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Visibility */}
+                  <div className="flex-1 min-w-[150px] space-y-1">
+                    <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Who can see</p>
+                    {isAdmin ? (
+                      <Select value={visVal} onValueChange={(v) => setField(cat.id, "visibilityLevel", v)}>
+                        <SelectTrigger className="h-8 text-xs bg-black/30 border-white/10">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-[#0c0c10] border-white/10">
+                          {VIS_OPTIONS.map((o) => (
+                            <SelectItem key={o.value} value={o.value}>
+                              <span className={cn("flex items-center gap-2", o.color)}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${o.dot}`} />
+                                {o.label}
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <span className={cn("text-xs font-medium", visMeta.color)}>{visMeta.label}</span>
+                    )}
+                  </div>
+
+                  {/* Invoice display mode */}
+                  <div className="flex-1 min-w-[200px] space-y-1">
+                    <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Invoice display</p>
+                    {isAdmin ? (
+                      <Select value={dispVal} onValueChange={(v) => setField(cat.id, "invoiceDisplayMode", v)}>
+                        <SelectTrigger className="h-8 text-xs bg-black/30 border-white/10"><SelectValue /></SelectTrigger>
+                        <SelectContent className="bg-[#0c0c10] border-white/10">
+                          {DISP_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value} className="text-xs">{o.label}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <span className="text-xs">{DISP_OPTIONS.find((o) => o.value === dispVal)?.label ?? dispVal}</span>
+                    )}
+                  </div>
+
+                  {/* Custom alias (conditional) */}
+                  {dispVal === "CUSTOM_ALIAS" && (
+                    <div className="flex-1 min-w-[140px] space-y-1">
+                      <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Alias</p>
+                      {isAdmin ? (
+                        <Input
+                          value={getField(cat, "invoiceAlias")}
+                          onChange={(e) => setField(cat.id, "invoiceAlias", e.target.value)}
+                          placeholder="e.g. SVC-001"
+                          className="h-8 text-xs bg-black/30 border-white/10"
+                        />
+                      ) : (
+                        <span className="text-xs font-mono">{cat.invoiceAlias ?? "—"}</span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  {isAdmin && (
+                    <div className="flex items-center gap-2 flex-shrink-0 self-center">
+                      {dirty && (
+                        <Button size="sm" className="h-7 text-xs px-3" disabled={isSaving} onClick={() => save(cat)}>
+                          {isSaving ? "Saving…" : "Save"}
+                        </Button>
+                      )}
+                      <button
+                        onClick={() => setDeleteId(cat.id)}
+                        className="p-1.5 rounded hover:bg-destructive/10 transition-colors"
+                        title="Deactivate"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-destructive/60 hover:text-destructive" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Create modal */}
+      <MenuCatCreateModal
+        open={newModal}
+        onClose={() => setNewModal(false)}
+        onSaved={() => void qc.invalidateQueries({ queryKey: ["menu-cats-setting"] })}
+        authH={authH}
+      />
+
+      {/* Deactivate confirm */}
+      <Dialog open={!!deleteId} onOpenChange={(v) => { if (!v) setDeleteId(null); }}>
+        <DialogContent className="sm:max-w-sm bg-[#0c0c10] border border-white/10">
+          <DialogHeader><DialogTitle>Deactivate Category?</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground py-2">
+            The category will be hidden from the menu. Items inside are preserved.
+          </p>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setDeleteId(null)}>Cancel</Button>
+            <Button variant="destructive" disabled={deleting} onClick={() => deleteId && doDelete(deleteId)}>
+              {deleting ? "Deactivating…" : "Deactivate"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
 

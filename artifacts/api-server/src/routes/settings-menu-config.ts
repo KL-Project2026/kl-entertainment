@@ -835,4 +835,150 @@ router.get("/settings/menu-config/audit-log/actions",
   }
 );
 
+// ═════════════════════════════════════════════════════════════════════════════
+// MENU CATEGORIES (role-based visibility for Operations → Menu page)
+// ═════════════════════════════════════════════════════════════════════════════
+
+// GET /api/settings/menu-config/menu-categories
+router.get("/settings/menu-config/menu-categories",
+  authenticate,
+  requireRole(...READ_ROLES),
+  async (_req: Request, res: Response): Promise<void> => {
+    try {
+      const { rows } = await pool.query(
+        `SELECT mc.*,
+                COUNT(mi.id) FILTER (WHERE mi.is_available AND NOT mi.is_deleted) AS item_count
+         FROM menu_categories mc
+         LEFT JOIN menu_items mi ON mi.category_id = mc.id
+         WHERE mc.org_id = $1
+         GROUP BY mc.id
+         ORDER BY mc.sort_order, mc.name`,
+        [ORG_ID]
+      );
+      res.json({
+        data: rows.map((r) => ({
+          id:                 r.id,
+          name:               r.name,
+          description:        r.description ?? null,
+          sortOrder:          r.sort_order,
+          isActive:           r.is_active,
+          visibilityLevel:    r.visibility_level,
+          invoiceDisplayMode: r.invoice_display_mode,
+          invoiceAlias:       r.invoice_alias ?? null,
+          itemCount:          parseInt(r.item_count ?? "0"),
+          createdAt:          r.created_at,
+        })),
+      });
+    } catch (err) {
+      console.error("menu-categories list:", err);
+      res.status(500).json({ error: "INTERNAL_ERROR" });
+    }
+  }
+);
+
+// POST /api/settings/menu-config/menu-categories
+router.post("/settings/menu-config/menu-categories",
+  authenticate,
+  requireRole(...ADMIN_ONLY),
+  async (req: Request, res: Response): Promise<void> => {
+    const { name, description, visibilityLevel, invoiceDisplayMode, invoiceAlias } = req.body as Record<string, string>;
+    if (!name?.trim()) { res.status(400).json({ error: "NAME_REQUIRED", message: "Name is required" }); return; }
+    const vis  = ["ALL","MANAGER_ONLY","ADMIN_ONLY"].includes(visibilityLevel) ? visibilityLevel : "ALL";
+    const disp = ["REAL_NAME","MASKED_CODE","MASKED_SYMBOL","CUSTOM_ALIAS"].includes(invoiceDisplayMode) ? invoiceDisplayMode : "REAL_NAME";
+    try {
+      const { rows } = await pool.query(
+        `INSERT INTO menu_categories (org_id, name, description, visibility_level, invoice_display_mode, invoice_alias)
+         VALUES ($1,$2,$3,$4,$5,$6)
+         RETURNING *`,
+        [ORG_ID, name.trim(), description?.trim() || null, vis, disp, disp === "CUSTOM_ALIAS" ? (invoiceAlias?.trim() || null) : null]
+      );
+      const r = rows[0];
+      await writeAudit("MENU_CAT_CREATED", "menu_category", r.id, (req as Request & { user?: { id: string } }).user?.id ?? null, null, null, {
+        name: r.name, visibilityLevel: r.visibility_level, invoiceDisplayMode: r.invoice_display_mode,
+      }, req);
+      res.status(201).json({ data: { id: r.id, name: r.name } });
+    } catch (err) {
+      console.error("menu-categories create:", err);
+      res.status(500).json({ error: "INTERNAL_ERROR" });
+    }
+  }
+);
+
+// PATCH /api/settings/menu-config/menu-categories/:id
+router.patch("/settings/menu-config/menu-categories/:id",
+  authenticate,
+  requireRole(...ADMIN_ONLY),
+  async (req: Request, res: Response): Promise<void> => {
+    const { id } = req.params;
+    const { name, description, visibilityLevel, invoiceDisplayMode, invoiceAlias, isActive, sortOrder } = req.body as Record<string, unknown>;
+    try {
+      const { rows: existing } = await pool.query(
+        `SELECT * FROM menu_categories WHERE id=$1 AND org_id=$2`, [id, ORG_ID]
+      );
+      if (!existing.length) { res.status(404).json({ error: "NOT_FOUND" }); return; }
+      const old = existing[0];
+
+      const sets: string[] = [];
+      const params: unknown[] = [];
+      let p = 1;
+      function add(col: string, val: unknown) { sets.push(`${col}=$${p++}`); params.push(val); }
+
+      if (name !== undefined && typeof name === "string" && name.trim()) add("name", name.trim());
+      if (description !== undefined) add("description", typeof description === "string" && description.trim() ? description.trim() : null);
+      if (visibilityLevel !== undefined && ["ALL","MANAGER_ONLY","ADMIN_ONLY"].includes(String(visibilityLevel))) add("visibility_level", visibilityLevel);
+      if (invoiceDisplayMode !== undefined && ["REAL_NAME","MASKED_CODE","MASKED_SYMBOL","CUSTOM_ALIAS"].includes(String(invoiceDisplayMode))) {
+        add("invoice_display_mode", invoiceDisplayMode);
+        const alias = String(invoiceDisplayMode) === "CUSTOM_ALIAS" ? (typeof invoiceAlias === "string" ? invoiceAlias.trim() || null : null) : null;
+        add("invoice_alias", alias);
+      }
+      if (isActive !== undefined) add("is_active", Boolean(isActive));
+      if (sortOrder !== undefined && !isNaN(Number(sortOrder))) add("sort_order", Number(sortOrder));
+
+      if (!sets.length) { res.json({ data: { id } }); return; }
+      params.push(id);
+      const { rows } = await pool.query(
+        `UPDATE menu_categories SET ${sets.join(",")} WHERE id=$${p} RETURNING *`, params
+      );
+      const r = rows[0];
+      await writeAudit("MENU_CAT_UPDATED", "menu_category", id, (req as Request & { user?: { id: string } }).user?.id ?? null, null,
+        { name: old.name, visibilityLevel: old.visibility_level, invoiceDisplayMode: old.invoice_display_mode, isActive: old.is_active },
+        { name: r.name,   visibilityLevel: r.visibility_level,   invoiceDisplayMode: r.invoice_display_mode,   isActive: r.is_active },
+        req
+      );
+      res.json({ data: { id: r.id } });
+    } catch (err) {
+      console.error("menu-categories patch:", err);
+      res.status(500).json({ error: "INTERNAL_ERROR" });
+    }
+  }
+);
+
+// DELETE /api/settings/menu-config/menu-categories/:id
+router.delete("/settings/menu-config/menu-categories/:id",
+  authenticate,
+  requireRole(...ADMIN_ONLY),
+  async (req: Request, res: Response): Promise<void> => {
+    const { id } = req.params;
+    try {
+      const { rows } = await pool.query(
+        `SELECT mc.*, COUNT(mi.id) FILTER (WHERE mi.is_available AND NOT mi.is_deleted) AS item_count
+         FROM menu_categories mc LEFT JOIN menu_items mi ON mi.category_id=mc.id
+         WHERE mc.id=$1 AND mc.org_id=$2 GROUP BY mc.id`, [id, ORG_ID]
+      );
+      if (!rows.length) { res.status(404).json({ error: "NOT_FOUND" }); return; }
+      const count = parseInt(rows[0].item_count ?? "0");
+      if (count > 0) { res.status(409).json({ error: "CATEGORY_HAS_ITEMS", itemCount: count, message: `Category has ${count} active item(s). Deactivate items first.` }); return; }
+      await pool.query(`UPDATE menu_categories SET is_active=false WHERE id=$1`, [id]);
+      await writeAudit("MENU_CAT_DELETED", "menu_category", id, (req as Request & { user?: { id: string } }).user?.id ?? null, null,
+        { name: rows[0].name }, { isActive: false }, req
+      );
+      res.json({ data: { id } });
+    } catch (err) {
+      console.error("menu-categories delete:", err);
+      res.status(500).json({ error: "INTERNAL_ERROR" });
+    }
+  }
+);
+
 export default router;
+
