@@ -102,8 +102,9 @@ export default function ShareholderDetail() {
     );
   }
 
-  const equityList: Array<Record<string, unknown>> = shareholder.equityStakes ?? [];
+  const equityList: Array<Record<string, unknown>> = shareholder.branch_equities ?? [];
   const totalEquity = equityList.reduce((sum: number, e) => sum + parseFloat(String(e.equityPct ?? 0)), 0);
+  const totalInvestment = equityList.reduce((sum: number, e) => sum + parseFloat(String(e.investmentAmount ?? 0)), 0);
 
   return (
     <DashboardLayout>
@@ -177,28 +178,56 @@ export default function ShareholderDetail() {
             )}
           </Card>
 
-          {/* Equity */}
+          {/* Equity & Investment */}
           <Card className="p-5 bg-black/40 border-white/5">
             <h3 className="font-display font-semibold mb-4 flex items-center gap-2">
-              <Percent className="w-4 h-4 text-primary" /> Equity Stakes
+              <Percent className="w-4 h-4 text-primary" /> Equity & Investment
             </h3>
             {equityList.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-6">No equity stakes recorded</p>
             ) : (
-              equityList.map((e, i) => (
-                <div key={i} className="flex justify-between items-center py-2.5 border-b border-white/5 last:border-0">
-                  <span className="text-sm">{String(e.branchName ?? e.branchId ?? "—")}</span>
-                  <span className="font-display font-bold text-primary">
-                    {parseFloat(String(e.equityPct)).toFixed(2)}%
-                  </span>
-                </div>
-              ))
-            )}
-            {equityList.length > 1 && (
-              <div className="flex justify-between items-center mt-3 pt-3 border-t border-white/10">
-                <span className="text-sm text-muted-foreground">Total</span>
-                <span className="font-display font-bold">{totalEquity.toFixed(2)}%</span>
-              </div>
+              <>
+                {equityList.map((e, i) => {
+                  const eqPct = (parseFloat(String(e.equityPct ?? 0)) * 100).toFixed(1);
+                  const ratePct = e.agreedRate ? (parseFloat(String(e.agreedRate)) * 100).toFixed(1) : null;
+                  const investment = parseFloat(String(e.investmentAmount ?? 0));
+                  return (
+                    <div key={i} className="py-3 border-b border-white/5 last:border-0">
+                      <div className="flex justify-between items-start">
+                        <span className="text-sm font-medium">{String(e.branchName ?? e.branchId ?? "—")}</span>
+                        <div className="text-right">
+                          <div className="flex items-center gap-2 justify-end">
+                            <span className="font-display font-bold text-primary text-base">{eqPct}%</span>
+                            {ratePct && ratePct !== eqPct && (
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                                {ratePct}% rate
+                              </span>
+                            )}
+                          </div>
+                          {investment > 0 && (
+                            <span className="text-xs text-emerald-400 font-medium">
+                              RM {investment.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} invested
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {equityList.length > 1 && (
+                  <div className="flex justify-between items-center mt-3 pt-3 border-t border-white/10">
+                    <div>
+                      <span className="text-sm text-muted-foreground">Total Equity</span>
+                      {totalInvestment > 0 && (
+                        <p className="text-xs text-emerald-400 font-medium">
+                          RM {totalInvestment.toLocaleString("en-MY", { minimumFractionDigits: 2 })} total invested
+                        </p>
+                      )}
+                    </div>
+                    <span className="font-display font-bold text-lg">{(totalEquity * 100).toFixed(1)}%</span>
+                  </div>
+                )}
+              </>
             )}
           </Card>
         </div>

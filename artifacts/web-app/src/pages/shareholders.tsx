@@ -33,6 +33,16 @@ function getAuthHeader(token: string | null) {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+interface BranchEquity {
+  branchId: string;
+  branchName: string;
+  equityPct: string;
+  agreedRate: string | null;
+  investmentAmount: string | null;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+}
+
 interface Shareholder {
   id: string;
   orgId: string;
@@ -46,13 +56,7 @@ interface Shareholder {
   preferredCurrency: string;
   isActive: boolean;
   notes: string | null;
-  branch_equities: Array<{
-    branchId: string;
-    branchName: string;
-    equityPct: string;
-    effectiveFrom: string;
-    effectiveTo: string | null;
-  }>;
+  branch_equities: BranchEquity[];
 }
 
 interface Branch {
@@ -177,16 +181,39 @@ function EquityForm({ shareholder, branches, onClose }: {
 }) {
   const { token } = useAuthStore();
   const queryClient = useQueryClient();
+
+  const existingEquity = (equityTarget: Shareholder, bid: string) =>
+    equityTarget.branch_equities.find((e) => e.branchId === bid);
+
   const [branchId, setBranchId] = useState(branches[0]?.id ?? "");
   const [equityPct, setEquityPct] = useState("0.30");
+  const [agreedRate, setAgreedRate] = useState("0.30");
+  const [investmentAmount, setInvestmentAmount] = useState("0");
   const [effectiveFrom, setEffectiveFrom] = useState(new Date().toISOString().split("T")[0]);
+
+  const onBranchChange = (bid: string) => {
+    setBranchId(bid);
+    const eq = existingEquity(shareholder, bid);
+    if (eq) {
+      setEquityPct(eq.equityPct ?? "0.30");
+      setAgreedRate(eq.agreedRate ?? eq.equityPct ?? "0.30");
+      setInvestmentAmount(eq.investmentAmount ?? "0");
+      setEffectiveFrom(eq.effectiveFrom?.slice(0, 10) ?? new Date().toISOString().split("T")[0]);
+    }
+  };
 
   const save = useMutation({
     mutationFn: async () => {
       const r = await fetch(`/api/shareholders/${shareholder.id}/equity`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeader(token) },
-        body: JSON.stringify({ branchId, equityPct: parseFloat(equityPct), effectiveFrom }),
+        body: JSON.stringify({
+          branchId,
+          equityPct: parseFloat(equityPct),
+          agreedRate: parseFloat(agreedRate),
+          investmentAmount: parseFloat(investmentAmount),
+          effectiveFrom,
+        }),
       });
       return r.json();
     },
@@ -196,48 +223,84 @@ function EquityForm({ shareholder, branches, onClose }: {
     },
   });
 
+  const eqDisplay = (val: string) => `${(parseFloat(val || "0") * 100).toFixed(1)}%`;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <Card className="p-6 w-96 space-y-4">
+      <Card className="p-6 w-[26rem] space-y-4">
         <div className="flex justify-between items-center">
-          <h3 className="font-bold">Set Branch Equity — {shareholder.name}</h3>
+          <h3 className="font-bold">Set Branch Investment — {shareholder.name}</h3>
           <button onClick={onClose}><X className="w-4 h-4 text-muted-foreground" /></button>
         </div>
         <div className="space-y-3">
           <div>
             <label className="text-xs text-muted-foreground block mb-1">Branch</label>
-            <Select value={branchId} onValueChange={setBranchId}>
+            <Select value={branchId} onValueChange={onBranchChange}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 {branches.map((b) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
-          <div>
-            <label className="text-xs text-muted-foreground block mb-1">
-              Equity % (0.30 = 30%)
-            </label>
-            <div className="relative">
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                max="1"
-                value={equityPct}
-                onChange={(e) => setEquityPct(e.target.value)}
-              />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-                {(parseFloat(equityPct) * 100).toFixed(0)}%
-              </span>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-muted-foreground block mb-1">
+                Equity % <span className="text-primary">({eqDisplay(equityPct)})</span>
+              </label>
+              <div className="relative">
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="1"
+                  value={equityPct}
+                  onChange={(e) => setEquityPct(e.target.value)}
+                />
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Enter 0–1 (e.g. 0.30 = 30%)</p>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground block mb-1">
+                Profit Rate <span className="text-primary">({eqDisplay(agreedRate)})</span>
+              </label>
+              <div className="relative">
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="1"
+                  value={agreedRate}
+                  onChange={(e) => setAgreedRate(e.target.value)}
+                />
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Agreed payout rate</p>
             </div>
           </div>
+
+          <div>
+            <label className="text-xs text-muted-foreground block mb-1">Investment Amount (MYR)</label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">RM</span>
+              <Input
+                type="number"
+                step="1000"
+                min="0"
+                value={investmentAmount}
+                onChange={(e) => setInvestmentAmount(e.target.value)}
+                className="pl-8"
+              />
+            </div>
+          </div>
+
           <div>
             <label className="text-xs text-muted-foreground block mb-1">Effective From</label>
             <Input type="date" value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} />
           </div>
         </div>
+        {save.error && <p className="text-xs text-red-400">{String(save.error)}</p>}
         <Button className="w-full" onClick={() => save.mutate()} disabled={save.isPending}>
-          {save.isPending ? "Saving..." : "Set Equity"}
+          {save.isPending ? "Saving..." : "Save Investment & Equity"}
         </Button>
       </Card>
     </div>
@@ -446,12 +509,27 @@ function ShareholderCard({
 
             {shareholder.branch_equities && shareholder.branch_equities.length > 0 && (
               <div className="flex gap-2 mt-2 flex-wrap">
-                {shareholder.branch_equities.map((eq) => (
-                  <div key={eq.branchId} className="flex items-center gap-1.5 bg-black/30 rounded-lg px-3 py-1 text-xs">
-                    <span>{eq.branchName}</span>
-                    <span className="text-primary font-bold">{(parseFloat(eq.equityPct) * 100).toFixed(0)}%</span>
-                  </div>
-                ))}
+                {shareholder.branch_equities.map((eq) => {
+                  const eqPct = (parseFloat(eq.equityPct) * 100).toFixed(0);
+                  const ratePct = eq.agreedRate ? (parseFloat(eq.agreedRate) * 100).toFixed(0) : null;
+                  const investment = eq.investmentAmount ? parseFloat(eq.investmentAmount) : 0;
+                  return (
+                    <div key={eq.branchId} className="flex flex-col gap-0.5 bg-black/30 border border-white/10 rounded-lg px-3 py-1.5 text-xs">
+                      <span className="font-medium text-muted-foreground">{eq.branchName}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-primary font-bold">{eqPct}% equity</span>
+                        {ratePct && ratePct !== eqPct && (
+                          <span className="text-amber-400 font-medium">{ratePct}% rate</span>
+                        )}
+                      </div>
+                      {investment > 0 && (
+                        <span className="text-emerald-400 font-medium">
+                          RM {investment.toLocaleString("en-MY", { minimumFractionDigits: 0 })}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

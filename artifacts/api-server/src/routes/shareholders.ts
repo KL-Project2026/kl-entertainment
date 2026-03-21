@@ -12,6 +12,26 @@ const router: IRouter = Router();
 
 // ── Shareholders CRUD ──────────────────────────────────────────────────────
 
+const BRANCH_EQUITIES_SUBQUERY = `
+  COALESCE(
+    (SELECT json_agg(json_build_object(
+      'branchId',        b.id,
+      'branchName',      b.name,
+      'equityPct',       bs.equity_pct,
+      'agreedRate',      bs.agreed_rate,
+      'investmentAmount', bs.investment_amount,
+      'effectiveFrom',   bs.effective_from,
+      'effectiveTo',     bs.effective_to
+    ) ORDER BY b.name)
+    FROM branch_shareholders bs
+    JOIN branches b ON b.id = bs.branch_id
+    WHERE bs.shareholder_id = s.id
+      AND (bs.effective_to IS NULL OR bs.effective_to >= CURRENT_DATE)
+    ),
+    '[]'::json
+  )
+`;
+
 router.get(
   "/shareholders",
   authenticate,
@@ -21,16 +41,7 @@ router.get(
       const orgId = (req.query["org_id"] as string) ?? (req.user as { orgId?: string }).orgId;
       const { rows } = await pool.query(
         `SELECT s.*,
-           COALESCE(
-             (SELECT json_agg(json_build_object(
-               'branchId', b.id,
-               'branchName', b.name,
-               'equityPct', bs.equity_pct,
-               'effectiveFrom', bs.effective_from,
-               'effectiveTo', bs.effective_to
-             )) FROM branch_shareholders bs JOIN branches b ON b.id = bs.branch_id WHERE bs.shareholder_id = s.id),
-             '[]'::json
-           ) AS branch_equities
+           ${BRANCH_EQUITIES_SUBQUERY} AS branch_equities
          FROM shareholders s
          WHERE s.org_id = $1 AND s.is_active = true
          ORDER BY s.name`,
@@ -39,6 +50,28 @@ router.get(
       res.json({ data: rows });
     } catch (err) {
       console.error("List shareholders error:", err);
+      res.status(500).json({ error: "INTERNAL_ERROR" });
+    }
+  }
+);
+
+router.get(
+  "/shareholders/:id",
+  authenticate,
+  requireRole(...ADMIN_ROLES),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { rows } = await pool.query(
+        `SELECT s.*,
+           ${BRANCH_EQUITIES_SUBQUERY} AS branch_equities
+         FROM shareholders s
+         WHERE s.id = $1`,
+        [req.params["id"]]
+      );
+      if (!rows.length) { res.status(404).json({ error: "NOT_FOUND" }); return; }
+      res.json({ data: rows[0] });
+    } catch (err) {
+      console.error("Get shareholder error:", err);
       res.status(500).json({ error: "INTERNAL_ERROR" });
     }
   }
@@ -112,15 +145,19 @@ router.post(
     try {
       const body = req.body as Record<string, unknown>;
       const { rows } = await pool.query(
-        `INSERT INTO branch_shareholders (branch_id, shareholder_id, equity_pct, agreed_rate, effective_from, effective_to, notes)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)
-         ON CONFLICT ON CONSTRAINT branch_shareholders_pkey DO UPDATE SET
-           equity_pct = EXCLUDED.equity_pct, agreed_rate = EXCLUDED.agreed_rate,
-           effective_from = EXCLUDED.effective_from, effective_to = EXCLUDED.effective_to
+        `INSERT INTO branch_shareholders (branch_id, shareholder_id, equity_pct, agreed_rate, investment_amount, effective_from, effective_to, notes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         ON CONFLICT ON CONSTRAINT branch_shareholders_branch_id_shareholder_id_effective_from_key DO UPDATE SET
+           equity_pct        = EXCLUDED.equity_pct,
+           agreed_rate       = EXCLUDED.agreed_rate,
+           investment_amount = EXCLUDED.investment_amount,
+           effective_to      = EXCLUDED.effective_to
          RETURNING *`,
         [
           body.branchId, req.params["id"],
-          body.equityPct, body.agreedRate ?? body.equityPct,
+          body.equityPct,
+          body.agreedRate ?? body.equityPct,
+          body.investmentAmount ?? 0,
           body.effectiveFrom, body.effectiveTo ?? null, body.notes,
         ]
       );

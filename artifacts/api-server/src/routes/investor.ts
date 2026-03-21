@@ -56,7 +56,7 @@ router.get(
 
       const { rows } = await pool.query(
         `SELECT b.id, b.name, b.internal_code, b.city,
-                bs.equity_pct, bs.effective_from
+                bs.equity_pct, bs.agreed_rate, bs.investment_amount, bs.effective_from
          FROM branches b
          JOIN branch_shareholders bs ON bs.branch_id = b.id
          WHERE bs.shareholder_id = $1
