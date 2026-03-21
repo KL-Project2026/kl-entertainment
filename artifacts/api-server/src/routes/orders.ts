@@ -464,4 +464,100 @@ async function getOrderItemsRaw(orderId: string) {
   return rows;
 }
 
+// NEW: Active Sessions for POS Entry Point — added 2026-03-21
+// MIGRATION NOTE: Convert to .NET minimal API GET /api/pos/active-sessions
+router.get(
+  "/pos/active-sessions",
+  authenticate,
+  requireRole(ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.BRANCH_MANAGER, ROLES.MANAGER, ROLES.HALL, ROLES.KITCHEN, ROLES.GENERAL),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { branch_id } = req.query as Record<string, string>;
+      const isSuperUser = ([ROLES.SUPER_ADMIN, ROLES.ADMIN] as string[]).includes(req.user!.role);
+
+      // Non-admin roles are always locked to their own branch
+      const effectiveBranchId = !isSuperUser
+        ? req.user!.branchId!
+        : (branch_id || null);
+
+      const cond: string[] = ["r.status IN ('checked_in', 'extended')", "r.room_id IS NOT NULL"];
+      const params: unknown[] = [];
+
+      if (effectiveBranchId) {
+        params.push(effectiveBranchId);
+        cond.push(`r.branch_id = $${params.length}`);
+      }
+
+      const { rows } = await pool.query(
+        `SELECT
+           r.id                  AS reservation_id,
+           r.reservation_no,
+           r.customer_name,
+           r.customer_phone,
+           r.guest_count,
+           r.start_time,
+           r.end_time,
+           r.status              AS reservation_status,
+           rm.id                 AS room_id,
+           rm.name               AS room_name,
+           rm.room_type,
+           rm.status             AS room_status,
+           b.id                  AS branch_id,
+           b.name                AS branch_name,
+           b.internal_code       AS branch_code,
+           COALESCE(fsum.total, 0) AS folio_total,
+           (SELECT o.id FROM orders o WHERE o.reservation_id = r.id
+            AND o.payment_status = 'pending' LIMIT 1) AS order_id
+         FROM   reservations r
+         JOIN   rooms    rm ON rm.id  = r.room_id
+         JOIN   branches b  ON b.id  = r.branch_id
+         LEFT JOIN (
+           SELECT reservation_id, SUM(amount) AS total
+           FROM   folio_entries
+           WHERE  is_void = false
+           GROUP  BY reservation_id
+         ) fsum ON fsum.reservation_id = r.id
+         WHERE  ${cond.join(" AND ")}
+         ORDER  BY
+           CASE rm.status
+             WHEN 'occupied'    THEN 1
+             WHEN 'cleaning'    THEN 2
+             WHEN 'maintenance' THEN 3
+             ELSE 4
+           END,
+           r.start_time ASC NULLS LAST`,
+        params
+      );
+
+      res.json({
+        data: rows.map(row => ({
+          reservationId:     (row as Record<string, unknown>).reservation_id,
+          reservationNo:     (row as Record<string, unknown>).reservation_no,
+          customerName:      (row as Record<string, unknown>).customer_name,
+          customerPhone:     (row as Record<string, unknown>).customer_phone,
+          guestCount:        (row as Record<string, unknown>).guest_count,
+          startTime:         (row as Record<string, unknown>).start_time,
+          endTime:           (row as Record<string, unknown>).end_time,
+          reservationStatus: (row as Record<string, unknown>).reservation_status,
+          roomId:            (row as Record<string, unknown>).room_id,
+          roomName:          (row as Record<string, unknown>).room_name,
+          roomType:          (row as Record<string, unknown>).room_type,
+          roomStatus:        (row as Record<string, unknown>).room_status,
+          branchId:          (row as Record<string, unknown>).branch_id,
+          branchName:        (row as Record<string, unknown>).branch_name,
+          branchCode:        (row as Record<string, unknown>).branch_code,
+          folioTotal:        parseFloat(String((row as Record<string, unknown>).folio_total ?? 0)),
+          orderId:           (row as Record<string, unknown>).order_id,
+        })),
+        totalCount:  rows.length,
+        fetchedAt:   new Date().toISOString(),
+        branchFilter: effectiveBranchId || "all",
+      });
+    } catch (err) {
+      console.error("[POS Active Sessions] Error:", err);
+      res.status(500).json({ error: "INTERNAL_ERROR" });
+    }
+  }
+);
+
 export default router;

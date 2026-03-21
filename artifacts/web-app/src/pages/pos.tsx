@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation, useSearch } from "wouter";
+import ActiveSessionsList from "@/components/pos/ActiveSessionsList";
 import {
   useGetReservation,
   useListOrders,
@@ -372,6 +373,11 @@ export default function POS() {
   const isPaid = activeOrder?.paymentStatus === "paid";
   const isFinalized = !!activeOrder?.finalizedAt;
   const items = activeOrder?.items || [];
+
+  // NEW: If no reservationId — show Active Sessions List as POS entry point
+  if (!reservationId) {
+    return <ActiveSessionsList />;
+  }
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">

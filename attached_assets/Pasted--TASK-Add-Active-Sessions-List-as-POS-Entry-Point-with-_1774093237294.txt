@@ -1,0 +1,406 @@
+## TASK: Add Active Sessions List as POS Entry Point (with Branch Selector)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️  MANDATORY PRE-FLIGHT CHECK — DO THIS BEFORE WRITING ANY CODE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Read the existing codebase first and confirm:
+
+1. Actual DB table names for: rooms, room sessions, orders, order_items, room_types, branches
+2. Actual column names for: room status values, session start time, branch foreign key
+3. Where React Router is configured (App.tsx / App.jsx / routes file)
+4. The existing POS detail component filename and its current route path
+5. Whether the project uses TypeScript or plain JavaScript
+6. Whether a Socket.io client instance is already available in React context
+7. How the logged-in user's role and branchId are stored (JWT payload? Context? Zustand?)
+8. What the existing branch list API endpoint is (if any)
+9. What CSS variables or Tailwind tokens are used for: dark bg, card bg, gold accent, border color
+
+Report all 9 answers before writing a single line of code.
+Then implement using ONLY the actual names and values found — never assume.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔒  NON-NEGOTIABLE RULES — VIOLATIONS WILL BREAK PRODUCTION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ADD ONLY — Never modify, delete, or refactor existing working code
+  Existing POS detail page must remain 100% identical and functional
+  Existing API endpoints must not be changed in any way
+  Existing DB schema must not be altered
+  Existing RBAC / auth middleware must not be touched
+  Existing Socket.io server event names must not be changed
+  If ever unsure: add a new thing alongside the old, never replace
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯  OVERVIEW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PROBLEM
+  The POS page currently shows a single bill directly with no way
+  for staff to select which room's bill to open.
+
+SOLUTION
+  Add a new Active Sessions List screen as the POS entry point.
+  Staff land here first, select a session, then open its bill.
+  The existing bill detail page is completely unchanged.
+
+NEW FLOW
+  POS (sidebar nav)
+    → Active Sessions List  ← NEW SCREEN
+      → Click "Open Bill →"
+        → Existing POS bill detail page  ← UNCHANGED
+
+BRANCH SELECTOR BEHAVIOUR BY ROLE
+  ┌──────────────────┬────────────────────────────────────────┐
+  │ Role             │ Branch Dropdown Behaviour              │
+  ├──────────────────┼────────────────────────────────────────┤
+  │ SUPER_ADMIN      │ Show all branches — dropdown visible   │
+  │ ADMIN            │ Show all branches — dropdown visible   │
+  │ STORE_MANAGER    │ Auto-locked to own branch — no dropdown│
+  │ STAFF            │ Auto-locked to own branch — no dropdown│
+  └──────────────────┴────────────────────────────────────────┘
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📁  FILE 1 — NEW COMPONENT
+    client/src/components/pos/ActiveSessionsList.tsx  (or .jsx)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// NEW: POS Active Sessions Entry Point — added 2026-03-21
+
+── HEADER ROW ──────────────────────────────────────────────────
+  Left  : Page title "Point of Sale"  (match existing page header style)
+  Right : Branch selector dropdown    (SUPER_ADMIN / ADMIN only)
+           └ if STORE_MANAGER or STAFF → show branch name as plain
+             text badge, no dropdown
+─────────────────────────────────────────────────────────────────
+
+── BRANCH DROPDOWN (ADMIN / SUPER_ADMIN) ────────────────────────
+
+  Visual design:
+  • Dark background card, gold border on focus  (#d4a843 or existing gold var)
+  • Label: "Branch"  small caps above the select
+  • Options: "All Branches" (first) + one entry per branch
+    e.g.  ○ All Branches
+          ● KL Branch 01
+          ○ KL Branch 02
+          ○ Penang Branch
+  • When "All Branches" selected → show sessions from every branch
+    with a subtle branch name tag on each session card
+  • Default selection:
+    - SUPER_ADMIN / ADMIN  → "All Branches" on first load
+    - STORE_MANAGER / STAFF → their own branch (locked, no dropdown rendered)
+  • Persist selected branch in component state
+  • Changing the dropdown triggers an immediate re-fetch (no submit button)
+
+── SEARCH BAR ───────────────────────────────────────────────────
+
+  Placeholder: "Search by room name or order ID…"
+  Client-side filter only (no API call on keystroke)
+  Position: below header row, full width
+  Clear (×) button appears when text is entered
+
+── SESSION CARDS ────────────────────────────────────────────────
+
+  Each card shows:
+  ┌─────────────────────────────────────────────────────────┐
+  │ 🟢  Room 1 — VIP Suite          [Branch: KL01] (admin) │
+  │     ORD-KL01-20260321-001  •  Occupied                  │
+  │     Started: 8:30 PM  •  2h 15m elapsed                 │
+  │     Running Total: MYR 684.00           [Open Bill  →]  │
+  └─────────────────────────────────────────────────────────┘
+
+  Status dot colours:
+    occupied    → 🟢 green   → card fully clickable
+    reserved    → 🟡 yellow  → card clickable (bill may be empty)
+    cleaning    → ⚪ grey    → card dimmed, not clickable, tooltip: "Room is being cleaned"
+    maintenance → 🔴 red     → card dimmed, not clickable, tooltip: "Room under maintenance"
+
+  Branch tag:
+    Only visible when "All Branches" is selected (ADMIN/SUPER_ADMIN view)
+    Small pill badge top-right of card, e.g.  [KL01]
+    Hidden when a specific branch is selected (redundant info)
+
+  Running Total:
+    Sum of all non-voided order_items for the session
+    If no order yet → show "No bill yet" in muted text
+    If order exists → show formatted currency e.g. MYR 684.00
+
+  Elapsed time:
+    Live-updating label, recalculates every 60 seconds
+    Format: "Xh Ym elapsed"  e.g.  "2h 15m elapsed"
+    If session not yet started (reserved) → show "Expected: 10:00 PM"
+
+  "Open Bill →" button:
+    Navigates to existing POS detail page for that order
+    If no order exists yet → navigate to existing POS and
+    pass the session/room context so a new order can be created
+    Use gold fill button style matching existing "Process Payment" button
+
+── FOOTER ROW ───────────────────────────────────────────────────
+  Left  : "Showing X active sessions"
+  Right : "Last updated: just now"  (updates on each fetch)
+
+── EMPTY STATE ──────────────────────────────────────────────────
+  Icon  : 🎤 (or microphone SVG)
+  Text  : "No active sessions right now"
+  Sub   : "All rooms are currently available."
+  Show when: filtered list is empty OR API returns 0 results
+
+── LOADING STATE ────────────────────────────────────────────────
+  Show skeleton cards (3 placeholder cards) while fetching
+  Match existing loading skeleton style if one exists in the project
+
+── DATA REFRESH STRATEGY ────────────────────────────────────────
+  1. Fetch on component mount
+  2. Auto-refetch every 30 seconds via setInterval
+     (clear interval on component unmount — memory leak prevention)
+  3. If Socket.io client is available in app context:
+       socket.on('room-status-updated', () => fetchActiveSessions())
+       // MIGRATION NOTE: Replace with SignalR hub in .NET migration
+     If Socket.io is NOT available → rely on 30s polling only
+  4. Re-fetch immediately when branch dropdown selection changes
+
+── STYLING RULES ────────────────────────────────────────────────
+  Match the existing dark theme exactly:
+  • Use existing CSS variables / Tailwind tokens found in step 9
+    of the pre-flight check — never hardcode colour hex values
+    unless no variable exists for that colour
+  • Card hover state: subtle gold border glow on hoverable cards
+  • Transitions: 150ms ease on hover states
+  • Tablet-first layout (staff use iPads): min touch target 44×44px
+  • Font: match existing font family in project
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📁  FILE 2 — NEW API ENDPOINT
+    Append to the END of the existing POS / orders route file
+    Do NOT rewrite the file — append only
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// NEW: Active Sessions for POS Entry Point — added 2026-03-21
+// MIGRATION NOTE: Convert to .NET minimal API GET /api/pos/active-sessions
+
+router.get('/active-sessions', authenticateToken, requireRole(['STORE_MANAGER', 'STAFF', 'ADMIN', 'SUPER_ADMIN']), async (req, res) => {
+  try {
+    const userRole    = req.user.role;
+    const userBranch  = req.user.branchId;
+    const queryBranch = req.query.branchId; // "all" or a specific branch ID
+
+    // Branch access control
+    // STORE_MANAGER / STAFF → always locked to own branch regardless of query param
+    // ADMIN / SUPER_ADMIN   → can query "all" or a specific branch
+    let branchFilter;
+    if (['STORE_MANAGER', 'STAFF'].includes(userRole)) {
+      branchFilter = userBranch;           // force own branch
+    } else {
+      branchFilter = (queryBranch === 'all' || !queryBranch)
+        ? null                             // null = all branches
+        : queryBranch;
+    }
+
+    // Build dynamic WHERE clause
+    const params  = [];
+    let   whereClause = `r.status IN ('occupied', 'reserved', 'cleaning', 'maintenance')`;
+
+    if (branchFilter) {
+      params.push(branchFilter);
+      whereClause += ` AND r.branch_id = $${params.length}`;
+    }
+
+    // ⚠️ IMPORTANT: Replace all table/column names below with
+    // the ACTUAL names found in the existing codebase (pre-flight check step 1-2)
+    const activeSessions = await pool.query(`
+      SELECT
+        b.id           AS branch_id,
+        b.name         AS branch_name,
+        r.id           AS room_id,
+        r.name         AS room_name,
+        rt.name        AS room_type_name,
+        r.status       AS room_status,
+        rs.id          AS session_id,
+        rs.start_time  AS session_start_time,
+        rs.expected_end_time,
+        o.id           AS order_id,
+        o.order_number,
+        o.status       AS order_status,
+        COALESCE((
+          SELECT SUM(oi.quantity * oi.unit_price)
+          FROM   order_items oi
+          WHERE  oi.order_id = o.id
+          AND    oi.status  != 'voided'
+        ), 0) AS running_total
+      FROM   rooms r
+      JOIN   branches  b  ON b.id  = r.branch_id
+      LEFT JOIN room_types rt ON rt.id = r.room_type_id
+      LEFT JOIN room_sessions rs
+             ON rs.room_id = r.id
+            AND rs.status IN ('active', 'reserved')
+            AND DATE(rs.start_time AT TIME ZONE 'UTC'
+                     AT TIME ZONE 'Asia/Kuala_Lumpur') = CURRENT_DATE
+      LEFT JOIN orders o
+             ON o.session_id = rs.id
+            AND o.status NOT IN ('cancelled', 'voided')
+      WHERE  ${whereClause}
+      ORDER BY
+        CASE r.status
+          WHEN 'occupied'    THEN 1
+          WHEN 'reserved'    THEN 2
+          WHEN 'cleaning'    THEN 3
+          WHEN 'maintenance' THEN 4
+        END,
+        rs.start_time ASC NULLS LAST
+    `, params);
+
+    res.json({
+      success      : true,
+      data         : activeSessions.rows,
+      totalCount   : activeSessions.rows.length,
+      branchFilter : branchFilter || 'all',
+      fetchedAt    : new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('[POS Active Sessions] Error:', error);
+    res.status(500).json({
+      success : false,
+      message : 'Failed to fetch active sessions',
+      error   : error.message
+    });
+  }
+});
+
+
+── ALSO ADD: Branches list endpoint (if not already existing) ───
+
+// Only add this if NO existing "list all branches" endpoint exists
+// MIGRATION NOTE: Convert to GET /api/branches in .NET migration
+
+router.get('/branches/list', authenticateToken, requireRole(['ADMIN', 'SUPER_ADMIN']), async (req, res) => {
+  try {
+    const branches = await pool.query(
+      `SELECT id, name, status FROM branches WHERE status != 'inactive' ORDER BY name ASC`
+    );
+    res.json({ success: true, data: branches.rows });
+  } catch (error) {
+    console.error('[Branches List] Error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch branches' });
+  }
+});
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📁  FILE 3 — REACT ROUTER UPDATE
+    Modify ONLY the POS-related route entries
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP A — Find the existing POS route
+  Search for the string "/pos" in App.tsx (or the router file)
+  It likely looks like:
+    <Route path="/pos" element={<PointOfSale />} />
+
+STEP B — Change it to a nested structure (add, do not remove)
+  BEFORE (keep original as comment for reference):
+    // OLD: <Route path="/pos" element={<PointOfSale />} />
+
+  AFTER:
+    {/* NEW: POS entry point — active sessions list */}
+    <Route path="/pos" element={<ActiveSessionsList />} />
+
+    {/* Existing POS detail — path updated, component unchanged */}
+    <Route path="/pos/order/:orderId" element={<PointOfSale />} />
+
+STEP C — Update all navigation links pointing to "/pos" with a specific orderId
+  Search entire codebase for:  navigate('/pos')  or  href="/pos"  or  to="/pos"
+
+  For each result:
+  • If it links to a specific order  → change to "/pos/order/${orderId}"
+  • If it's the sidebar nav item     → keep as "/pos"  (now points to the list)
+  • If it's a "back" button in POS   → change to "/pos" (back to list)
+
+  Common locations to check:
+  • Room Board component  (likely has an "Open POS" or "Manage Bill" button)
+  • Reservations page     (may have a "Go to POS" action)
+  • Existing POS detail   (add a "← Back to Sessions" button at the top)
+
+STEP D — Add "← Back to Sessions" button in existing POS detail page
+  At the very TOP of the existing POS detail component, add ONE line:
+
+    <button onClick={() => navigate('/pos')}>← Back to Sessions</button>
+
+  Style it as a ghost/text button (not gold — reserve gold for primary actions)
+  This is the ONLY change permitted to the existing POS detail component
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅  ACCEPTANCE CRITERIA — VERIFY ALL BEFORE REPORTING DONE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Navigation
+  [ ] /pos loads the new Active Sessions List
+  [ ] Clicking "Open Bill →" on any session card navigates to
+      the existing POS detail page at /pos/order/:orderId
+  [ ] "← Back to Sessions" button in POS detail returns to /pos
+  [ ] Sidebar "Point of Sale" nav item still works
+
+Branch Selector
+  [ ] ADMIN / SUPER_ADMIN see the branch dropdown in the header
+  [ ] "All Branches" option shows sessions from every branch
+      with a branch name badge on each card
+  [ ] Selecting a specific branch filters to that branch only
+  [ ] STORE_MANAGER / STAFF see only their branch — no dropdown rendered
+  [ ] Changing branch dropdown triggers immediate re-fetch
+
+Session Cards
+  [ ] Each card shows: room name, room type, order number,
+      status badge, elapsed time, running total
+  [ ] cleaning / maintenance rooms are greyed out and not clickable
+  [ ] "No bill yet" shows correctly when no order exists
+  [ ] Branch badge appears only in "All Branches" view
+
+Search
+  [ ] Search bar filters cards client-side by room name or order ID
+  [ ] Clear (×) button removes the filter
+
+Data & Real-time
+  [ ] Auto-refresh every 30 seconds
+  [ ] Socket.io refresh works (if Socket.io was available)
+  [ ] Empty state renders correctly when no active sessions
+
+Existing System — Zero Regressions
+  [ ] Existing POS detail page (/pos/order/:orderId) looks and
+      works 100% identically to before
+  [ ] All existing API endpoints return the same responses
+  [ ] No changes to DB schema
+  [ ] No existing tests broken
+  [ ] Browser console shows no new errors or warnings
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚫  ABSOLUTE DO-NOT LIST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Do NOT rewrite or restructure the existing POS detail component
+    (only the "← Back to Sessions" button addition is allowed)
+  Do NOT change existing order/folio fetching logic
+  Do NOT modify the existing database schema or run migrations
+  Do NOT change RBAC or auth middleware
+  Do NOT modify existing API endpoints (only append new ones)
+  Do NOT change Socket.io server-side event names
+  Do NOT hardcode branch IDs, tax rates, or currency symbols
+  Do NOT add npm packages without confirming they're not
+    already available in the project
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📝  CODE HYGIENE REQUIREMENTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Add this comment at top of every NEW file created:
+    // NEW: POS Active Sessions Entry Point — added 2026-03-21
+
+  Add this comment on Socket.io listener:
+    // MIGRATION NOTE: Replace with SignalR hub subscription in .NET migration
+
+  Add this comment on the new API endpoint:
+    // MIGRATION NOTE: Convert to .NET minimal API GET /api/pos/active-sessions
+
+  Add this comment on the branches/list endpoint:
+    // MIGRATION NOTE: Convert to .NET minimal API GET /api/branches
+
+  Match existing code style exactly:
+    spacing, quote style, import order, naming conventions
