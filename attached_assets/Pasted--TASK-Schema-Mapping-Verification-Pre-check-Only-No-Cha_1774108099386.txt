@@ -1,0 +1,95 @@
+# TASK: Schema Mapping Verification — Pre-check Only (No Changes)
+
+## CRITICAL: 조회만 할 것. 아무것도 생성/수정/삭제하지 말 것.
+
+아래 SQL을 순서대로 실행하고 결과를 전부 출력하라.
+
+---
+
+### CHECK 1: organizations 테이블 구조
+SELECT column_name, data_type, is_nullable
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name   = 'organizations'
+ORDER BY ordinal_position;
+
+### CHECK 2: staff 테이블 구조
+SELECT column_name, data_type, is_nullable
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name   = 'staff'
+ORDER BY ordinal_position;
+
+### CHECK 3: branches 테이블 구조
+SELECT column_name, data_type, is_nullable
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name   = 'branches'
+ORDER BY ordinal_position;
+
+### CHECK 4: hostess_profiles 테이블 구조
+SELECT column_name, data_type, is_nullable
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name   = 'hostess_profiles'
+ORDER BY ordinal_position;
+
+### CHECK 5: agencies 테이블 존재 여부 및 구조
+SELECT column_name, data_type, is_nullable
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name   = 'agencies'
+ORDER BY ordinal_position;
+-- 결과 0행이면 "agencies 테이블 없음" 보고
+
+### CHECK 6: staff 테이블의 role 컬럼값 현황
+SELECT role, COUNT(*) 
+FROM staff 
+GROUP BY role 
+ORDER BY role;
+-- staff.role이 없으면 에러 보고
+
+### CHECK 7: branches의 organization 연결 컬럼 확인
+SELECT column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name   = 'branches'
+  AND column_name  IN (
+    'organization_id','tenant_id','org_id','company_id'
+  );
+
+### CHECK 8: hostess_profiles의 연결 컬럼 확인
+SELECT column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name   = 'hostess_profiles'
+  AND column_name  IN (
+    'organization_id','tenant_id','branch_id',
+    'agency_id','staff_id','user_id'
+  );
+
+### CHECK 9: 전체 48개 테이블 목록 전부 출력
+SELECT table_name
+FROM information_schema.tables
+WHERE table_schema = 'public'
+ORDER BY table_name;
+
+### CHECK 10: 기존 FK 관계 전체 맵
+SELECT
+  tc.table_name        AS source_table,
+  kcu.column_name      AS source_column,
+  ccu.table_name       AS target_table,
+  ccu.column_name      AS target_column
+FROM information_schema.table_constraints AS tc
+JOIN information_schema.key_column_usage AS kcu
+  ON tc.constraint_name = kcu.constraint_name
+JOIN information_schema.constraint_column_usage AS ccu
+  ON ccu.constraint_name = tc.constraint_name
+WHERE tc.constraint_type = 'FOREIGN KEY'
+  AND tc.table_schema    = 'public'
+ORDER BY tc.table_name, kcu.column_name;
+
+---
+
+## 결과 출력 후 아무것도 하지 말 것.
+## "Pre-check 완료. 결과를 사용자에게 전달합니다." 출력 후 대기.
