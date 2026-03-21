@@ -1,0 +1,296 @@
+# TASK: Universal Ledger — Audit & Safety Systems (Part 5 of 5)
+# ※ 실제 DB 스키마 적용 버전
+
+## CRITICAL RULES
+1. 기존 investor_reports, profit_settlements 수정 금지
+2. Investor → v_investor_summary 집계만, raw data 절대 금지
+3. Error → STOP, report, wait
+
+---
+
+## STEP 1: /services/ledger/ledgerAudit.js 생성
+```javascript
+// /services/ledger/ledgerAudit.js
+// ✅ org_id 기반
+// MIGRATION: C# BackgroundService (Hangfire)
+
+'use strict';
+
+const ledger = require('./ledgerService');
+
+/**
+ * 잔액 정합성 감사
+ * balance_cache vs 실제 원장 집계 비교
+ */
+async function auditAllBalances(db, { orgId, autoFix = false }) {
+  const results = [];
+
+  const accounts = await db.query(`
+    SELECT id, account_type, entity_id, balance_cache
+    FROM ledger_accounts
+    WHERE org_id = $1 AND is_active = TRUE
+  `, [orgId]);
+
+  for (const acct of accounts.rows) {
+    const actual = await db.query(`
+      SELECT COALESCE(SUM(
+        CASE
+          WHEN direction = 'CR' THEN  amount
+          WHEN direction = 'DR' THEN -amount
+        END
+      ), 0.00) AS true_balance
+      FROM ledger_entries
+      WHERE account_id = $1 AND status = 'posted'
+    `, [acct.id]);
+
+    const trueBalance  = parseFloat(actual.rows[0].true_balance);
+    const cacheBalance = parseFloat(acct.balance_cache);
+    const diff         = Math.abs(trueBalance - cacheBalance);
+
+    if (diff > 0.01) {
+      console.warn('[AUDIT] Mismatch:', {
+        accountId: acct.id, cache: cacheBalance,
+        actual: trueBalance, diff,
+      });
+
+      const record = {
+        accountId: acct.id, accountType: acct.account_type,
+        entityId: acct.entity_id,
+        cacheBalance, trueBalance, diff, fixed: false,
+      };
+
+      if (autoFix) {
+        await ledger.recalculateBalance(db, acct.id);
+        record.fixed = true;
+      }
+
+      results.push(record);
+    }
+  }
+
+  return {
+    totalChecked: accounts.rows.length,
+    mismatches:   results.length,
+    autoFixed:    results.filter(r => r.fixed).length,
+    details:      results,
+  };
+}
+
+/**
+ * 실패 큐 재시도
+ */
+async function retryFailedEntries(db, { orgId }) {
+  try {
+    const failed = await db.query(`
+      SELECT * FROM failed_ledger_queue
+      WHERE org_id      = $1
+        AND retry_count < 3
+        AND next_retry_at <= NOW()
+      ORDER BY created_at ASC
+      LIMIT 50
+    `, [orgId]);
+
+    let retried = 0;
+    for (const item of failed.rows) {
+      try {
+        const payload = JSON.parse(item.payload);
+        await ledger.postEntry(db, payload);
+        await db.query(
+          'DELETE FROM failed_ledger_queue WHERE id=$1', [item.id]
+        );
+        retried++;
+      } catch (err) {
+        await db.query(`
+          UPDATE failed_ledger_queue
+          SET retry_count   = retry_count + 1,
+              last_error    = $1,
+              next_retry_at = NOW() + INTERVAL '30 minutes'
+          WHERE id = $2
+        `, [err.message, item.id]);
+      }
+    }
+
+    return { success: true, retried, total: failed.rows.length };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+module.exports = { auditAllBalances, retryFailedEntries };
+```
+
+Report: "✅ Step 1 complete"
+
+---
+
+## STEP 2: /services/ledger/ledgerScheduler.js 생성
+```javascript
+// /services/ledger/ledgerScheduler.js
+// ✅ org_id, organizations 기반
+// MIGRATION: Hangfire RecurringJob
+
+'use strict';
+
+const { auditAllBalances, retryFailedEntries } = require('./ledgerAudit');
+const payslipSvc = require('./payslipService');
+
+async function runNightlyBatch(db, { orgId, branchIds = [] }) {
+  const log       = [];
+  const startTime = Date.now();
+
+  console.log('[BATCH] Start:', new Date().toISOString(), 'org:', orgId);
+
+  // 1. 잔액 정합성 감사 + 자동 수정
+  try {
+    const audit = await auditAllBalances(db, { orgId, autoFix: true });
+    log.push({ step: 'balance_audit', ...audit });
+    console.log('[BATCH] Audit:', audit);
+  } catch (err) {
+    log.push({ step: 'balance_audit', error: err.message });
+  }
+
+  // 2. 실패 항목 재시도
+  try {
+    const retry = await retryFailedEntries(db, { orgId });
+    log.push({ step: 'retry_failed', ...retry });
+    console.log('[BATCH] Retry:', retry);
+  } catch (err) {
+    log.push({ step: 'retry_failed', error: err.message });
+  }
+
+  // 3. 매월 1일: 전월 payslip 자동 생성
+  const today = new Date();
+  if (today.getDate() === 1) {
+    const last      = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const pStart    = last.toISOString().split('T')[0];
+    const pEnd      = new Date(
+      today.getFullYear(), today.getMonth(), 0
+    ).toISOString().split('T')[0];
+
+    for (const branchId of branchIds) {
+      for (const acType of ['hostess', 'driver', 'staff']) {
+        try {
+          const r = await payslipSvc.generateBranchPayslips(db, {
+            orgId, branchId, accountType: acType,
+            periodStart: pStart, periodEnd: pEnd,
+            createdBy: 'system',
+          });
+          log.push({ step: `payslip_${acType}_${branchId}`, ...r });
+        } catch (err) {
+          log.push({
+            step: `payslip_${acType}_${branchId}`,
+            error: err.message,
+          });
+        }
+      }
+    }
+  }
+
+  const duration = Date.now() - startTime;
+  console.log(`[BATCH] Done in ${duration}ms`);
+  return { success: true, duration, log };
+}
+
+module.exports = { runNightlyBatch };
+```
+
+Report: "✅ Step 2 complete"
+
+---
+
+## STEP 3: 배치 트리거 + 감사 엔드포인트 — /routes/ledger.js에 ADD
+```javascript
+// /routes/ledger.js 하단에 ADD (기존 코드 유지)
+
+const { runNightlyBatch }  = require('../services/ledger/ledgerScheduler');
+const { auditAllBalances } = require('../services/ledger/ledgerAudit');
+
+// POST /api/ledger/batch/run — SUPER_ADMIN 전용
+router.post('/batch/run',
+  requireAuth,
+  requireRole(['super_admin']),
+  async (req, res) => {
+    try {
+      const { branch_ids = [] } = req.body;
+      // 즉시 응답, 백그라운드 실행
+      res.json({
+        success: true,
+        message: 'Batch started',
+        startedAt: new Date().toISOString(),
+      });
+      runNightlyBatch(db, {
+        orgId: req.user.org_id, branchIds: branch_ids,
+      }).then(r  => console.log('[BATCH] Complete:', r))
+        .catch(e => console.error('[BATCH] Failed:', e.message));
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+);
+
+// POST /api/ledger/audit/balance-check
+router.post('/audit/balance-check',
+  requireAuth,
+  requireRole(['admin','super_admin']),
+  async (req, res) => {
+    try {
+      const { auto_fix = false } = req.body;
+      const r = await auditAllBalances(db, {
+        orgId: req.user.org_id, autoFix: auto_fix,
+      });
+      res.json({ success: true, ...r });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+);
+```
+
+Report: "✅ Step 3 complete"
+
+---
+
+## STEP 4: 전체 최종 검증
+```javascript
+// 아래를 순서대로 실행하고 결과 보고
+
+// 1. 서버 재시작 확인
+// 2. 기존 API 각 1건씩 호출 확인:
+//    - 예약 API (reservations)
+//    - 세션 API (hostess_sessions)
+//    - 호스티스 API (hostess_profiles)
+// 3. Ledger API 확인:
+//    GET  /api/ledger/health
+//    GET  /api/ledger/accounts
+//    GET  /api/ledger/payslips
+//    GET  /api/ledger/resolutions
+//    GET  /api/ledger/investor/summary
+// 4. 감사 실행:
+//    POST /api/ledger/audit/balance-check {"auto_fix":false}
+```
+```sql
+-- 5. 최종 DB 상태 확인
+SELECT
+  (SELECT COUNT(*) FROM ledger_accounts)        AS accounts,
+  (SELECT COUNT(*) FROM ledger_entries)         AS entries,
+  (SELECT COUNT(*) FROM payslips)               AS payslips,
+  (SELECT COUNT(*) FROM financial_resolutions)  AS resolutions,
+  (SELECT COUNT(*) FROM failed_ledger_queue
+   WHERE retry_count >= 3)                      AS permanently_failed;
+
+-- 6. 기존 데이터 무결성 최종 확인
+SELECT relname, n_live_tup
+FROM pg_stat_user_tables
+WHERE relname IN (
+  'hostess_profiles','agents','staff',
+  'branches','organizations',
+  'reservations','hostess_sessions',
+  'agent_invoices','hostess_payouts'
+)
+ORDER BY relname;
+-- Part 1 PRE-CHECK C와 동일해야 함
+```
+
+---
+
+## 🏁 FINAL SUCCESS CRITERIA

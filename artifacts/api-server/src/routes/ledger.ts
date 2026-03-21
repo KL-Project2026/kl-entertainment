@@ -10,6 +10,8 @@ import {
   approveResolution,
   rejectResolution,
 } from "../services/ledger/resolutionService";
+import { runNightlyBatch } from "../services/ledger/ledgerScheduler";
+import { auditAllBalances } from "../services/ledger/ledgerAudit";
 
 const router: IRouter = Router();
 
@@ -461,6 +463,50 @@ router.get(
         [orgId]
       );
       res.json({ success: true, liabilities: rows });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+);
+
+// ─── Batch & Audit ───────────────────────────────────────────────────────────
+
+// POST /api/ledger/batch/run — SUPER_ADMIN only; fire-and-forget
+router.post(
+  "/ledger/batch/run",
+  authenticate,
+  requireRole(["super_admin"]),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { branch_ids = [] } = req.body as { branch_ids?: string[] };
+      const orgId = await resolveOrgId(req.user!.id);
+      if (!orgId) { res.status(403).json({ success: false, error: "Cannot resolve org" }); return; }
+
+      // Respond immediately, run batch in background
+      res.json({ success: true, message: "Batch started", startedAt: new Date().toISOString() });
+
+      runNightlyBatch({ orgId, branchIds: branch_ids })
+        .then(r  => console.log("[BATCH] Complete:", r))
+        .catch(e => console.error("[BATCH] Failed:", e instanceof Error ? e.message : e));
+    } catch (err) {
+      res.status(500).json({ success: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+);
+
+// POST /api/ledger/audit/balance-check — admin+
+router.post(
+  "/ledger/audit/balance-check",
+  authenticate,
+  requireRole(["admin", "super_admin"]),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { auto_fix = false } = req.body as { auto_fix?: boolean };
+      const orgId = await resolveOrgId(req.user!.id);
+      if (!orgId) { res.status(403).json({ success: false, error: "Cannot resolve org" }); return; }
+
+      const result = await auditAllBalances({ orgId, autoFix: auto_fix });
+      res.json({ success: true, ...result });
     } catch (err) {
       res.status(500).json({ success: false, error: err instanceof Error ? err.message : String(err) });
     }
