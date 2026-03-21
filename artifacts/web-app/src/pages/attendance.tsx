@@ -3,6 +3,7 @@ import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -173,9 +174,9 @@ export default function Attendance() {
             </SelectContent>
           </Select>
           <div className="flex items-center gap-2">
-            <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-38" />
+            <DateInput value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} wrapperClassName="w-40" />
             <span className="text-muted-foreground text-sm">to</span>
-            <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-38" />
+            <DateInput value={dateTo} onChange={(e) => setDateTo(e.target.value)} wrapperClassName="w-40" />
           </div>
         </div>
 

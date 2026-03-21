@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
+import { DateInput } from "@/components/ui/date-input";
 import { BarChart3, TrendingUp, CreditCard } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 
@@ -60,12 +61,7 @@ export default function DailyReport() {
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">Daily revenue &amp; payment overview</p>
           </div>
-          <input
-            type="date"
-            value={date}
-            onChange={e => setDate(e.target.value)}
-            className="bg-black/30 border border-white/10 rounded-xl px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 cursor-pointer"
-          />
+          <DateInput value={date} onChange={e => setDate(e.target.value)} wrapperClassName="w-44" />
         </div>
 
         {loading && (

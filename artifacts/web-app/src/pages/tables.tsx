@@ -6,6 +6,7 @@ import { useAuthStore } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
 import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -137,8 +138,7 @@ function AvailabilityTimeline({
       <div className="flex flex-wrap gap-3 items-end">
         <div>
           <Label className="text-xs mb-1 block">Date</Label>
-          <Input type="date" value={date} onChange={e => setDate(e.target.value)}
-            className="w-[160px] h-9" />
+          <DateInput value={date} onChange={e => setDate(e.target.value)} wrapperClassName="w-44" />
         </div>
         <div>
           <Label className="text-xs mb-1 block">Branch</Label>

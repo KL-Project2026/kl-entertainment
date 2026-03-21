@@ -8,6 +8,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useUpdateRoomStatus } from "@workspace/api-client-react";
 import { io } from "socket.io-client";
 import { Clock, Users, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { DateInput } from "@/components/ui/date-input";
 import type { UpdateRoomStatusRequestStatus } from "@workspace/api-client-react";
 
 interface RoomEntry {
@@ -318,15 +319,11 @@ export default function RoomBoard() {
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <div className="relative">
-            <CalendarDays className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="bg-transparent pl-8 pr-3 py-1 text-sm text-foreground focus:outline-none w-36"
-            />
-          </div>
+          <DateInput
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            wrapperClassName="w-40 bg-transparent border-white/10"
+          />
           <button
             onClick={() => setDate((d) => shiftDate(d, 1))}
             className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"

@@ -3,6 +3,7 @@ import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -480,10 +481,7 @@ export default function ScheduleBuilder() {
                 {branches.map((b) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
               </SelectContent>
             </Select>
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-muted-foreground" />
-              <Input type="date" value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} className="w-40" />
-            </div>
+            <DateInput value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} wrapperClassName="w-44" />
             <Button
               variant="outline"
               onClick={() => copyFromLastWeek.mutate()}

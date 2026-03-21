@@ -6,6 +6,7 @@ import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -172,11 +173,11 @@ function AssignModal({ agencyId, onClose, onSaved }: { agencyId: string; onClose
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-muted-foreground">Contract Start</label>
-              <Input className="mt-1" type="date" value={contractStart} onChange={e => setContractStart(e.target.value)} />
+              <DateInput value={contractStart} onChange={e => setContractStart(e.target.value)} wrapperClassName="mt-1" />
             </div>
             <div>
               <label className="text-xs text-muted-foreground">Contract End (optional)</label>
-              <Input className="mt-1" type="date" value={contractEnd} onChange={e => setContractEnd(e.target.value)} />
+              <DateInput value={contractEnd} onChange={e => setContractEnd(e.target.value)} wrapperClassName="mt-1" />
             </div>
           </div>
         </div>
@@ -386,10 +387,9 @@ export default function AgencyDetail() {
         {/* Date range + tabs */}
         <div className="flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-muted-foreground" />
-            <Input type="date" className="w-36 h-8 text-xs" value={from} onChange={e => setFrom(e.target.value)} />
+            <DateInput value={from} onChange={e => setFrom(e.target.value)} wrapperClassName="w-40" />
             <span className="text-muted-foreground text-xs">→</span>
-            <Input type="date" className="w-36 h-8 text-xs" value={to} onChange={e => setTo(e.target.value)} />
+            <DateInput value={to} onChange={e => setTo(e.target.value)} wrapperClassName="w-40" />
             <Button size="sm" className="h-8 text-xs" onClick={() => { setAppliedFrom(from); setAppliedTo(to); }}>Apply</Button>
           </div>
 

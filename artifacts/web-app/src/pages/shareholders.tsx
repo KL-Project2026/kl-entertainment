@@ -4,6 +4,7 @@ import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
 import {
   Select,
   SelectContent,
@@ -293,7 +294,7 @@ function EquityForm({ shareholder, branches, onClose }: {
 
           <div>
             <label className="text-xs text-muted-foreground block mb-1">Effective From</label>
-            <Input type="date" value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} />
+            <DateInput value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} />
           </div>
         </div>
         {save.error && <p className="text-xs text-red-400">{String(save.error)}</p>}
@@ -356,11 +357,11 @@ function SettlementModal({ shareholder, branches, onClose }: {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs text-muted-foreground block mb-1">Period Start</label>
-                <Input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} />
+                <DateInput value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} />
               </div>
               <div>
                 <label className="text-xs text-muted-foreground block mb-1">Period End</label>
-                <Input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} />
+                <DateInput value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} />
               </div>
             </div>
             {generate.error && (

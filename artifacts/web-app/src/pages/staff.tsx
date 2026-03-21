@@ -4,6 +4,7 @@ import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
 import {
   Dialog,
   DialogContent,
@@ -253,7 +254,7 @@ function StaffForm({ branches, onClose, editStaff }: {
           </div>
           <div>
             <label className="text-xs text-muted-foreground block mb-1">Hire Date</label>
-            <Input type="date" value={form.hireDate} onChange={(e) => f("hireDate", e.target.value)} />
+            <DateInput value={form.hireDate} onChange={(e) => f("hireDate", e.target.value)} />
           </div>
           <div>
             <label className="text-xs text-muted-foreground block mb-1">Branch *</label>

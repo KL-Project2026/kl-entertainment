@@ -6,6 +6,7 @@ import { useAuthStore } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import {
@@ -203,11 +204,11 @@ function PricingModal({
             <div className="grid grid-cols-2 gap-3 mt-1">
               <div>
                 <p className="text-xs text-muted-foreground mb-1">From</p>
-                <Input type="date" value={form.dateFrom} onChange={e => set("dateFrom", e.target.value)} />
+                <DateInput value={form.dateFrom} onChange={e => set("dateFrom", e.target.value)} />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground mb-1">To</p>
-                <Input type="date" value={form.dateTo} onChange={e => set("dateTo", e.target.value)} />
+                <DateInput value={form.dateTo} onChange={e => set("dateTo", e.target.value)} />
               </div>
             </div>
           </div>

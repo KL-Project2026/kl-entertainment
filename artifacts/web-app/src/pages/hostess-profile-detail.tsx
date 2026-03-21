@@ -6,6 +6,7 @@ import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -361,8 +362,7 @@ export default function HostessProfileDetail() {
             {/* Date of birth */}
             <div className="space-y-1.5">
               <label className="text-xs text-muted-foreground font-medium">Date of Birth</label>
-              <Input
-                type="date"
+              <DateInput
                 value={merged.dateOfBirth?.split("T")[0] ?? ""}
                 onChange={e => f("dateOfBirth", e.target.value || null)}
               />

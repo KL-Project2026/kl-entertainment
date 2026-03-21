@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useListBranches, useListReservations, useConfirmReservation, useCheckInReservation, useCheckOutReservation, useCancelReservation } from "@workspace/api-client-react";
 import { useAuthStore } from "@/lib/auth";
 import { Card, Button, Badge, Input } from "@/components/ui";
+import { DateInput } from "@/components/ui/date-input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus, CalendarDays, Users, Clock, DoorOpen, ShoppingCart, X } from "lucide-react";
@@ -308,11 +309,10 @@ export default function Reservations() {
             ))}
           </SelectContent>
         </Select>
-        <input
-          type="date"
+        <DateInput
           value={date}
           onChange={(e) => setDate(e.target.value)}
-          className="bg-black/30 border border-white/10 rounded-xl px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 cursor-pointer"
+          wrapperClassName="w-44"
         />
         <Select value={serverStatus || "__all__"} onValueChange={(v) => setServerStatus(v === "__all__" ? "" : v)}>
           <SelectTrigger className="w-44 bg-black/30">

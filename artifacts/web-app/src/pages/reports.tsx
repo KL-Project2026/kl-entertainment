@@ -3,6 +3,7 @@ import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateInput, MonthInput } from "@/components/ui/date-input";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -481,12 +482,12 @@ export default function Reports() {
             </Select>
             {activeTab === "revenue" ? (
               <div className="flex gap-2 items-center">
-                <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-36" />
+                <DateInput value={from} onChange={(e) => setFrom(e.target.value)} wrapperClassName="w-40" />
                 <span className="text-muted-foreground text-sm">to</span>
-                <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-36" />
+                <DateInput value={to} onChange={(e) => setTo(e.target.value)} wrapperClassName="w-40" />
               </div>
             ) : (
-              <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="w-36" />
+              <MonthInput value={month} onChange={(e) => setMonth(e.target.value)} wrapperClassName="w-40" />
             )}
           </div>
         </div>
