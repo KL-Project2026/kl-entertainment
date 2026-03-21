@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useSearch } from "wouter";
 import ActiveSessionsList from "@/components/pos/ActiveSessionsList";
@@ -33,7 +33,7 @@ import {
 } from "lucide-react";
 import type { Order, OrderItem } from "@workspace/api-client-react";
 
-type CatalogItem = { id: string; name: string; unitPrice: number; sortOrder: number; };
+type CatalogItem = { id: string; name: string; unitPrice: number; sortOrder: number; isHostess?: boolean; };
 type CatalogGroup = { id: string; name: string; sortOrder: number; menuCatName: string | null; items: CatalogItem[]; };
 
 function catMarker(menuCatName: string | null): string {
@@ -44,19 +44,20 @@ function catMarker(menuCatName: string | null): string {
   return "";
 }
 
-function usePosCatalog() {
+function usePosCatalog(branchId?: string) {
   const token = useAuthStore.getState().token;
   return useQuery<CatalogGroup[]>({
-    queryKey: ["pos-catalog"],
+    queryKey: ["pos-catalog", branchId ?? ""],
     queryFn: async () => {
-      const resp = await fetch("/api/pos/catalog", {
+      const qs = branchId ? `?branchId=${encodeURIComponent(branchId)}` : "";
+      const resp = await fetch(`/api/pos/catalog${qs}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!resp.ok) throw new Error("Failed to load catalog");
       const data = await resp.json() as { data: CatalogGroup[] };
       return data.data ?? [];
     },
-    staleTime: 60_000,
+    staleTime: 30_000,
   });
 }
 
@@ -202,29 +203,53 @@ function OrderItemRow({ item, orderId, pending, onRemove }: {
   );
 }
 
-function AddItemModal({ orderId, onClose, onAdded }: { orderId: string; onClose: () => void; onAdded: () => void }) {
-  const { data: categories = [], isLoading: menuLoading } = usePosCatalog();
+function AddItemModal({
+  orderId,
+  branchId,
+  reservationId,
+  onClose,
+  onAdded,
+}: {
+  orderId: string;
+  branchId?: string;
+  reservationId?: string;
+  onClose: () => void;
+  onAdded: () => void;
+}) {
+  const { data: categories = [], isLoading: menuLoading } = usePosCatalog(branchId);
   const [activeCatId, setActiveCatId] = useState<string | null>(null);
+  const [selectedHostess, setSelectedHostess] = useState<CatalogItem | null>(null);
+  const [hostessLoading, setHostessLoading] = useState(false);
+  const [hostessError, setHostessError] = useState<string | null>(null);
   const [desc, setDesc] = useState("");
   const [unitPrice, setUnitPrice] = useState("");
   const [qty, setQty] = useState("1");
   const [discountPct, setDiscountPct] = useState("0");
   const [mounted, setMounted] = useState(false);
   const addItem = useAddOrderItem();
-  const tabsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { setMounted(true); }, []);
 
-  // Auto-select first category when menu loads
   useEffect(() => {
     if (categories.length > 0 && !activeCatId) {
       setActiveCatId(categories[0].id);
     }
   }, [categories.length]);
 
-  const activeItems = categories.find(c => c.id === activeCatId)?.items ?? [];
+  const activeGroup = categories.find(c => c.id === activeCatId) ?? null;
+  const activeItems = activeGroup?.items ?? [];
+  const isHostessCategory = activeItems.some(i => i.isHostess);
+
+  useEffect(() => {
+    if (!isHostessCategory) setSelectedHostess(null);
+  }, [isHostessCategory]);
 
   const selectItem = (item: CatalogItem) => {
+    if (item.isHostess) {
+      setSelectedHostess(prev => prev?.id === item.id ? null : item);
+      return;
+    }
+    setSelectedHostess(null);
     setDesc(item.name);
     setUnitPrice(item.unitPrice > 0 ? String(item.unitPrice) : "");
   };
@@ -244,6 +269,34 @@ function AddItemModal({ orderId, onClose, onAdded }: { orderId: string; onClose:
     onClose();
   };
 
+  const handleAssignHostess = async () => {
+    if (!selectedHostess || !reservationId) return;
+    setHostessLoading(true);
+    setHostessError(null);
+    try {
+      const token = useAuthStore.getState().token;
+      const resp = await fetch("/api/hostess-assignments/add-on", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ reservationId, hostessId: selectedHostess.id }),
+      });
+      const body = await resp.json() as { success?: boolean; error?: string; message?: string };
+      if (!resp.ok || !body.success) {
+        setHostessError(body.message ?? body.error ?? "Assignment failed");
+        return;
+      }
+      onAdded();
+      onClose();
+    } catch {
+      setHostessError("Network error — please retry");
+    } finally {
+      setHostessLoading(false);
+    }
+  };
+
   if (!mounted) return null;
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-3">
@@ -257,10 +310,10 @@ function AddItemModal({ orderId, onClose, onAdded }: { orderId: string; onClose:
           </button>
         </div>
 
-        {/* ── Body: left sidebar (categories) + right content ── */}
+        {/* ── Body ── */}
         <div className="flex flex-1 min-h-0">
 
-          {/* Left — Category list (vertical, no scroll) */}
+          {/* Left — Category list */}
           <div className="w-48 shrink-0 border-r border-white/8 flex flex-col overflow-y-auto py-2 px-2 gap-0.5">
             {menuLoading ? (
               [1,2,3,4,5,6].map(i => <div key={i} className="h-9 rounded-lg bg-white/5 animate-pulse mx-1 mb-1" />)
@@ -295,7 +348,7 @@ function AddItemModal({ orderId, onClose, onAdded }: { orderId: string; onClose:
             })}
           </div>
 
-          {/* Right — Items grid + form */}
+          {/* Right — Items + form */}
           <div className="flex-1 flex flex-col min-h-0">
 
             {/* Items area */}
@@ -309,7 +362,54 @@ function AddItemModal({ orderId, onClose, onAdded }: { orderId: string; onClose:
                   <ShoppingCart className="w-10 h-10 text-white/15 mb-3" />
                   <p className="text-muted-foreground text-sm">No items in this category</p>
                 </div>
+              ) : isHostessCategory ? (
+                /* ── Hostess profile grid ── */
+                <div>
+                  {!reservationId && (
+                    <div className="mb-4 px-3 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-400">
+                      Hostess assignment requires an active reservation session.
+                    </div>
+                  )}
+                  <div className="grid grid-cols-3 xl:grid-cols-4 gap-3">
+                    {activeItems.map(item => {
+                      const isSelected = selectedHostess?.id === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => selectItem(item)}
+                          disabled={!reservationId}
+                          className={`text-left p-4 rounded-xl border transition-all relative ${
+                            isSelected
+                              ? "bg-primary/15 border-primary/60 shadow-[0_0_0_1px_rgba(var(--primary),0.4)]"
+                              : "bg-white/3 border-white/8 hover:bg-white/6 hover:border-white/20 disabled:opacity-40 disabled:cursor-not-allowed"
+                          }`}
+                        >
+                          {/* Avatar placeholder */}
+                          <div className={`w-10 h-10 rounded-full mb-2.5 flex items-center justify-center text-base font-bold ${
+                            isSelected ? "bg-primary/30 text-primary" : "bg-white/8 text-white/50"
+                          }`}>
+                            {item.name.charAt(0)}
+                          </div>
+                          <p className={`text-sm font-semibold leading-snug ${isSelected ? "text-primary" : "text-foreground"}`}>
+                            {item.name}
+                          </p>
+                          <p className={`text-xs mt-1 ${isSelected ? "text-primary/70" : "text-muted-foreground"}`}>
+                            MYR {item.unitPrice.toFixed(0)}/hr
+                          </p>
+                          {isSelected && (
+                            <div className="absolute top-2 right-2 w-4 h-4 rounded-full bg-primary flex items-center justify-center">
+                              <svg className="w-2.5 h-2.5 text-black" fill="none" viewBox="0 0 10 10">
+                                <path d="M2 5l2 2 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               ) : (
+                /* ── Normal product grid ── */
                 <div className="grid grid-cols-3 xl:grid-cols-4 gap-3">
                   {activeItems.map(item => {
                     const isSelected = desc === item.name;
@@ -336,35 +436,76 @@ function AddItemModal({ orderId, onClose, onAdded }: { orderId: string; onClose:
               )}
             </div>
 
-            {/* Bottom form */}
-            <div className="shrink-0 border-t border-white/8 px-4 py-4 space-y-3 bg-black/20">
-              <Input
-                placeholder="Description *"
-                value={desc}
-                onChange={(e) => setDesc(e.target.value)}
-                className="bg-white/5 border-white/10"
-              />
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Unit Price (MYR) *</label>
-                  <Input type="number" min={0} step={0.01} value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} className="bg-white/5 border-white/10" />
+            {/* Bottom form — switches based on category */}
+            {isHostessCategory ? (
+              /* ── Hostess assign form ── */
+              <div className="shrink-0 border-t border-white/8 px-4 py-4 bg-black/20">
+                {selectedHostess ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-primary/8 border border-primary/20">
+                      <div className="w-9 h-9 rounded-full bg-primary/25 flex items-center justify-center text-sm font-bold text-primary shrink-0">
+                        {selectedHostess.name.charAt(0)}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-foreground">{selectedHostess.name}</p>
+                        <p className="text-xs text-muted-foreground">MYR {selectedHostess.unitPrice.toFixed(0)}/hr · Billed at session close</p>
+                      </div>
+                    </div>
+                    {hostessError && (
+                      <p className="text-xs text-destructive px-1">{hostessError}</p>
+                    )}
+                    <div className="flex gap-3">
+                      <Button variant="ghost" onClick={onClose} className="flex-1">Cancel</Button>
+                      <Button
+                        onClick={handleAssignHostess}
+                        disabled={hostessLoading || !reservationId}
+                        className="flex-1 gap-2 bg-primary hover:bg-primary/90 text-black font-semibold"
+                      >
+                        <Plus className="w-4 h-4" />
+                        {hostessLoading ? "Assigning..." : "Assign Hostess"}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex gap-3">
+                    <Button variant="ghost" onClick={onClose} className="flex-1">Cancel</Button>
+                    <Button disabled className="flex-1 gap-2 opacity-50">
+                      Select a hostess above
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* ── Normal product form ── */
+              <div className="shrink-0 border-t border-white/8 px-4 py-4 space-y-3 bg-black/20">
+                <Input
+                  placeholder="Description *"
+                  value={desc}
+                  onChange={(e) => setDesc(e.target.value)}
+                  className="bg-white/5 border-white/10"
+                />
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">Unit Price (MYR) *</label>
+                    <Input type="number" min={0} step={0.01} value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} className="bg-white/5 border-white/10" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">Quantity</label>
+                    <Input type="number" min={0.5} step={0.5} value={qty} onChange={(e) => setQty(e.target.value)} className="bg-white/5 border-white/10" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">Discount %</label>
+                    <Input type="number" min={0} max={100} value={discountPct} onChange={(e) => setDiscountPct(e.target.value)} className="bg-white/5 border-white/10" />
+                  </div>
                 </div>
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Quantity</label>
-                  <Input type="number" min={0.5} step={0.5} value={qty} onChange={(e) => setQty(e.target.value)} className="bg-white/5 border-white/10" />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Discount %</label>
-                  <Input type="number" min={0} max={100} value={discountPct} onChange={(e) => setDiscountPct(e.target.value)} className="bg-white/5 border-white/10" />
+                <div className="flex gap-3">
+                  <Button variant="ghost" onClick={onClose} className="flex-1">Cancel</Button>
+                  <Button onClick={handleAdd} disabled={addItem.isPending || !desc || !unitPrice} className="flex-1 gap-2">
+                    <Plus className="w-4 h-4" /> {addItem.isPending ? "Adding..." : "Add Item"}
+                  </Button>
                 </div>
               </div>
-              <div className="flex gap-3">
-                <Button variant="ghost" onClick={onClose} className="flex-1">Cancel</Button>
-                <Button onClick={handleAdd} disabled={addItem.isPending || !desc || !unitPrice} className="flex-1 gap-2">
-                  <Plus className="w-4 h-4" /> {addItem.isPending ? "Adding..." : "Add Item"}
-                </Button>
-              </div>
-            </div>
+            )}
           </div>
         </div>
       </div>
@@ -758,6 +899,8 @@ export default function POS() {
       {showAddItem && currentOrder && (
         <AddItemModal
           orderId={currentOrder.id}
+          branchId={branchId || undefined}
+          reservationId={reservationId}
           onClose={() => setShowAddItem(false)}
           onAdded={invalidateOrders}
         />

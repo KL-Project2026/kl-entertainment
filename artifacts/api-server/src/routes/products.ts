@@ -313,6 +313,7 @@ function formatProduct(row: Record<string, unknown>, lang: string) {
 // ── GET /pos/catalog ──────────────────────────────────────────────────────────
 // Returns active product groups with their active products for POS Add-Item modal.
 // Applies the same visibility filter as /products/groups.
+// For the "Hostess" group, dynamically injects hostess profiles instead of products.
 router.get(
   "/pos/catalog",
   authenticate,
@@ -320,6 +321,8 @@ router.get(
     try {
       const lang = "en"; // POS catalog always returns English names
       const role = req.user?.role ?? "";
+      const branchId = (req.query.branchId as string | undefined) || req.user?.branchId;
+
       let visFilter: string;
       if (ADMIN_ROLES.has(role)) {
         visFilter = "";
@@ -353,7 +356,7 @@ router.get(
          ORDER BY pt.group_id, p.sort_order, p.name->>'en'`
       );
 
-      const productsByGroup: Record<string, { id: string; name: string; unitPrice: number; sortOrder: number }[]> = {};
+      const productsByGroup: Record<string, { id: string; name: string; unitPrice: number; sortOrder: number; isHostess?: boolean }[]> = {};
       for (const p of productRows) {
         const gid = p.group_id as string;
         if (!productsByGroup[gid]) productsByGroup[gid] = [];
@@ -364,6 +367,49 @@ router.get(
           unitPrice: parseFloat(p.unit_price as string),
           sortOrder: (p.sort_order as number) ?? 0,
         });
+      }
+
+      // Identify the "Hostess" group and inject live profiles
+      const hostessGroupIds = new Set<string>(
+        groupRows
+          .filter(g => ((g.name as Record<string, string>)["en"] ?? "").toLowerCase() === "hostess")
+          .map(g => g.id as string)
+      );
+
+      if (hostessGroupIds.size > 0 && branchId) {
+        const { rows: hostessRows } = await pool.query<{
+          id: string; full_name: string; display_order: number;
+          agency_id: string | null; hourly_rate: string | null;
+        }>(
+          `SELECT hp.id, s.full_name, hp.display_order, hp.agency_id,
+                  COALESCE(
+                    (SELECT ahc.venue_commission_rate::text
+                     FROM agent_hostess_contracts ahc
+                     WHERE ahc.hostess_profile_id = hp.id
+                       AND ahc.is_active = true
+                       AND ahc.contract_start <= CURRENT_DATE
+                       AND (ahc.contract_end IS NULL OR ahc.contract_end >= CURRENT_DATE)
+                     LIMIT 1),
+                    '80'
+                  ) AS hourly_rate
+           FROM hostess_profiles hp
+           JOIN staff s ON s.id = hp.staff_id
+           WHERE hp.branch_id = $1
+             AND hp.status = 'active'
+             AND hp.deleted_at IS NULL
+           ORDER BY hp.display_order, s.full_name`,
+          [branchId]
+        );
+
+        for (const gid of hostessGroupIds) {
+          productsByGroup[gid] = hostessRows.map((h, idx) => ({
+            id: h.id,
+            name: h.full_name,
+            unitPrice: parseFloat(h.hourly_rate ?? "80"),
+            sortOrder: h.display_order ?? idx,
+            isHostess: true,
+          }));
+        }
       }
 
       const result = groupRows.map(g => {
