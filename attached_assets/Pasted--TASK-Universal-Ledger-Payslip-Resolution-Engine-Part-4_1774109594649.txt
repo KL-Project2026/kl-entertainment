@@ -1,0 +1,1016 @@
+# TASK: Universal Ledger — Payslip & Resolution Engine (Part 4 of 5)
+# ※ 실제 DB 스키마 적용 버전
+
+## CRITICAL RULES
+1. 기존 hostess_payouts, agent_payouts 수정 금지
+   → Ledger 기반 payslips는 별도 문서 (중복 아님)
+2. 모든 금액 계산은 DB SQL에서 처리 (부동소수점 오류 방지)
+3. Payslip 생성은 Idempotent (동일 기간 중복 실행 안전)
+4. Error → STOP, report, wait
+
+---
+
+## STEP 1: /services/ledger/payslipService.js 생성
+```javascript
+// /services/ledger/payslipService.js
+// ✅ org_id, hostess_profiles, agents 기반
+// MIGRATION: C# PayslipService in PayrollSlice
+
+'use strict';
+
+const { v4: uuidv4 } = require('uuid');
+
+// 수익 항목 (CR 방향)
+const EARNING_TYPES = [
+  'commission_session','commission_drink','commission_package',
+  'tip','bonus','pickup_fee','allowance','base_salary',
+];
+// 공제 항목 (DR 방향)
+const DEDUCTION_TYPES = [
+  'advance','advance_repayment','agent_deduction',
+  'penalty','deduction',
+];
+
+async function generatePayslip(db, {
+  orgId,
+  branchId,
+  accountId,
+  entityType,
+  entityId,
+  periodStart,
+  periodEnd,
+  createdBy,
+}) {
+  try {
+    // 1. 해당 기간 미처리 항목 집계
+    const summary = await db.query(`
+      SELECT entry_type, direction,
+             SUM(amount) AS total_amount
+      FROM ledger_entries
+      WHERE account_id     = $1
+        AND status         = 'posted'
+        AND effective_date BETWEEN $2 AND $3
+        AND document_id IS NULL
+      GROUP BY entry_type, direction
+      ORDER BY entry_type, direction
+    `, [accountId, periodStart, periodEnd]);
+
+    if (!summary.rows.length) {
+      return {
+        success: false,
+        message: 'No unprocessed entries for this period',
+      };
+    }
+
+    // 2. 수익/공제 분리
+    const earningsBreakdown   = {};
+    const deductionsBreakdown = {};
+    let grossEarnings         = 0;
+    let totalDeductions       = 0;
+
+    for (const row of summary.rows) {
+      const amt = parseFloat(row.total_amount);
+      if (row.direction === 'CR' &&
+          EARNING_TYPES.includes(row.entry_type)) {
+        earningsBreakdown[row.entry_type] =
+          (earningsBreakdown[row.entry_type] || 0) + amt;
+        grossEarnings += amt;
+      } else if (row.direction === 'DR' &&
+                 DEDUCTION_TYPES.includes(row.entry_type)) {
+        deductionsBreakdown[row.entry_type] =
+          (deductionsBreakdown[row.entry_type] || 0) + amt;
+        totalDeductions += amt;
+      }
+    }
+
+    grossEarnings   = parseFloat(grossEarnings.toFixed(2));
+    totalDeductions = parseFloat(totalDeductions.toFixed(2));
+    const netPayable = parseFloat(
+      (grossEarnings - totalDeductions).toFixed(2)
+    );
+
+    // 3. 이름 스냅샷 조회
+    let entityName = null;
+    try {
+      if (entityType === 'hostess_profile') {
+        // hostess_profiles → staff.full_name 조회
+        const r = await db.query(`
+          SELECT s.full_name
+          FROM hostess_profiles hp
+          JOIN staff s ON s.id = hp.staff_id
+          WHERE hp.id = $1
+        `, [entityId]);
+        entityName = r.rows[0]?.full_name;
+      } else {
+        // driver / staff
+        const r = await db.query(
+          'SELECT full_name FROM staff WHERE id = $1', [entityId]
+        );
+        entityName = r.rows[0]?.full_name;
+      }
+    } catch (_) {}
+
+    // 4. 연결 entry ID 수집
+    const entryIds = await db.query(`
+      SELECT ARRAY_AGG(id) AS entry_ids
+      FROM ledger_entries
+      WHERE account_id     = $1
+        AND status         = 'posted'
+        AND effective_date BETWEEN $2 AND $3
+        AND document_id IS NULL
+    `, [accountId, periodStart, periodEnd]);
+
+    const ledgerEntryIds = entryIds.rows[0]?.entry_ids || [];
+
+    // 5. Upsert payslip
+    const existing = await db.query(`
+      SELECT id, status FROM payslips
+      WHERE account_id   = $1
+        AND period_start = $2
+        AND period_end   = $3
+      LIMIT 1
+    `, [accountId, periodStart, periodEnd]);
+
+    let payslipId;
+
+    if (existing.rows.length) {
+      if (existing.rows[0].status !== 'draft') {
+        return {
+          success:   false,
+          message:   `Payslip exists with status: ${existing.rows[0].status}`,
+          payslipId: existing.rows[0].id,
+        };
+      }
+      // Draft 업데이트
+      await db.query(`
+        UPDATE payslips SET
+          entity_name          = $1,
+          gross_earnings       = $2,
+          total_deductions     = $3,
+          net_payable          = $4,
+          earnings_breakdown   = $5,
+          deductions_breakdown = $6,
+          ledger_entry_ids     = $7,
+          updated_at           = NOW()
+        WHERE id = $8
+      `, [
+        entityName, grossEarnings, totalDeductions, netPayable,
+        JSON.stringify(earningsBreakdown),
+        JSON.stringify(deductionsBreakdown),
+        ledgerEntryIds,
+        existing.rows[0].id,
+      ]);
+      payslipId = existing.rows[0].id;
+
+    } else {
+      payslipId = uuidv4();
+      await db.query(`
+        INSERT INTO payslips (
+          id, org_id, branch_id, account_id,
+          entity_type, entity_id, entity_name,
+          period_start, period_end,
+          gross_earnings, total_deductions, net_payable,
+          earnings_breakdown, deductions_breakdown,
+          ledger_entry_ids,
+          status, created_by, created_at, updated_at
+        ) VALUES (
+          $1,$2,$3,$4, $5,$6,$7,
+          $8,$9,
+          $10,$11,$12,
+          $13,$14,$15,
+          'draft',$16,NOW(),NOW()
+        )
+      `, [
+        payslipId, orgId, branchId, accountId,
+        entityType, entityId, entityName,
+        periodStart, periodEnd,
+        grossEarnings, totalDeductions, netPayable,
+        JSON.stringify(earningsBreakdown),
+        JSON.stringify(deductionsBreakdown),
+        ledgerEntryIds,
+        createdBy,
+      ]);
+    }
+
+    // 6. ledger_entries에 payslip 문서 연결
+    if (ledgerEntryIds.length) {
+      await db.query(`
+        UPDATE ledger_entries
+        SET document_type = 'payslip',
+            document_id   = $1
+        WHERE id = ANY($2)
+      `, [payslipId, ledgerEntryIds]);
+    }
+
+    return {
+      success: true, payslipId,
+      periodStart, periodEnd,
+      grossEarnings, totalDeductions, netPayable,
+      earningsBreakdown, deductionsBreakdown,
+      entryCount: ledgerEntryIds.length,
+    };
+
+  } catch (err) {
+    console.error('[PAYSLIP] generatePayslip failed:', err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+async function generateBranchPayslips(db, {
+  orgId, branchId, accountType,
+  periodStart, periodEnd, createdBy,
+}) {
+  const accounts = await db.query(`
+    SELECT id, entity_id, entity_type
+    FROM ledger_accounts
+    WHERE org_id       = $1
+      AND branch_id    = $2
+      AND account_type = $3
+      AND is_active    = TRUE
+  `, [orgId, branchId, accountType]);
+
+  const results = [];
+  for (const acct of accounts.rows) {
+    const r = await generatePayslip(db, {
+      orgId, branchId,
+      accountId:  acct.id,
+      entityType: acct.entity_type,
+      entityId:   acct.entity_id,
+      periodStart, periodEnd, createdBy,
+    });
+    results.push({ accountId: acct.id, ...r });
+  }
+
+  return {
+    results,
+    succeeded: results.filter(r => r.success).length,
+    failed:    results.filter(r => !r.success).length,
+  };
+}
+
+async function issuePayslip(db, { payslipId }) {
+  const result = await db.query(`
+    UPDATE payslips SET status='issued', updated_at=NOW()
+    WHERE id=$1 AND status='draft'
+    RETURNING *
+  `, [payslipId]);
+
+  if (!result.rows.length) {
+    return { success: false, error: 'Not found or not draft' };
+  }
+  return { success: true, payslip: result.rows[0] };
+}
+
+module.exports = {
+  generatePayslip,
+  generateBranchPayslips,
+  issuePayslip,
+};
+```
+
+Report: "✅ Step 1 complete: payslipService.js created"
+
+---
+
+## STEP 2: /services/ledger/resolutionService.js 생성
+```javascript
+// /services/ledger/resolutionService.js
+// ✅ org_id, agents 테이블 기반
+// MIGRATION: C# ResolutionService
+
+'use strict';
+
+const { v4: uuidv4 } = require('uuid');
+
+async function createPayoutResolution(db, {
+  orgId, branchId, payslipIds,
+  periodStart, periodEnd, requestedBy,
+}) {
+  try {
+    const payslips = await db.query(`
+      SELECT ps.*, la.account_type, la.entity_id
+      FROM payslips ps
+      JOIN ledger_accounts la ON la.id = ps.account_id
+      WHERE ps.id = ANY($1)
+        AND ps.org_id = $2
+        AND ps.status IN ('issued','acknowledged')
+    `, [payslipIds, orgId]);
+
+    if (!payslips.rows.length) {
+      return { success: false, error: 'No eligible payslips' };
+    }
+
+    const totalAmount = payslips.rows.reduce(
+      (s, p) => s + parseFloat(p.net_payable), 0
+    );
+
+    const affectedAccounts = payslips.rows.map(p => ({
+      account_id:  p.account_id,
+      entity_name: p.entity_name,
+      entity_type: p.entity_type,
+      amount:      parseFloat(p.net_payable),
+      payslip_id:  p.id,
+    }));
+
+    const resolutionId = uuidv4();
+    await db.query(`
+      INSERT INTO financial_resolutions (
+        id, org_id, branch_id,
+        resolution_type, title,
+        period_start, period_end,
+        total_amount, currency,
+        affected_accounts,
+        status, requested_by,
+        requested_at, created_at, updated_at
+      ) VALUES (
+        $1,$2,$3,
+        'payout_approval',
+        $4, $5,$6,
+        $7,'MYR', $8,
+        'pending',$9,
+        NOW(),NOW(),NOW()
+      )
+    `, [
+      resolutionId, orgId, branchId,
+      `급여 지급 결의서 — ${periodStart} ~ ${periodEnd}`,
+      periodStart, periodEnd,
+      parseFloat(totalAmount.toFixed(2)),
+      JSON.stringify(affectedAccounts),
+      requestedBy,
+    ]);
+
+    return {
+      success: true, resolutionId,
+      totalAmount: parseFloat(totalAmount.toFixed(2)),
+      payslipCount: payslips.rows.length,
+    };
+  } catch (err) {
+    console.error('[RESOLUTION] createPayout failed:', err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+async function createAgentPaymentResolution(db, {
+  orgId, branchId, agentId,
+  accountingPeriod, requestedBy,
+}) {
+  try {
+    // ✅ agent_invoices 기존 테이블과 연동
+    const accruals = await db.query(`
+      SELECT le.id, le.amount, le.effective_date
+      FROM ledger_entries le
+      JOIN ledger_accounts la ON la.id = le.account_id
+      WHERE la.account_type      = 'agent'
+        AND la.entity_id         = $1
+        AND le.org_id            = $2
+        AND le.entry_type        = 'fee_accrued'
+        AND le.accounting_period = $3
+        AND le.status            = 'posted'
+        AND le.document_id IS NULL
+    `, [agentId, orgId, accountingPeriod]);
+
+    if (!accruals.rows.length) {
+      return { success: false, message: 'No unbilled agent accruals' };
+    }
+
+    const totalAmount = accruals.rows.reduce(
+      (s, r) => s + parseFloat(r.amount), 0
+    );
+    const entryIds = accruals.rows.map(r => r.id);
+
+    // agents 테이블에서 이름 조회
+    const agentResult = await db.query(
+      'SELECT name FROM agents WHERE id = $1', [agentId]
+    );
+    const agentName = agentResult.rows[0]?.name || agentId;
+
+    const [y, m]     = accountingPeriod.split('-');
+    const periodStart = `${y}-${m}-01`;
+    const periodEnd   = new Date(y, m, 0).toISOString().split('T')[0];
+
+    const resolutionId = uuidv4();
+    await db.query(`
+      INSERT INTO financial_resolutions (
+        id, org_id, branch_id,
+        resolution_type, title,
+        period_start, period_end,
+        total_amount, currency,
+        affected_accounts, ledger_entry_ids,
+        status, requested_by,
+        requested_at, created_at, updated_at
+      ) VALUES (
+        $1,$2,$3,
+        'agent_payment', $4,
+        $5,$6,
+        $7,'MYR',
+        $8,$9,
+        'pending',$10,
+        NOW(),NOW(),NOW()
+      )
+    `, [
+      resolutionId, orgId, branchId,
+      `Agent 수수료 결의서 — ${agentName} — ${accountingPeriod}`,
+      periodStart, periodEnd,
+      parseFloat(totalAmount.toFixed(2)),
+      JSON.stringify([{
+        account_type: 'agent',
+        entity_name:  agentName,
+        agent_id:     agentId,
+        amount:       parseFloat(totalAmount.toFixed(2)),
+      }]),
+      entryIds,
+      requestedBy,
+    ]);
+
+    // ledger_entries에 결의서 연결
+    await db.query(`
+      UPDATE ledger_entries
+      SET document_type='resolution', document_id=$1
+      WHERE id = ANY($2)
+    `, [resolutionId, entryIds]);
+
+    return {
+      success: true, resolutionId, agentName,
+      totalAmount: parseFloat(totalAmount.toFixed(2)),
+      entryCount: accruals.rows.length,
+    };
+  } catch (err) {
+    console.error('[RESOLUTION] createAgentPayment failed:', err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+async function approveResolution(db, { resolutionId, approvedBy }) {
+  const r = await db.query(`
+    UPDATE financial_resolutions
+    SET status='approved', approved_by=$1,
+        approved_at=NOW(), updated_at=NOW()
+    WHERE id=$2 AND status='pending'
+    RETURNING *
+  `, [approvedBy, resolutionId]);
+
+  return r.rows.length
+    ? { success: true, resolution: r.rows[0] }
+    : { success: false, error: 'Not found or not pending' };
+}
+
+async function rejectResolution(db, {
+  resolutionId, rejectedBy, reason,
+}) {
+  const r = await db.query(`
+    UPDATE financial_resolutions
+    SET status='rejected', rejected_by=$1,
+        rejection_reason=$2, updated_at=NOW()
+    WHERE id=$3 AND status='pending'
+    RETURNING *
+  `, [rejectedBy, reason, resolutionId]);
+
+  if (!r.rows.length) {
+    return { success: false, error: 'Not found or not pending' };
+  }
+
+  // 연결 해제 (재사용 가능하도록)
+  if (r.rows[0].ledger_entry_ids?.length) {
+    await db.query(`
+      UPDATE ledger_entries
+      SET document_type=NULL, document_id=NULL
+      WHERE id = ANY($1)
+    `, [r.rows[0].ledger_entry_ids]);
+  }
+
+  return { success: true, resolution: r.rows[0] };
+}
+
+module.exports = {
+  createPayoutResolution,
+  createAgentPaymentResolution,
+  approveResolution,
+  rejectResolution,
+};
+```
+
+Report: "✅ Step 2 complete: resolutionService.js created"
+
+---
+
+## STEP 3: /routes/ledger.js 생성 및 등록
+```javascript
+// /routes/ledger.js
+// ✅ org_id 기반, role 소문자, agents 테이블
+
+'use strict';
+
+const express    = require('express');
+const router     = express.Router();
+
+// 기존 auth 미들웨어 import — 실제 파일명으로 교체
+const { requireAuth, requireRole } = require('../middleware/auth');
+
+const ledgerSvc     = require('../services/ledger/ledgerService');
+const payslipSvc    = require('../services/ledger/payslipService');
+const resolutionSvc = require('../services/ledger/resolutionService');
+
+// ─── 헬스체크 ───────────────────────────────────────────────────
+
+router.get('/health', requireAuth, async (req, res) => {
+  try {
+    const r = await db.query(`
+      SELECT
+        (SELECT COUNT(*) FROM ledger_accounts
+         WHERE org_id=$1)             AS accounts,
+        (SELECT COUNT(*) FROM ledger_entries
+         WHERE org_id=$1)             AS entries,
+        (SELECT COUNT(*) FROM payslips
+         WHERE org_id=$1)             AS payslips,
+        (SELECT COUNT(*) FROM financial_resolutions
+         WHERE org_id=$1)             AS resolutions,
+        (SELECT COUNT(*) FROM failed_ledger_queue
+         WHERE org_id=$1
+           AND retry_count < 3)       AS pending_retries
+    `, [req.user.org_id]);
+
+    res.json({ success: true, ...r.rows[0],
+               timestamp: new Date().toISOString() });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─── 계정/잔액 ──────────────────────────────────────────────────
+
+router.get('/accounts',
+  requireAuth,
+  requireRole(['admin','super_admin','branch_manager']),
+  async (req, res) => {
+    try {
+      const { account_type, branch_id } = req.query;
+      let q = `
+        SELECT la.*,
+          COALESCE(v.current_balance, 0)  AS live_balance,
+          v.last_transaction_at
+        FROM ledger_accounts la
+        LEFT JOIN v_account_balances v ON v.account_id = la.id
+        WHERE la.org_id = $1 AND la.is_active = TRUE
+      `;
+      const p = [req.user.org_id];
+      if (account_type) { p.push(account_type); q += ` AND la.account_type=$${p.length}`; }
+      if (branch_id)    { p.push(branch_id);    q += ` AND la.branch_id=$${p.length}`; }
+      q += ' ORDER BY la.account_type, la.created_at';
+      const r = await db.query(q, p);
+      res.json({ success: true, accounts: r.rows });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+);
+
+router.get('/accounts/:accountType/:entityId/balance',
+  requireAuth,
+  async (req, res) => {
+    try {
+      const { accountType, entityId } = req.params;
+      const isSelf  = req.user.id === entityId;
+      const isAdmin = ['admin','super_admin','branch_manager']
+                        .includes(req.user.role);
+      if (!isSelf && !isAdmin) {
+        return res.status(403).json({ success: false, error: 'Forbidden' });
+      }
+      // Investor → 집계만
+      if (req.user.role === 'investor') {
+        return res.status(403).json({
+          success: false,
+          error: 'Investors access v_investor_summary only',
+        });
+      }
+      const r = await ledgerSvc.getBalance(db, {
+        orgId: req.user.org_id, accountType, entityId,
+      });
+      res.json(r);
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+);
+
+router.get('/accounts/:accountType/:entityId/entries',
+  requireAuth,
+  async (req, res) => {
+    try {
+      const { accountType, entityId } = req.params;
+      const { from, to, status, limit = 50, offset = 0 } = req.query;
+
+      const isSelf  = req.user.id === entityId;
+      const isAdmin = ['admin','super_admin','branch_manager']
+                        .includes(req.user.role);
+      if (!isSelf && !isAdmin) {
+        return res.status(403).json({ success: false, error: 'Forbidden' });
+      }
+      if (req.user.role === 'investor') {
+        return res.status(403).json({
+          success: false, error: 'Forbidden: use investor summary endpoint',
+        });
+      }
+
+      const acct = await db.query(`
+        SELECT id FROM ledger_accounts
+        WHERE org_id=$1 AND account_type=$2 AND entity_id=$3
+        LIMIT 1
+      `, [req.user.org_id, accountType, entityId]);
+
+      if (!acct.rows.length) {
+        return res.status(404).json({ success: false, error: 'Account not found' });
+      }
+
+      let q = 'SELECT * FROM ledger_entries WHERE account_id=$1';
+      const p = [acct.rows[0].id];
+      if (from)   { p.push(from);   q += ` AND effective_date>=$${p.length}`; }
+      if (to)     { p.push(to);     q += ` AND effective_date<=$${p.length}`; }
+      if (status) { p.push(status); q += ` AND status=$${p.length}`; }
+
+      const total = await db.query(
+        `SELECT COUNT(*) FROM (${q}) t`, p
+      );
+      p.push(parseInt(limit)); p.push(parseInt(offset));
+      q += ` ORDER BY effective_date DESC, posted_at DESC
+             LIMIT $${p.length-1} OFFSET $${p.length}`;
+
+      const entries = await db.query(q, p);
+      res.json({
+        success: true,
+        total:   parseInt(total.rows[0].count),
+        entries: entries.rows,
+      });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+);
+
+// ─── 급여명세서 ────────────────────────────────────────────────
+
+router.post('/payslips/generate',
+  requireAuth,
+  requireRole(['admin','super_admin','branch_manager']),
+  async (req, res) => {
+    try {
+      const {
+        account_id, entity_type, entity_id,
+        period_start, period_end, branch_id,
+      } = req.body;
+      if (!account_id || !period_start || !period_end) {
+        return res.status(400).json({
+          success: false,
+          error: 'account_id, period_start, period_end required',
+        });
+      }
+      const r = await payslipSvc.generatePayslip(db, {
+        orgId:       req.user.org_id,
+        branchId:    branch_id,
+        accountId:   account_id,
+        entityType:  entity_type,
+        entityId:    entity_id,
+        periodStart: period_start,
+        periodEnd:   period_end,
+        createdBy:   req.user.id,
+      });
+      res.json(r);
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+);
+
+router.post('/payslips/generate-batch',
+  requireAuth,
+  requireRole(['admin','super_admin','branch_manager']),
+  async (req, res) => {
+    try {
+      const { branch_id, account_type, period_start, period_end } = req.body;
+      const r = await payslipSvc.generateBranchPayslips(db, {
+        orgId:       req.user.org_id,
+        branchId:    branch_id,
+        accountType: account_type || 'hostess',
+        periodStart: period_start,
+        periodEnd:   period_end,
+        createdBy:   req.user.id,
+      });
+      res.json(r);
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+);
+
+router.get('/payslips', requireAuth, async (req, res) => {
+  try {
+    const { entity_type, entity_id, status, period_start, period_end } = req.query;
+    const isSelf  = req.user.id === entity_id;
+    const isAdmin = ['admin','super_admin','branch_manager']
+                      .includes(req.user.role);
+    if (!isSelf && !isAdmin) {
+      return res.status(403).json({ success: false, error: 'Forbidden' });
+    }
+    let q = 'SELECT * FROM payslips WHERE org_id=$1';
+    const p = [req.user.org_id];
+    if (entity_type)  { p.push(entity_type);  q += ` AND entity_type=$${p.length}`; }
+    if (entity_id)    { p.push(entity_id);    q += ` AND entity_id=$${p.length}`; }
+    if (status)       { p.push(status);       q += ` AND status=$${p.length}`; }
+    if (period_start) { p.push(period_start); q += ` AND period_start>=$${p.length}`; }
+    if (period_end)   { p.push(period_end);   q += ` AND period_end<=$${p.length}`; }
+    q += ' ORDER BY period_start DESC';
+    const r = await db.query(q, p);
+    res.json({ success: true, payslips: r.rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.patch('/payslips/:id/issue',
+  requireAuth,
+  requireRole(['admin','super_admin','branch_manager']),
+  async (req, res) => {
+    try {
+      const r = await payslipSvc.issuePayslip(db, {
+        payslipId: req.params.id,
+      });
+      res.json(r);
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+);
+
+router.patch('/payslips/:id/acknowledge',
+  requireAuth,
+  async (req, res) => {
+    try {
+      const ps = await db.query(
+        'SELECT * FROM payslips WHERE id=$1', [req.params.id]
+      );
+      if (!ps.rows.length) {
+        return res.status(404).json({ success: false, error: 'Not found' });
+      }
+      // 본인 확인 (hostess는 자신의 payslip만)
+      const acct = await db.query(
+        'SELECT entity_id FROM ledger_accounts WHERE id=$1',
+        [ps.rows[0].account_id]
+      );
+      if (acct.rows[0]?.entity_id !== req.user.id &&
+          acct.rows[0]?.entity_id !== req.user.hostess_profile_id) {
+        return res.status(403).json({ success: false, error: 'Forbidden' });
+      }
+      await db.query(`
+        UPDATE payslips SET
+          status='acknowledged',
+          acknowledged_at=NOW(),
+          acknowledged_by=$1,
+          updated_at=NOW()
+        WHERE id=$2 AND status='issued'
+      `, [req.user.id, req.params.id]);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+);
+
+// ─── 결의서 ────────────────────────────────────────────────────
+
+router.post('/resolutions/payout',
+  requireAuth,
+  requireRole(['admin','super_admin','branch_manager']),
+  async (req, res) => {
+    try {
+      const { payslip_ids, period_start, period_end, branch_id } = req.body;
+      const r = await resolutionSvc.createPayoutResolution(db, {
+        orgId:       req.user.org_id,
+        branchId:    branch_id,
+        payslipIds:  payslip_ids,
+        periodStart: period_start,
+        periodEnd:   period_end,
+        requestedBy: req.user.id,
+      });
+      res.json(r);
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+);
+
+router.post('/resolutions/agent-payment',
+  requireAuth,
+  requireRole(['admin','super_admin']),
+  async (req, res) => {
+    try {
+      const { agent_id, accounting_period, branch_id } = req.body;
+      const r = await resolutionSvc.createAgentPaymentResolution(db, {
+        orgId:            req.user.org_id,
+        branchId:         branch_id,
+        agentId:          agent_id,
+        accountingPeriod: accounting_period,
+        requestedBy:      req.user.id,
+      });
+      res.json(r);
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+);
+
+router.get('/resolutions',
+  requireAuth,
+  requireRole(['admin','super_admin','branch_manager']),
+  async (req, res) => {
+    try {
+      const { resolution_type, status, branch_id } = req.query;
+      let q  = 'SELECT * FROM financial_resolutions WHERE org_id=$1';
+      const p = [req.user.org_id];
+      if (resolution_type) { p.push(resolution_type); q += ` AND resolution_type=$${p.length}`; }
+      if (status)          { p.push(status);          q += ` AND status=$${p.length}`; }
+      if (branch_id)       { p.push(branch_id);       q += ` AND branch_id=$${p.length}`; }
+      q += ' ORDER BY requested_at DESC';
+      const r = await db.query(q, p);
+      res.json({ success: true, resolutions: r.rows });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+);
+
+router.patch('/resolutions/:id/approve',
+  requireAuth,
+  requireRole(['admin','super_admin']),
+  async (req, res) => {
+    try {
+      const r = await resolutionSvc.approveResolution(db, {
+        resolutionId: req.params.id,
+        approvedBy:   req.user.id,
+      });
+      res.json(r);
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+);
+
+router.patch('/resolutions/:id/reject',
+  requireAuth,
+  requireRole(['admin','super_admin']),
+  async (req, res) => {
+    try {
+      const { reason } = req.body;
+      if (!reason || reason.trim().length < 5) {
+        return res.status(400).json({
+          success: false, error: 'reason required (min 5 chars)',
+        });
+      }
+      const r = await resolutionSvc.rejectResolution(db, {
+        resolutionId: req.params.id,
+        rejectedBy:   req.user.id,
+        reason,
+      });
+      res.json(r);
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+);
+
+// ─── 수동 조정 (ADMIN 이상) ─────────────────────────────────────
+
+router.post('/entries/manual-adjustment',
+  requireAuth,
+  requireRole(['admin','super_admin']),
+  async (req, res) => {
+    try {
+      const {
+        account_id, direction, amount, currency,
+        description, audit_note, effective_date,
+      } = req.body;
+
+      if (!audit_note || audit_note.trim().length < 10) {
+        return res.status(400).json({
+          success: false,
+          error: 'audit_note required (min 10 chars)',
+        });
+      }
+      const acct = await db.query(
+        'SELECT org_id FROM ledger_accounts WHERE id=$1', [account_id]
+      );
+      if (!acct.rows.length ||
+          acct.rows[0].org_id !== req.user.org_id) {
+        return res.status(403).json({ success: false, error: 'Forbidden' });
+      }
+      const r = await ledgerSvc.postEntry(db, {
+        orgId:         req.user.org_id,
+        accountId:     account_id,
+        entryType:     'manual_adjustment',
+        direction,
+        amount:        parseFloat(amount),
+        currency:      currency || 'MYR',
+        sourceType:    'manual',
+        effectiveDate: effective_date,
+        description,
+        auditNote:     audit_note,
+        postedBy:      req.user.id,
+        ipAddress:     req.ip,
+      });
+      res.json(r);
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+);
+
+router.post('/entries/:id/reverse',
+  requireAuth,
+  requireRole(['admin','super_admin']),
+  async (req, res) => {
+    try {
+      const { reason } = req.body;
+      if (!reason || reason.trim().length < 5) {
+        return res.status(400).json({
+          success: false, error: 'reason required (min 5 chars)',
+        });
+      }
+      const r = await ledgerSvc.reverseEntry(db, {
+        originalEntryId: req.params.id,
+        reason,
+        postedBy:  req.user.id,
+        ipAddress: req.ip,
+      });
+      res.json(r);
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+);
+
+// ─── Investor 집계 전용 ─────────────────────────────────────────
+
+router.get('/investor/summary',
+  requireAuth,
+  requireRole(['admin','super_admin','investor']),
+  async (req, res) => {
+    try {
+      const { period, branch_id } = req.query;
+      let q  = 'SELECT * FROM v_investor_summary WHERE org_id=$1';
+      const p = [req.user.org_id];
+      if (period)    { p.push(period);    q += ` AND accounting_period=$${p.length}`; }
+      if (branch_id) { p.push(branch_id); q += ` AND branch_id=$${p.length}`; }
+      q += ' ORDER BY accounting_period DESC';
+      const r = await db.query(q, p);
+      res.json({
+        success: true, summary: r.rows,
+        note: 'Aggregated data only — no PII',
+      });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+);
+
+router.get('/investor/unpaid-liabilities',
+  requireAuth,
+  requireRole(['admin','super_admin','investor']),
+  async (req, res) => {
+    try {
+      const r = await db.query(`
+        SELECT account_type, branch_id, currency,
+               COUNT(*)            AS account_count,
+               SUM(unpaid_balance) AS total_unpaid
+        FROM v_unpaid_balances
+        WHERE org_id = $1
+        GROUP BY account_type, branch_id, currency
+        ORDER BY total_unpaid DESC
+      `, [req.user.org_id]);
+      res.json({ success: true, liabilities: r.rows });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+);
+
+module.exports = router;
+```
+
+기존 app.js (또는 server.js)에 ADD:
+```javascript
+// 기존 route 등록 아래에 ADD — 기존 코드 수정 없음
+const ledgerRoutes = require('./routes/ledger');
+app.use('/api/ledger', ledgerRoutes);
+```
+
+Report: "✅ Step 3 complete: routes registered"
+
+---
+
+SUCCESS CRITERIA:
+- [ ] payslipService.js, resolutionService.js 생성
+- [ ] ledger routes 등록
+- [ ] GET /api/ledger/health 정상
+- [ ] GET /api/ledger/accounts 정상
+- [ ] 기존 API regression 없음
+
+⛔ 실패 → 즉시 중단, 보고, 대기
+✅ 통과 → "✅ Part 4 완료. Part 5 진행 가능" 출력

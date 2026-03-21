@@ -33,6 +33,7 @@ import settingsMenuConfigRouter from "./settings-menu-config";
 import menuRouter from "./menu";
 import hostessAssignmentsRouter from "./hostessAssignments";
 import agencyReconciliationRouter from "./agencyReconciliation";
+import ledgerRouter from "./ledger";
 
 const router: IRouter = Router();
 
@@ -70,5 +71,6 @@ router.use(settingsMenuConfigRouter);
 router.use(menuRouter);
 router.use(hostessAssignmentsRouter);
 router.use(agencyReconciliationRouter);
+router.use(ledgerRouter);
 
 export default router;
