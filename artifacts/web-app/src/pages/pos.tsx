@@ -33,7 +33,15 @@ import {
 import type { Order, OrderItem } from "@workspace/api-client-react";
 
 type CatalogItem = { id: string; name: string; unitPrice: number; sortOrder: number; };
-type CatalogGroup = { id: string; name: string; sortOrder: number; items: CatalogItem[]; };
+type CatalogGroup = { id: string; name: string; sortOrder: number; menuCatName: string | null; items: CatalogItem[]; };
+
+function catMarker(menuCatName: string | null): string {
+  if (!menuCatName) return "";
+  const n = menuCatName.toLowerCase();
+  if (n.includes("special")) return " **";
+  if (n.includes("vip")) return " *";
+  return "";
+}
 
 function usePosCatalog() {
   const token = useAuthStore.getState().token;
@@ -245,20 +253,30 @@ function AddItemModal({ orderId, onClose, onAdded }: { orderId: string; onClose:
         <div ref={tabsRef} className="flex gap-1 overflow-x-auto px-4 py-3 border-b border-white/5 shrink-0 scrollbar-none">
           {menuLoading ? (
             <div className="flex gap-2">{[1,2,3,4].map(i => <div key={i} className="h-7 w-24 rounded-lg bg-white/5 animate-pulse" />)}</div>
-          ) : categories.map(cat => (
-            <button
-              key={cat.id}
-              onClick={() => setActiveCatId(cat.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all border ${
-                activeCatId === cat.id
-                  ? "bg-primary/15 border-primary/40 text-primary"
-                  : "bg-black/30 border-white/10 text-muted-foreground hover:border-white/20 hover:text-foreground"
-              }`}
-            >
-              {cat.name}
-              <span className="ml-1.5 text-[10px] opacity-60">({cat.items.length})</span>
-            </button>
-          ))}
+          ) : categories.map(cat => {
+            const marker = catMarker(cat.menuCatName);
+            const isVip = marker === " *";
+            const isSpecial = marker === " **";
+            return (
+              <button
+                key={cat.id}
+                onClick={() => setActiveCatId(cat.id)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all border ${
+                  activeCatId === cat.id
+                    ? "bg-primary/15 border-primary/40 text-primary"
+                    : "bg-black/30 border-white/10 text-muted-foreground hover:border-white/20 hover:text-foreground"
+                }`}
+              >
+                {cat.name}
+                {marker && (
+                  <span className={`ml-0.5 font-bold ${isSpecial ? "text-rose-400" : isVip ? "text-amber-400" : ""}`}>
+                    {marker.trim()}
+                  </span>
+                )}
+                <span className="ml-1.5 text-[10px] opacity-50">({cat.items.length})</span>
+              </button>
+            );
+          })}
         </div>
 
         {/* Items grid */}

@@ -329,9 +329,9 @@ router.get(
         visFilter = `AND (mc.visibility_level IS NULL OR mc.visibility_level = 'ALL')`;
       }
 
-      // Groups
+      // Groups (include menu_category name for tier markers)
       const { rows: groupRows } = await pool.query<Record<string, unknown>>(
-        `SELECT pg.id, pg.name, pg.sort_order
+        `SELECT pg.id, pg.name, pg.sort_order, mc.name as menu_cat_name
          FROM product_groups pg
          LEFT JOIN menu_categories mc ON mc.id = pg.menu_category_id
          WHERE pg.is_active = true ${visFilter}
@@ -366,17 +366,16 @@ router.get(
         });
       }
 
-      const result = groupRows
-        .map(g => {
-          const nameObj = g.name as Record<string, string>;
-          return {
-            id: g.id as string,
-            name: nameObj[lang] ?? nameObj["en"] ?? "",
-            sortOrder: (g.sort_order as number) ?? 0,
-            items: productsByGroup[g.id as string] ?? [],
-          };
-        })
-        .filter(g => g.items.length > 0);
+      const result = groupRows.map(g => {
+        const nameObj = g.name as Record<string, string>;
+        return {
+          id: g.id as string,
+          name: nameObj[lang] ?? nameObj["en"] ?? "",
+          sortOrder: (g.sort_order as number) ?? 0,
+          menuCatName: (g.menu_cat_name as string) ?? null,
+          items: productsByGroup[g.id as string] ?? [],
+        };
+      });
 
       res.json({ data: result });
     } catch (err) {
