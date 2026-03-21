@@ -182,7 +182,16 @@ router.get("/hostess-profiles/:id", authenticate, async (req: Request, res: Resp
               a.name AS agent_name,
               a.commission_rate AS agency_commission_rate,
               a.commission_type AS agency_commission_type,
-              EXTRACT(YEAR FROM AGE(NOW(), hp.date_of_birth)) AS age
+              EXTRACT(YEAR FROM AGE(NOW(), hp.date_of_birth)) AS age,
+              (SELECT storage_key FROM hostess_photos ph
+               WHERE ph.hostess_profile_id = hp.id AND ph.is_primary = true
+                 AND ph.is_approved = true AND ph.deleted_at IS NULL LIMIT 1) AS primary_photo,
+              (SELECT COUNT(*) FROM hostess_photos ph
+               WHERE ph.hostess_profile_id = hp.id AND ph.is_approved = true AND ph.deleted_at IS NULL) AS photo_count,
+              (SELECT COUNT(*) FROM hostess_services hs
+               WHERE hs.hostess_profile_id = hp.id AND hs.is_active = true) AS service_count,
+              (SELECT MIN(price_amount) FROM hostess_services hs
+               WHERE hs.hostess_profile_id = hp.id AND hs.is_active = true) AS min_service_price
        FROM hostess_profiles hp
        JOIN staff s ON s.id = hp.staff_id
        JOIN branches b ON b.id = hp.branch_id
