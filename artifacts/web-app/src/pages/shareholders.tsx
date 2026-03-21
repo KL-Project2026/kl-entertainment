@@ -17,13 +17,11 @@ import {
   Users,
   Plus,
   X,
-  FileText,
   Percent,
   DollarSign,
-  ChevronDown,
-  ChevronUp,
+  Building2,
+  TrendingUp,
 } from "lucide-react";
-import { formatDate } from "@/lib/utils";
 import { ListPageWrapper, type ColumnDef } from "@/components/shared/list-page-wrapper";
 import { StatusBadge } from "@/components/ui/status-badge";
 
@@ -426,134 +424,116 @@ function SettlementModal({ shareholder, branches, onClose }: {
   );
 }
 
-function PastSettlements({ shareholderId, token }: { shareholderId: string; token: string | null }) {
-  const { data } = useQuery({
-    queryKey: ["settlements", shareholderId],
-    queryFn: async () => {
-      const r = await fetch(`/api/shareholders/${shareholderId}/settlements`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      return r.json();
-    },
-  });
-
-  const settlements = data?.data ?? [];
-  if (!settlements.length) return <p className="text-xs text-muted-foreground">No settlements yet.</p>;
-
-  return (
-    <div className="space-y-2">
-      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Past Settlements</p>
-      {settlements.map((s: Record<string, unknown>) => (
-        <div key={s.id as string} className="flex items-center justify-between text-sm">
-          <div className="flex items-center gap-3">
-            <StatusBadge status={s.status as string} />
-            <span className="text-muted-foreground">
-              {formatDate(s.period_start as string)} → {formatDate(s.period_end as string)}
-            </span>
-            <span className="text-xs text-muted-foreground">({s.branch_name as string})</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="font-medium">RM {parseFloat(s.settlement_amount_myr as string).toFixed(2)}</span>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-xs h-6 px-2"
-              onClick={() => window.open(`/api/investor/settlements/${s.id}/pdf`, "_blank")}
-            >
-              PDF
-            </Button>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 type ShareholderRow = Record<string, unknown>;
 
 function ShareholderCard({
   shareholder,
-  expanded,
-  onToggleExpand,
   onEquity,
   onSettle,
   onEdit,
-  token,
 }: {
   shareholder: Shareholder;
-  expanded: boolean;
-  onToggleExpand: () => void;
   onEquity: () => void;
   onSettle: () => void;
   onEdit: () => void;
-  token: string | null;
 }) {
+  const equities = shareholder.branch_equities ?? [];
+  const totalInvested = equities.reduce(
+    (sum, e) => sum + parseFloat(e.investmentAmount ?? "0"),
+    0
+  );
+  const totalEquityPct = equities.reduce(
+    (sum, e) => sum + parseFloat(e.equityPct ?? "0"),
+    0
+  );
+
   return (
-    <Card className="overflow-hidden">
-      <div className="p-5">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <div className="flex items-center gap-3">
-              <p className="font-bold text-lg">{shareholder.name}</p>
-              <StatusBadge
-                status="active"
-                label={shareholder.preferredCurrency}
-                className="bg-primary/20 text-primary border-primary/30"
-              />
-            </div>
-            <div className="flex gap-4 mt-1 text-xs text-muted-foreground">
-              {shareholder.email && <span>✉ {shareholder.email}</span>}
-              {shareholder.phone && <span>📞 {shareholder.phone}</span>}
-              {shareholder.nationality && <span>🌏 {shareholder.nationality}</span>}
-            </div>
-
-            {shareholder.branch_equities && shareholder.branch_equities.length > 0 && (
-              <div className="flex gap-2 mt-2 flex-wrap">
-                {shareholder.branch_equities.map((eq) => {
-                  const eqPct = (parseFloat(eq.equityPct) * 100).toFixed(0);
-                  const ratePct = eq.agreedRate ? (parseFloat(eq.agreedRate) * 100).toFixed(0) : null;
-                  const investment = eq.investmentAmount ? parseFloat(eq.investmentAmount) : 0;
-                  return (
-                    <div key={eq.branchId} className="flex flex-col gap-0.5 bg-black/30 border border-white/10 rounded-lg px-3 py-1.5 text-xs">
-                      <span className="font-medium text-muted-foreground">{eq.branchName}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-primary font-bold">{eqPct}% equity</span>
-                        {ratePct && ratePct !== eqPct && (
-                          <span className="text-amber-400 font-medium">{ratePct}% rate</span>
-                        )}
-                      </div>
-                      {investment > 0 && (
-                        <span className="text-emerald-400 font-medium">
-                          RM {investment.toLocaleString("en-MY", { minimumFractionDigits: 0 })}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+    <Card className="overflow-hidden border-white/8 bg-black/40">
+      {/* ── Header ── */}
+      <div className="px-5 pt-4 pb-3 flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="font-bold text-base leading-tight">{shareholder.name}</p>
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/25 font-medium tracking-wide">
+              {shareholder.preferredCurrency}
+            </span>
           </div>
-
-          <div className="flex gap-2 flex-shrink-0">
-            <Button size="sm" variant="outline" className="text-xs gap-1" onClick={onEquity}>
-              <Percent className="w-3 h-3" /> Equity
-            </Button>
-            <Button size="sm" className="text-xs gap-1" onClick={onSettle}>
-              <DollarSign className="w-3 h-3" /> Settle
-            </Button>
-            <Button size="sm" variant="outline" className="text-xs" onClick={onEdit}>
-              Edit
-            </Button>
-            <Button size="sm" variant="ghost" className="text-xs px-2" onClick={onToggleExpand}>
-              {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </Button>
+          <div className="flex gap-4 mt-0.5 text-xs text-muted-foreground flex-wrap">
+            {shareholder.email && <span>✉ {shareholder.email}</span>}
+            {shareholder.phone && <span>📞 {shareholder.phone}</span>}
+            {shareholder.nationality && <span>🌏 {shareholder.nationality}</span>}
           </div>
+        </div>
+
+        <div className="flex gap-1.5 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+          <Button size="sm" variant="outline" className="text-xs gap-1 h-7 px-2.5" onClick={onEquity}>
+            <Percent className="w-3 h-3" /> Equity
+          </Button>
+          <Button size="sm" className="text-xs gap-1 h-7 px-2.5" onClick={onSettle}>
+            <DollarSign className="w-3 h-3" /> Settle
+          </Button>
+          <Button size="sm" variant="ghost" className="text-xs h-7 px-2" onClick={onEdit}>
+            Edit
+          </Button>
         </div>
       </div>
 
-      {expanded && (
-        <div className="border-t border-white/10 px-5 py-4 bg-black/20">
-          <PastSettlements shareholderId={shareholder.id} token={token} />
+      {/* ── Branch Investments Table ── */}
+      {equities.length > 0 && (
+        <div className="border-t border-white/5 bg-black/20">
+          {/* Column headers */}
+          <div className="px-5 py-1.5 grid grid-cols-[1fr_56px_72px_96px] gap-2 text-[10px] text-muted-foreground/60 uppercase tracking-wider border-b border-white/5">
+            <span className="flex items-center gap-1">
+              <Building2 className="w-3 h-3" /> Branch
+            </span>
+            <span className="text-right">Equity</span>
+            <span className="text-right">Rate</span>
+            <span className="text-right">Invested</span>
+          </div>
+          <div className="px-5 divide-y divide-white/5">
+            {equities.map((eq) => {
+              const eqPct = (parseFloat(eq.equityPct) * 100).toFixed(1);
+              const ratePct = eq.agreedRate
+                ? (parseFloat(eq.agreedRate) * 100).toFixed(1)
+                : eqPct;
+              const investment = parseFloat(eq.investmentAmount ?? "0");
+              const ratesDiffer = ratePct !== eqPct;
+              return (
+                <div
+                  key={eq.branchId}
+                  className="py-2 grid grid-cols-[1fr_56px_72px_96px] gap-2 items-center text-xs"
+                >
+                  <span className="text-muted-foreground truncate">{eq.branchName}</span>
+                  <span className="text-primary font-bold text-right">{eqPct}%</span>
+                  <span className={`text-right font-medium ${ratesDiffer ? "text-amber-400" : "text-muted-foreground/50"}`}>
+                    {ratePct}%
+                  </span>
+                  <span className="text-right font-medium text-emerald-400">
+                    {investment > 0
+                      ? `RM ${investment.toLocaleString("en-MY", { maximumFractionDigits: 0 })}`
+                      : "—"}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Totals footer */}
+          <div className="px-5 py-2 grid grid-cols-[1fr_56px_72px_96px] gap-2 items-center border-t border-white/10 bg-white/2">
+            <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider flex items-center gap-1">
+              <TrendingUp className="w-3 h-3" />
+              Total ({equities.length} branch{equities.length !== 1 ? "es" : ""})
+            </span>
+            <span className="text-primary font-bold text-right text-xs">
+              {(totalEquityPct * 100).toFixed(1)}%
+            </span>
+            <span className="text-right" />
+            <span className="text-right text-xs font-bold text-emerald-400">
+              {totalInvested > 0
+                ? `RM ${totalInvested.toLocaleString("en-MY", { maximumFractionDigits: 0 })}`
+                : "—"}
+            </span>
+          </div>
         </div>
       )}
     </Card>
@@ -609,7 +589,6 @@ export default function Shareholders() {
   const [editItem, setEditItem] = useState<Shareholder | undefined>();
   const [equityTarget, setEquityTarget] = useState<Shareholder | undefined>();
   const [settlementTarget, setSettlementTarget] = useState<Shareholder | undefined>();
-  const [expanded, setExpanded] = useState<string | null>(null);
 
   const { data: shareholdersData, isLoading } = useQuery({
     queryKey: ["shareholders"],
@@ -649,12 +628,9 @@ export default function Shareholders() {
             return (
               <ShareholderCard
                 shareholder={s}
-                expanded={expanded === s.id}
-                onToggleExpand={() => setExpanded(expanded === s.id ? null : s.id)}
                 onEquity={() => setEquityTarget(s)}
                 onSettle={() => setSettlementTarget(s)}
                 onEdit={() => { setEditItem(s); setShowForm(true); }}
-                token={token}
               />
             );
           }}
