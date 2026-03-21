@@ -207,6 +207,211 @@ router.get("/hostess-profiles/:id", authenticate, async (req: Request, res: Resp
   }
 });
 
+// ─── GET /hostess-profiles/:id/schedule ──────────────────────────
+// Returns weekly schedule, hourly rate, and allowed branches for booking UI.
+router.get("/hostess-profiles/:id/schedule", authenticate, async (req: Request, res: Response): Promise<void> => {
+  try {
+    // Basic hostess info + allowed branches
+    const { rows: hpRows } = await pool.query<{
+      id: string; staff_id: string; full_name: string; branch_id: string;
+      status: string; available_today: boolean; agency_id: string | null;
+      allowed_branch_ids: string[]; nationality_code: string | null;
+    }>(
+      `SELECT hp.id, hp.staff_id, s.full_name, hp.branch_id, hp.status,
+              hp.available_today, hp.agency_id, hp.allowed_branch_ids, hp.nationality_code
+       FROM hostess_profiles hp
+       JOIN staff s ON s.id = hp.staff_id
+       WHERE hp.id = $1 AND hp.deleted_at IS NULL`,
+      [req.params.id]
+    );
+    if (!hpRows.length) { res.status(404).json({ error: "NOT_FOUND" }); return; }
+    const hp = hpRows[0];
+
+    // Weekly schedule
+    const { rows: schedRows } = await pool.query<{
+      day_of_week: number; shift_start: string; shift_end: string; is_overnight: boolean;
+    }>(
+      `SELECT day_of_week, shift_start, shift_end, is_overnight
+       FROM staff_schedules
+       WHERE staff_id = $1
+         AND (effective_to IS NULL OR effective_to >= CURRENT_DATE)
+         AND effective_from <= CURRENT_DATE
+       ORDER BY day_of_week`,
+      [hp.staff_id]
+    );
+
+    // Hourly rate from active contract
+    const { rows: rateRows } = await pool.query<{ venue_commission_rate: string }>(
+      `SELECT venue_commission_rate FROM agent_hostess_contracts
+       WHERE hostess_profile_id = $1 AND is_active = true
+         AND contract_start <= CURRENT_DATE
+         AND (contract_end IS NULL OR contract_end >= CURRENT_DATE)
+       LIMIT 1`,
+      [req.params.id]
+    );
+    const hourlyRate = rateRows.length ? parseFloat(rateRows[0].venue_commission_rate) : 80;
+
+    // Allowed branches (home branch always included)
+    const allowedBranchIds: string[] = Array.isArray(hp.allowed_branch_ids) && hp.allowed_branch_ids.length
+      ? hp.allowed_branch_ids
+      : [hp.branch_id];
+
+    // Ensure home branch is present
+    if (!allowedBranchIds.includes(hp.branch_id)) allowedBranchIds.unshift(hp.branch_id);
+
+    const { rows: branchRows } = await pool.query<{ id: string; name: string; internal_code: string }>(
+      `SELECT id, name, internal_code FROM branches WHERE id = ANY($1) ORDER BY name`,
+      [allowedBranchIds]
+    );
+
+    // Current active assignment (is she busy right now?)
+    const { rows: busyRows } = await pool.query<{ id: string; reservation_no: string }>(
+      `SELECT hsa.id, r.reservation_no
+       FROM hostess_session_assignments hsa
+       JOIN reservations r ON r.id = hsa.reservation_id
+       WHERE hsa.hostess_id = $1
+         AND hsa.status = 'ACTIVE'
+         AND hsa.session_start <= NOW()
+       LIMIT 1`,
+      [req.params.id]
+    );
+
+    res.json({
+      data: {
+        id: hp.id,
+        staffName: hp.full_name,
+        status: hp.status,
+        availableToday: hp.available_today,
+        hourlyRate,
+        nationalityCode: hp.nationality_code,
+        weeklySchedule: schedRows.map(s => ({
+          dayOfWeek: s.day_of_week,
+          shiftStart: s.shift_start,
+          shiftEnd: s.shift_end,
+          isOvernight: s.is_overnight,
+        })),
+        allowedBranches: branchRows,
+        currentlyBusy: busyRows.length > 0 ? busyRows[0] : null,
+      }
+    });
+  } catch (err) {
+    console.error("Hostess schedule error:", err);
+    res.status(500).json({ error: "INTERNAL_ERROR" });
+  }
+});
+
+// ─── POST /hostess-profiles/:id/quick-book ────────────────────────
+// Creates a reservation pre-noted with this hostess. Incall = at venue, Outcall = client location.
+router.post("/hostess-profiles/:id/quick-book", authenticate, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const hostessProfileId = req.params.id;
+
+    // Validate hostess
+    const { rows: hpRows } = await pool.query<{
+      id: string; staff_id: string; full_name: string; branch_id: string; status: string;
+    }>(
+      `SELECT hp.id, hp.staff_id, s.full_name, hp.branch_id, hp.status
+       FROM hostess_profiles hp JOIN staff s ON s.id=hp.staff_id
+       WHERE hp.id=$1 AND hp.deleted_at IS NULL`,
+      [hostessProfileId]
+    );
+    if (!hpRows.length) { res.status(404).json({ error: "HOSTESS_NOT_FOUND" }); return; }
+    const hp = hpRows[0];
+    if (hp.status !== "active") {
+      res.status(422).json({ error: "HOSTESS_NOT_ACTIVE", message: `${hp.full_name} is currently ${hp.status}` });
+      return;
+    }
+
+    // Validate branch
+    const branchId = (body.branchId as string) || hp.branch_id;
+    const { rows: branchRows } = await pool.query<{ id: string; name: string; internal_code: string }>(
+      "SELECT id, name, internal_code FROM branches WHERE id = $1",
+      [branchId]
+    );
+    if (!branchRows.length) { res.status(404).json({ error: "BRANCH_NOT_FOUND" }); return; }
+    const branch = branchRows[0];
+
+    // Parse date/time
+    const reservationDate = body.reservationDate as string;  // YYYY-MM-DD
+    const startTimeStr   = body.startTime as string;         // HH:mm (local KL time)
+    const durationHours  = Number(body.durationHours ?? 2);
+    const isOutcall      = Boolean(body.isOutcall ?? false);
+
+    if (!reservationDate || !startTimeStr) {
+      res.status(400).json({ error: "DATE_TIME_REQUIRED" });
+      return;
+    }
+
+    // Build UTC timestamps from KL local time
+    const startISO = new Date(`${reservationDate}T${startTimeStr}:00+08:00`).toISOString();
+    const endISO   = new Date(new Date(startISO).getTime() + durationHours * 3600000).toISOString();
+
+    // Generate reservation number
+    const { rows: seqRows } = await pool.query<{ count: string }>(
+      "SELECT COUNT(*)::text AS count FROM reservations WHERE branch_id=$1",
+      [branchId]
+    );
+    const seq = String(parseInt(seqRows[0]?.count ?? "0") + 1).padStart(3, "0");
+    const dateTag = reservationDate.replace(/-/g, "").slice(2); // YYMMDD
+    const reservationNo = `${branch.internal_code}-${dateTag}-${seq}`;
+
+    // Create reservation
+    const { rows: resRows } = await pool.query<{ id: string }>(
+      `INSERT INTO reservations (
+         id, reservation_no, branch_id, customer_name, customer_phone,
+         guest_count, reservation_date, start_time, end_time, duration_hours,
+         status, booking_channel, is_outcall, special_requests, created_by
+       ) VALUES (
+         gen_random_uuid(), $1, $2, $3, $4,
+         1, $5, $6, $7, $8,
+         'tentative', $9, $10, $11, $12
+       ) RETURNING id`,
+      [
+        reservationNo, branchId,
+        (body.customerName as string) || null, (body.customerPhone as string) || null,
+        reservationDate, startISO, endISO, durationHours,
+        (body.bookingChannel as string) || "whatsapp",
+        isOutcall, (body.specialRequests as string) || null,
+        req.user!.id,
+      ]
+    );
+    const reservationId = resRows[0].id;
+
+    // Note the hostess on this reservation (pre-assignment in reservation_hostesses)
+    await pool.query(
+      `INSERT INTO reservation_hostesses (id, reservation_id, hostess_id, assigned_by, assigned_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, NOW())
+       ON CONFLICT DO NOTHING`,
+      [reservationId, hp.staff_id, req.user!.id]
+    );
+
+    // Audit log
+    await pool.query(
+      `INSERT INTO audit_log (entity_type, entity_id, action, changed_by, new_values)
+       VALUES ('reservations', $1, 'quick_book_hostess', $2, $3)`,
+      [reservationId, req.user!.id, JSON.stringify({ hostessProfileId, isOutcall, durationHours })]
+    );
+
+    res.status(201).json({
+      success: true,
+      data: {
+        reservationId,
+        reservationNo,
+        hostessName: hp.full_name,
+        branchName: branch.name,
+        startTime: startISO,
+        endTime: endISO,
+        isOutcall,
+        durationHours,
+      }
+    });
+  } catch (err) {
+    console.error("Quick book error:", err);
+    res.status(500).json({ error: "INTERNAL_ERROR" });
+  }
+});
+
 // ─── POST /hostess-profiles — Create ─────────────────────────────
 router.post(
   "/hostess-profiles",
