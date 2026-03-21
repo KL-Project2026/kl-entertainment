@@ -11,7 +11,7 @@ interface FolioEntry {
   amount: number;
   currency: string;
   is_void: boolean;
-  order_status: "pending" | "served";
+  order_status: "pending" | "served" | "cancelled";
 }
 
 interface FolioViewProps {
@@ -127,7 +127,10 @@ export const FolioView: React.FC<FolioViewProps> = ({
 
   const toggleStatus = async (entry: FolioEntry) => {
     setToggling(entry.id);
-    const next = entry.order_status === "pending" ? "served" : "pending";
+    const cycle: Record<string, "pending" | "served" | "cancelled"> = {
+      pending: "served", served: "cancelled", cancelled: "pending",
+    };
+    const next = cycle[entry.order_status] ?? "pending";
     try {
       await fetch(`/api/folio/entries/${entry.id}/status`, {
         method: "PATCH",
@@ -141,8 +144,9 @@ export const FolioView: React.FC<FolioViewProps> = ({
     } finally { setToggling(null); }
   };
 
-  const pendingCount = entries.filter(e => e.order_status === "pending").length;
-  const servedCount  = entries.filter(e => e.order_status === "served").length;
+  const pendingCount   = entries.filter(e => e.order_status === "pending").length;
+  const servedCount    = entries.filter(e => e.order_status === "served").length;
+  const cancelledCount = entries.filter(e => e.order_status === "cancelled").length;
 
   if (loading) return (
     <div style={{ padding: 32, textAlign: "center", color: "#6b7280", fontSize: 14 }}>
@@ -167,15 +171,25 @@ export const FolioView: React.FC<FolioViewProps> = ({
           )}
           {/* Summary pills */}
           {entries.length > 0 && (
-            <div style={{ display: "flex", gap: 6 }}>
-              <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 9,
-                background: "rgba(251,191,36,0.12)", color: "#fbbf24", border: "1px solid rgba(251,191,36,0.25)" }}>
-                {pendingCount} Pending
-              </span>
-              <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 9,
-                background: "rgba(34,197,94,0.12)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.25)" }}>
-                {servedCount} Served
-              </span>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {pendingCount > 0 && (
+                <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 9,
+                  background: "rgba(251,191,36,0.12)", color: "#fbbf24", border: "1px solid rgba(251,191,36,0.25)" }}>
+                  {pendingCount} Pending
+                </span>
+              )}
+              {servedCount > 0 && (
+                <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 9,
+                  background: "rgba(34,197,94,0.12)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.25)" }}>
+                  {servedCount} Served
+                </span>
+              )}
+              {cancelledCount > 0 && (
+                <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 9,
+                  background: "rgba(239,68,68,0.12)", color: "#f87171", border: "1px solid rgba(239,68,68,0.25)" }}>
+                  {cancelledCount} Cancelled
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -320,33 +334,42 @@ export const FolioView: React.FC<FolioViewProps> = ({
                 </td>
               </tr>
             ) : entries.map((e, idx) => {
-              const typeStyle = ENTRY_COLORS[e.entry_type] ?? ENTRY_COLORS.other;
-              const isPending  = e.order_status === "pending";
-              const isToggling = toggling === e.id;
+              const typeStyle   = ENTRY_COLORS[e.entry_type] ?? ENTRY_COLORS.other;
+              const isPending   = e.order_status === "pending";
+              const isServed    = e.order_status === "served";
+              const isCancelled = e.order_status === "cancelled";
+              const isToggling  = toggling === e.id;
+
+              const statusStyle = isPending
+                ? { bg: "rgba(251,191,36,0.15)",  color: "#fbbf24", shadow: "rgba(251,191,36,0.3)",  label: "Pending",   next: "→ Served" }
+                : isServed
+                ? { bg: "rgba(34,197,94,0.15)",   color: "#4ade80", shadow: "rgba(34,197,94,0.3)",   label: "Served",    next: "→ Cancelled" }
+                : { bg: "rgba(239,68,68,0.15)",   color: "#f87171", shadow: "rgba(239,68,68,0.3)",   label: "Cancelled", next: "→ Pending" };
+
               return (
                 <tr key={e.id} style={{
                   borderBottom: idx < entries.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none",
-                  background: isPending ? "rgba(251,191,36,0.02)" : "transparent",
-                  transition: "background 0.15s",
+                  background: isCancelled
+                    ? "rgba(239,68,68,0.03)"
+                    : isPending ? "rgba(251,191,36,0.02)" : "transparent",
+                  opacity: isCancelled ? 0.6 : 1,
+                  transition: "all 0.15s",
                 }}>
-                  {/* Status badge — clickable toggle */}
+                  {/* Status badge — 3-way cycle: Pending → Served → Cancelled → Pending */}
                   <td style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>
                     <button
                       onClick={() => toggleStatus(e)}
                       disabled={isToggling}
-                      title={isPending ? "Click to mark as Served" : "Click to mark as Pending"}
+                      title={`Click to cycle (${statusStyle.next})`}
                       style={{
                         padding: "3px 9px", borderRadius: 9, fontSize: 11, fontWeight: 700,
                         cursor: isToggling ? "wait" : "pointer", border: "none",
                         letterSpacing: "0.04em", transition: "all 0.15s",
-                        background: isPending ? "rgba(251,191,36,0.15)" : "rgba(34,197,94,0.15)",
-                        color:       isPending ? "#fbbf24"               : "#4ade80",
-                        boxShadow:   isPending
-                          ? "0 0 0 1px rgba(251,191,36,0.3)"
-                          : "0 0 0 1px rgba(34,197,94,0.3)",
+                        background: statusStyle.bg, color: statusStyle.color,
+                        boxShadow: `0 0 0 1px ${statusStyle.shadow}`,
                         opacity: isToggling ? 0.6 : 1,
                       }}>
-                      {isToggling ? "…" : isPending ? "Pending" : "Served"}
+                      {isToggling ? "…" : statusStyle.label}
                     </button>
                   </td>
                   {/* Entry type */}
@@ -354,25 +377,32 @@ export const FolioView: React.FC<FolioViewProps> = ({
                     <span style={{
                       fontSize: 11, fontWeight: 600, padding: "2px 7px", borderRadius: 5,
                       background: typeStyle.bg, color: typeStyle.text, border: `1px solid ${typeStyle.border}`,
+                      opacity: isCancelled ? 0.5 : 1,
                     }}>
                       {ENTRY_LABELS[e.entry_type] ?? e.entry_type}
                     </span>
                   </td>
                   {/* Description */}
-                  <td style={{ padding: "10px 12px", fontSize: 13, color: "#d1d5db" }}>
+                  <td style={{ padding: "10px 12px", fontSize: 13,
+                    color: isCancelled ? "#6b7280" : "#d1d5db",
+                    textDecoration: isCancelled ? "line-through" : "none" }}>
                     {e.description ?? <span style={{ color: "#4b5563" }}>—</span>}
                   </td>
                   {/* Qty */}
-                  <td style={{ padding: "10px 12px", fontSize: 13, textAlign: "center", color: "#9ca3af" }}>
+                  <td style={{ padding: "10px 12px", fontSize: 13, textAlign: "center",
+                    color: isCancelled ? "#4b5563" : "#9ca3af" }}>
                     {e.quantity}
                   </td>
                   {/* Unit price */}
-                  <td style={{ padding: "10px 12px", fontSize: 13, textAlign: "right", color: "#9ca3af" }}>
+                  <td style={{ padding: "10px 12px", fontSize: 13, textAlign: "right",
+                    color: isCancelled ? "#4b5563" : "#9ca3af" }}>
                     {e.unit_price != null ? formatCurrency(e.unit_price, currency) : <span style={{ color: "#4b5563" }}>—</span>}
                   </td>
                   {/* Amount */}
                   <td style={{ padding: "10px 12px", fontSize: 13, fontWeight: 700, textAlign: "right" }}>
-                    {e.entry_type === "discount"
+                    {isCancelled
+                      ? <span style={{ color: "#4b5563", textDecoration: "line-through" }}>{formatCurrency(e.amount, currency)}</span>
+                      : e.entry_type === "discount"
                       ? <span style={{ color: "#f87171" }}>-{formatCurrency(e.amount, currency)}</span>
                       : <span style={{ color: "#e5e7eb" }}>{formatCurrency(e.amount, currency)}</span>
                     }

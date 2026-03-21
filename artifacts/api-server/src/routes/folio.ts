@@ -56,13 +56,13 @@ router.post(
   }
 );
 
-// PATCH /folio/entries/:id/status — 주문 상태 변경 (pending ↔ served)
+// PATCH /folio/entries/:id/status — 주문 상태 변경 (pending / served / cancelled)
 router.patch(
   "/folio/entries/:id/status",
   authenticate,
   async (req: Request, res: Response): Promise<void> => {
     const { order_status } = req.body as Record<string, string>;
-    if (!["pending", "served"].includes(order_status)) {
+    if (!["pending", "served", "cancelled"].includes(order_status)) {
       res.status(400).json({ error: "Invalid status" }); return;
     }
     try {
