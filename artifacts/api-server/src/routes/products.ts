@@ -11,14 +11,31 @@ function getLang(req: Request): string {
   return acceptLang?.split(",")[0]?.split("-")[0] ?? "en";
 }
 
+const MANAGER_ROLES = new Set([ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.BRANCH_MANAGER, ROLES.MANAGER]);
+const ADMIN_ROLES   = new Set([ROLES.SUPER_ADMIN, ROLES.ADMIN]);
+
 // Product Groups
 router.get(
   "/products/groups",
   authenticate,
-  async (_req: Request, res: Response): Promise<void> => {
+  async (req: Request, res: Response): Promise<void> => {
     try {
+      const role = req.user?.role ?? "";
+      let visFilter: string;
+      if (ADMIN_ROLES.has(role)) {
+        visFilter = "";
+      } else if (MANAGER_ROLES.has(role)) {
+        visFilter = `AND (mc.visibility_level IS NULL OR mc.visibility_level IN ('ALL','MANAGER_ONLY'))`;
+      } else {
+        visFilter = `AND (mc.visibility_level IS NULL OR mc.visibility_level = 'ALL')`;
+      }
+
       const { rows } = await pool.query(
-        `SELECT * FROM product_groups WHERE is_active = true ORDER BY sort_order, id`
+        `SELECT pg.*
+         FROM product_groups pg
+         LEFT JOIN menu_categories mc ON mc.id = pg.menu_category_id
+         WHERE pg.is_active = true ${visFilter}
+         ORDER BY pg.sort_order, pg.id`
       );
       res.json({ data: rows.map(formatGroup) });
     } catch (err) {

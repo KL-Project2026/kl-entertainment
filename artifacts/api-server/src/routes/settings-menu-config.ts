@@ -40,21 +40,24 @@ async function writeAudit(
 // ── Format helpers ────────────────────────────────────────────────────────────
 function fmtGroup(row: Record<string, unknown>) {
   return {
-    id:                    row.id,
-    orgId:                 row.org_id,
-    name:                  row.name,
-    icon:                  row.icon ?? "🍽️",
-    sortOrder:             row.sort_order,
-    isActive:              row.is_active,
-    taxRateOverride:       row.tax_rate_override != null ? parseFloat(row.tax_rate_override as string) : null,
-    commissionDefaultRate: row.commission_default_rate != null ? parseFloat(row.commission_default_rate as string) : 0,
-    commissionDefaultFlat: row.commission_default_flat != null ? parseFloat(row.commission_default_flat as string) : 0,
-    notes:                 row.notes ?? null,
-    updatedBy:             row.updated_by ?? null,
-    updatedAt:             row.updated_at ?? null,
-    createdAt:             row.created_at,
-    typeCount:             parseInt(row.type_count as string ?? "0"),
-    itemCount:             parseInt(row.item_count as string ?? "0"),
+    id:                      row.id,
+    orgId:                   row.org_id,
+    name:                    row.name,
+    icon:                    row.icon ?? "🍽️",
+    sortOrder:               row.sort_order,
+    isActive:                row.is_active,
+    taxRateOverride:         row.tax_rate_override != null ? parseFloat(row.tax_rate_override as string) : null,
+    commissionDefaultRate:   row.commission_default_rate != null ? parseFloat(row.commission_default_rate as string) : 0,
+    commissionDefaultFlat:   row.commission_default_flat != null ? parseFloat(row.commission_default_flat as string) : 0,
+    notes:                   row.notes ?? null,
+    updatedBy:               row.updated_by ?? null,
+    updatedAt:               row.updated_at ?? null,
+    createdAt:               row.created_at,
+    typeCount:               parseInt(row.type_count as string ?? "0"),
+    itemCount:               parseInt(row.item_count as string ?? "0"),
+    menuCategoryId:          row.menu_category_id ?? null,
+    menuCatName:             row.menu_cat_name ?? null,
+    menuCatVisibilityLevel:  row.menu_cat_visibility_level ?? null,
   };
 }
 
@@ -83,11 +86,14 @@ router.get("/settings/menu-config/categories",
       const { rows } = await pool.query(`
         SELECT g.*,
                COUNT(DISTINCT t.id)::text   AS type_count,
-               COUNT(DISTINCT p.id)::text   AS item_count
+               COUNT(DISTINCT p.id)::text   AS item_count,
+               mc.name                      AS menu_cat_name,
+               mc.visibility_level          AS menu_cat_visibility_level
         FROM product_groups g
-        LEFT JOIN product_types t ON t.group_id = g.id AND t.is_active = true
-        LEFT JOIN products      p ON p.type_id  = t.id AND p.deleted_at IS NULL
-        GROUP BY g.id
+        LEFT JOIN product_types t  ON t.group_id = g.id AND t.is_active = true
+        LEFT JOIN products      p  ON p.type_id  = t.id AND p.deleted_at IS NULL
+        LEFT JOIN menu_categories mc ON mc.id = g.menu_category_id
+        GROUP BY g.id, mc.name, mc.visibility_level
         ORDER BY g.sort_order, g.name
       `);
       res.json({ data: rows.map(fmtGroup) });
@@ -108,6 +114,7 @@ interface CatBody {
   commissionDefaultRate?: unknown;
   commissionDefaultFlat?: unknown;
   notes?: unknown;
+  menuCategoryId?: unknown;
 }
 
 async function validateCatBody(
@@ -179,8 +186,9 @@ router.post("/settings/menu-config/categories",
       const { rows } = await pool.query(`
         INSERT INTO product_groups
           (org_id, name, icon, sort_order, tax_rate_override,
-           commission_default_rate, commission_default_flat, notes, updated_by, updated_at)
-        VALUES ($1,$2::jsonb,$3,$4,$5,$6,$7,$8,$9,NOW())
+           commission_default_rate, commission_default_flat, notes,
+           menu_category_id, updated_by, updated_at)
+        VALUES ($1,$2::jsonb,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
         RETURNING *
       `, [
         ORG_ID,
@@ -191,6 +199,7 @@ router.post("/settings/menu-config/categories",
         b.commissionDefaultRate ?? 0,
         b.commissionDefaultFlat ?? 0,
         b.notes ?? null,
+        b.menuCategoryId ?? null,
         req.user?.id ?? null,
       ]);
       const created = { ...fmtGroup(rows[0]), typeCount: 0, itemCount: 0 };
@@ -236,9 +245,10 @@ router.put("/settings/menu-config/categories/:id",
           commission_default_rate= COALESCE($6, commission_default_rate),
           commission_default_flat= COALESCE($7, commission_default_flat),
           notes                  = COALESCE($8, notes),
-          updated_by             = $9,
+          menu_category_id       = $9,
+          updated_by             = $10,
           updated_at             = NOW()
-        WHERE id=$10
+        WHERE id=$11
         RETURNING *
       `, [
         b.name ? JSON.stringify(b.name) : null,
@@ -249,12 +259,20 @@ router.put("/settings/menu-config/categories/:id",
         b.commissionDefaultRate ?? null,
         b.commissionDefaultFlat ?? null,
         b.notes ?? null,
+        b.menuCategoryId !== undefined ? (b.menuCategoryId || null) : old[0].menu_category_id,
         req.user?.id ?? null,
         id,
       ]);
+      // Re-fetch with JOIN to include menuCatName / menuCatVisibilityLevel
+      const { rows: full } = await pool.query(`
+        SELECT g.*, mc.name AS menu_cat_name, mc.visibility_level AS menu_cat_visibility_level
+        FROM product_groups g
+        LEFT JOIN menu_categories mc ON mc.id = g.menu_category_id
+        WHERE g.id = $1
+      `, [id]);
       void writeAudit("CATEGORY_UPDATED", "product_group", id,
         req.user?.id ?? null, null, fmtGroup(old[0]), fmtGroup(rows[0]), req);
-      res.json({ data: fmtGroup(rows[0]) });
+      res.json({ data: fmtGroup(full[0] ?? rows[0]) });
     } catch (err) {
       console.error("menu-config update category:", err);
       res.status(500).json({ error: "INTERNAL_ERROR" });

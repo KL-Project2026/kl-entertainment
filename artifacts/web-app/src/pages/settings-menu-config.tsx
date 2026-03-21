@@ -38,6 +38,9 @@ interface Category {
   notes: string | null;
   typeCount: number;
   itemCount: number;
+  menuCategoryId: string | null;
+  menuCatName: string | null;
+  menuCatVisibilityLevel: "ALL" | "MANAGER_ONLY" | "ADMIN_ONLY" | null;
 }
 
 interface SubType {
@@ -994,6 +997,44 @@ export default function SettingsMenuConfig() {
     onError: () => toast({ title: "Failed to update", variant: "destructive" }),
   });
 
+  // ── Category Setting assignment state ───────────────────────────────────────
+  const [assignMenuCatId, setAssignMenuCatId] = useState<string>("__none__");
+  const [assignSaving, setAssignSaving]       = useState(false);
+
+  useEffect(() => {
+    setAssignMenuCatId(selectedCat?.menuCategoryId ?? "__none__");
+  }, [selectedCat?.id, selectedCat?.menuCategoryId]);
+
+  const { data: menuCatsData } = useQuery<{ data: MenuCat[] }>({
+    queryKey: ["menu-cats-setting"],
+    queryFn: async () => {
+      const r = await fetch(`${BASE}/menu-categories`, { headers: authH });
+      return r.json() as Promise<{ data: MenuCat[] }>;
+    },
+  });
+  const menuCatOptions = (menuCatsData?.data ?? []).filter((m) => m.isActive);
+
+  const assignDirty = assignMenuCatId !== (selectedCat?.menuCategoryId ?? "__none__");
+
+  async function saveAssign() {
+    if (!selectedCat) return;
+    setAssignSaving(true);
+    try {
+      const r = await fetch(`${BASE}/categories/${selectedCat.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...authH },
+        body: JSON.stringify({ menuCategoryId: assignMenuCatId === "__none__" ? null : assignMenuCatId }),
+      });
+      if (!r.ok) throw new Error("Failed");
+      toast({ title: "Category Setting assigned" });
+      void qc.invalidateQueries({ queryKey: ["menu-config-cats"] });
+    } catch {
+      toast({ title: "Failed to assign Category Setting", variant: "destructive" });
+    } finally {
+      setAssignSaving(false);
+    }
+  }
+
   // ── Sort helpers ────────────────────────────────────────────────────────────
   function moveCategory(idx: number, dir: -1 | 1) {
     const sorted = [...categories].sort((a, b) => a.sortOrder - b.sortOrder);
@@ -1269,38 +1310,123 @@ export default function SettingsMenuConfig() {
 
                   {/* Settings tab */}
                   {activeTab === "settings" && (
-                    <Card className="p-5">
-                      <h3 className="font-semibold mb-4 flex items-center gap-2">
-                        <Settings2 className="w-4 h-4 text-primary" /> Category Settings
-                      </h3>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                        <SettingItem label="Tax Override" value={
-                          selectedCat.taxRateOverride != null
-                            ? `${(selectedCat.taxRateOverride * 100).toFixed(1)}%`
-                            : "Inherit branch default"
-                        } />
-                        <SettingItem label="Commission Rate" value={
-                          selectedCat.commissionDefaultRate
-                            ? `${(selectedCat.commissionDefaultRate * 100).toFixed(1)}%`
-                            : "—"
-                        } />
-                        <SettingItem label="Commission Flat" value={
-                          selectedCat.commissionDefaultFlat
-                            ? `MYR ${selectedCat.commissionDefaultFlat.toFixed(2)}`
-                            : "—"
-                        } />
-                        <SettingItem label="Icon" value={selectedCat.icon} />
-                        <SettingItem label="Sort Order" value={String(selectedCat.sortOrder)} />
-                        <SettingItem label="Status" value={selectedCat.isActive ? "Active" : "Inactive"} />
-                      </div>
-                      {selectedCat.notes && (
-                        <div className="mt-4 p-3 bg-black/30 rounded-xl border border-white/5">
-                          <p className="text-xs text-muted-foreground mb-1">Notes</p>
-                          <p className="text-sm">{selectedCat.notes}</p>
+                    <Card className="p-5 space-y-5">
+                      {/* Basic settings grid */}
+                      <div>
+                        <h3 className="font-semibold mb-4 flex items-center gap-2">
+                          <Settings2 className="w-4 h-4 text-primary" /> Category Settings
+                        </h3>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                          <SettingItem label="Tax Override" value={
+                            selectedCat.taxRateOverride != null
+                              ? `${(selectedCat.taxRateOverride * 100).toFixed(1)}%`
+                              : "Inherit branch default"
+                          } />
+                          <SettingItem label="Commission Rate" value={
+                            selectedCat.commissionDefaultRate
+                              ? `${(selectedCat.commissionDefaultRate * 100).toFixed(1)}%`
+                              : "—"
+                          } />
+                          <SettingItem label="Commission Flat" value={
+                            selectedCat.commissionDefaultFlat
+                              ? `MYR ${selectedCat.commissionDefaultFlat.toFixed(2)}`
+                              : "—"
+                          } />
+                          <SettingItem label="Icon" value={selectedCat.icon} />
+                          <SettingItem label="Sort Order" value={String(selectedCat.sortOrder)} />
+                          <SettingItem label="Status" value={selectedCat.isActive ? "Active" : "Inactive"} />
                         </div>
-                      )}
+                        {selectedCat.notes && (
+                          <div className="mt-4 p-3 bg-black/30 rounded-xl border border-white/5">
+                            <p className="text-xs text-muted-foreground mb-1">Notes</p>
+                            <p className="text-sm">{selectedCat.notes}</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Category Setting assignment */}
+                      <div className="pt-4 border-t border-white/5">
+                        <h4 className="text-sm font-semibold mb-1 flex items-center gap-2">
+                          <Shield className="w-3.5 h-3.5 text-primary" /> Menu Visibility Setting
+                        </h4>
+                        <p className="text-xs text-muted-foreground mb-3">
+                          Assign a Category Setting to control which staff roles can see this category in the menu.
+                        </p>
+
+                        {/* Read-only display for non-admins */}
+                        {!isAdmin && (
+                          <div className="flex items-center gap-2">
+                            {selectedCat.menuCatName ? (
+                              <>
+                                <span className="text-sm font-medium">{selectedCat.menuCatName}</span>
+                                <span className={cn("text-xs px-2 py-0.5 rounded-full border font-medium",
+                                  selectedCat.menuCatVisibilityLevel === "ADMIN_ONLY" ? "bg-red-400/10 border-red-400/20 text-red-400"
+                                  : selectedCat.menuCatVisibilityLevel === "MANAGER_ONLY" ? "bg-yellow-400/10 border-yellow-400/20 text-yellow-400"
+                                  : "bg-green-400/10 border-green-400/20 text-green-400"
+                                )}>
+                                  {selectedCat.menuCatVisibilityLevel === "ADMIN_ONLY" ? "Admin Only"
+                                    : selectedCat.menuCatVisibilityLevel === "MANAGER_ONLY" ? "Manager+"
+                                    : "All Staff"}
+                                </span>
+                              </>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">No setting assigned — visible to all staff</span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Admin: dropdown selector */}
+                        {isAdmin && (
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <Select value={assignMenuCatId} onValueChange={setAssignMenuCatId}>
+                              <SelectTrigger className="w-56 h-8 text-xs bg-black/30 border-white/10">
+                                <SelectValue placeholder="Select category setting…" />
+                              </SelectTrigger>
+                              <SelectContent className="bg-[#0c0c10] border-white/10">
+                                <SelectItem value="__none__">
+                                  <span className="text-muted-foreground">— None (visible to all) —</span>
+                                </SelectItem>
+                                {menuCatOptions.map((mc) => (
+                                  <SelectItem key={mc.id} value={mc.id}>
+                                    <span>{mc.name}</span>
+                                    <span className={cn("ml-2 text-xs",
+                                      mc.visibilityLevel === "ADMIN_ONLY" ? "text-red-400"
+                                      : mc.visibilityLevel === "MANAGER_ONLY" ? "text-yellow-400"
+                                      : "text-green-400"
+                                    )}>
+                                      {mc.visibilityLevel === "ADMIN_ONLY" ? "(Admin Only)"
+                                        : mc.visibilityLevel === "MANAGER_ONLY" ? "(Manager+)"
+                                        : "(All Staff)"}
+                                    </span>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {assignDirty && (
+                              <Button size="sm" className="h-8 text-xs px-3" disabled={assignSaving} onClick={() => void saveAssign()}>
+                                {assignSaving ? "Saving…" : "Save"}
+                              </Button>
+                            )}
+                            {!assignDirty && selectedCat.menuCatName && (
+                              <div className="flex items-center gap-1.5">
+                                <span className={cn("text-xs px-2 py-0.5 rounded-full border font-medium",
+                                  selectedCat.menuCatVisibilityLevel === "ADMIN_ONLY" ? "bg-red-400/10 border-red-400/20 text-red-400"
+                                  : selectedCat.menuCatVisibilityLevel === "MANAGER_ONLY" ? "bg-yellow-400/10 border-yellow-400/20 text-yellow-400"
+                                  : "bg-green-400/10 border-green-400/20 text-green-400"
+                                )}>
+                                  {selectedCat.menuCatVisibilityLevel === "ADMIN_ONLY" ? "Admin Only"
+                                    : selectedCat.menuCatVisibilityLevel === "MANAGER_ONLY" ? "Manager+"
+                                    : "All Staff"}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Action buttons */}
                       {isAdmin && (
-                        <div className="mt-4 pt-4 border-t border-white/5 flex items-center gap-3 flex-wrap">
+                        <div className="pt-4 border-t border-white/5 flex items-center gap-3 flex-wrap">
                           <Button variant="outline" size="sm" className="gap-1.5"
                             onClick={() => setCatModal({ open: true, editing: selectedCat })}>
                             <Pencil className="w-3.5 h-3.5" /> Edit Category
