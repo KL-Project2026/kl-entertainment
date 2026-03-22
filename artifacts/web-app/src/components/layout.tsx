@@ -7,7 +7,7 @@ import {
   ShoppingCart, Users, CalendarCheck, Clock, Handshake, PieChart,
   LineChart, BarChart2, Globe, Receipt, Table2, FileBarChart, Menu, X,
   UserCheck, Briefcase, Settings, ChevronDown, LayoutList, Users2, ClipboardList,
-  Car, ChefHat,
+  Car, ChefHat, Gauge,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
@@ -64,7 +64,7 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 // ── Category definitions ─────────────────────────────────────────────────────
-type CategoryKey = "operations" | "staff" | "finance" | "investors" | "settings";
+type CategoryKey = "dashboards" | "operations" | "staff" | "finance" | "investors" | "settings";
 
 interface CategoryDef {
   key: CategoryKey;
@@ -74,24 +74,41 @@ interface CategoryDef {
   items: NavItem[];
 }
 
+const DASH_ROLES: NavRole[] = ["super_admin", "admin", "branch_manager", "manager"];
+
 const CATEGORIES: CategoryDef[] = [
+  {
+    key: "dashboards",
+    label: "Dashboards",
+    icon: Gauge,
+    accent: "#8B5CF6",
+    items: [
+      { path: "/branch-manager-dashboard", key: "nav.bm_dashboard",        icon: LayoutDashboard, roles: ["super_admin", "admin", "branch_manager"] },
+      { path: "/manager-dashboard",        key: "nav.manager_dashboard",   icon: LayoutDashboard, roles: DASH_ROLES },
+      { path: "/hostess-dashboard",        key: "nav.hostess_dashboard",   icon: ClipboardList,   roles: DASH_ROLES },
+      { path: "/driver-dashboard",         key: "nav.driver_dashboard",    icon: Car,             roles: DASH_ROLES },
+      { path: "/kitchen-dashboard",        key: "nav.kitchen_dashboard",   icon: ChefHat,         roles: DASH_ROLES },
+      { path: "/hall-dashboard",           key: "nav.hall_dashboard",      icon: LayoutList,      roles: DASH_ROLES },
+      { path: "/general-dashboard",        key: "nav.general_dashboard",   icon: Clock,           roles: DASH_ROLES },
+    ],
+  },
   {
     key: "operations",
     label: "Operations",
     icon: LayoutDashboard,
     accent: "#F59E0B",
     items: [
-      { path: "/",             key: "nav.dashboard",    icon: LayoutDashboard, roles: OPS_UP },
-      { path: "/room-board",   key: "nav.room_board",   icon: Grid,            roles: OPS_UP },
-      { path: "/reservations", key: "nav.reservations", icon: CalendarDays,    roles: MANAGER_UP },
-      { path: "/pos",                      key: "nav.pos",              icon: ShoppingCart,    roles: OPS_UP },
-      { path: "/products",                 key: "nav.products",         icon: Package,         roles: MANAGER_UP },
-      { path: "/branch-manager-dashboard", key: "nav.bm_dashboard",     icon: LayoutDashboard, roles: ["super_admin", "admin", "branch_manager"] },
-      { path: "/manager-dashboard",        key: "nav.manager_dashboard",icon: LayoutDashboard, roles: ["super_admin", "admin", "branch_manager", "manager"] },
-      { path: "/driver-dashboard",         key: "nav.driver_dashboard", icon: Car,             roles: ["super_admin", "admin", "branch_manager", "manager", "driver"] },
-      { path: "/kitchen-dashboard",        key: "nav.kitchen_dashboard",icon: ChefHat,         roles: ["super_admin", "admin", "branch_manager", "manager", "kitchen"] },
-      { path: "/hall-dashboard",           key: "nav.hall_dashboard",   icon: LayoutList,      roles: ["super_admin", "admin", "branch_manager", "manager", "hall"] },
-      { path: "/general-dashboard",        key: "nav.general_dashboard",icon: Clock,           roles: ["super_admin", "admin", "branch_manager", "manager", "general"] },
+      { path: "/",                    key: "nav.dashboard",        icon: LayoutDashboard, roles: OPS_UP },
+      { path: "/room-board",          key: "nav.room_board",       icon: Grid,            roles: OPS_UP },
+      { path: "/reservations",        key: "nav.reservations",     icon: CalendarDays,    roles: MANAGER_UP },
+      { path: "/pos",                 key: "nav.pos",              icon: ShoppingCart,    roles: OPS_UP },
+      { path: "/products",            key: "nav.products",         icon: Package,         roles: MANAGER_UP },
+      // Staff-role self-dashboards (visible only to that specific role)
+      { path: "/hostess-dashboard",   key: "nav.hostess_dashboard",icon: ClipboardList,   roles: ["hostess"] },
+      { path: "/driver-dashboard",    key: "nav.driver_dashboard", icon: Car,             roles: ["driver"] },
+      { path: "/kitchen-dashboard",   key: "nav.kitchen_dashboard",icon: ChefHat,         roles: ["kitchen"] },
+      { path: "/hall-dashboard",      key: "nav.hall_dashboard",   icon: LayoutList,      roles: ["hall"] },
+      { path: "/general-dashboard",   key: "nav.general_dashboard",icon: Clock,           roles: ["general"] },
     ],
   },
   {
@@ -100,13 +117,12 @@ const CATEGORIES: CategoryDef[] = [
     icon: Users,
     accent: "#10B981",
     items: [
-      { path: "/staff",             key: "nav.staff",             icon: Users,        roles: MANAGER_UP },
-      { path: "/staff/hostesses",   key: "nav.hostess_profiles",  icon: UserCheck,    roles: MANAGER_UP },
-      { path: "/agencies",          key: "nav.agencies",          icon: Briefcase,    roles: MANAGER_UP },
-      { path: "/agents",            key: "nav.agents",            icon: Handshake,    roles: ADMIN_UP },
-      { path: "/schedule-builder",  key: "nav.schedules",         icon: CalendarCheck,roles: MANAGER_UP },
-      { path: "/attendance",        key: "nav.attendance",        icon: Clock,        roles: MANAGER_UP },
-      { path: "/hostess-dashboard", key: "nav.hostess_dashboard", icon: ClipboardList, roles: ["super_admin", "admin", "branch_manager", "manager", "hostess"] },
+      { path: "/staff",            key: "nav.staff",            icon: Users,         roles: MANAGER_UP },
+      { path: "/staff/hostesses",  key: "nav.hostess_profiles", icon: UserCheck,     roles: MANAGER_UP },
+      { path: "/agencies",         key: "nav.agencies",         icon: Briefcase,     roles: MANAGER_UP },
+      { path: "/agents",           key: "nav.agents",           icon: Handshake,     roles: ADMIN_UP },
+      { path: "/schedule-builder", key: "nav.schedules",        icon: CalendarCheck, roles: MANAGER_UP },
+      { path: "/attendance",       key: "nav.attendance",       icon: Clock,         roles: MANAGER_UP },
     ],
   },
   {
@@ -148,7 +164,7 @@ const CATEGORIES: CategoryDef[] = [
 // ── localStorage helpers ─────────────────────────────────────────────────────
 const LS_KEY = "sidebar_category_state";
 const DEFAULT_OPEN: Record<CategoryKey, boolean> = {
-  operations: true, staff: false, finance: false, investors: false, settings: false,
+  dashboards: true, operations: true, staff: false, finance: false, investors: false, settings: false,
 };
 
 function loadCategoryState(): Record<CategoryKey, boolean> {
