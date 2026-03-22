@@ -1054,11 +1054,17 @@ export default function POS() {
     invalidateOrders();
   };
 
+  const openReceipt = (rId: string) => {
+    const token = useAuthStore.getState().token;
+    const qs = token ? `?mode=detailed&token=${encodeURIComponent(token)}` : "?mode=detailed";
+    window.open(`/api/receipts/${rId}${qs}`, "_blank");
+  };
+
   const handlePaymentSuccess = (rId: string) => {
     setReceiptId(rId);
     setShowPayment(false);
     invalidateOrders();
-    window.open(`/api/receipts/${rId}?mode=detailed`, "_blank");
+    openReceipt(rId);
   };
 
   const isPaid = currentOrder?.paymentStatus === "paid";
@@ -1433,7 +1439,7 @@ export default function POS() {
                   {receiptId && (
                     <Button
                       variant="outline"
-                      onClick={() => window.open(`/api/receipts/${receiptId}?mode=detailed`, "_blank")}
+                      onClick={() => openReceipt(receiptId)}
                       className="w-full gap-2"
                     >
                       <Printer className="w-4 h-4" /> Print Receipt

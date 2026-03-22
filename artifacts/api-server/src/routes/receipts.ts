@@ -5,10 +5,16 @@ import { generateReceiptHtml } from "../services/document-service";
 
 const router: IRouter = Router();
 
-// Get receipt HTML
+// Get receipt HTML — supports Bearer token in header OR ?token= query param (for print popups)
 router.get(
   "/receipts/:id",
-  authenticate,
+  (req: Request, res: Response, next: import("express").NextFunction): void => {
+    const queryToken = (req.query as Record<string, string>).token;
+    if (queryToken && !req.headers.authorization) {
+      req.headers.authorization = `Bearer ${queryToken}`;
+    }
+    authenticate(req, res, next);
+  },
   async (req: Request, res: Response): Promise<void> => {
     try {
       const { mode = "detailed" } = req.query as Record<string, string>;

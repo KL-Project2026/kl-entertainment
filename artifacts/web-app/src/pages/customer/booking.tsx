@@ -31,19 +31,23 @@ export default function CustomerBooking() {
 
   useEffect(() => {
     if (!token) { setLocation("/customer/login"); return; }
-    fetch(getApiUrl("/api/branches?page_size=50"))
+    fetch(getApiUrl("/api/customer/branches"), {
+      headers: { Authorization: `Bearer ${token}` },
+    })
       .then((r) => r.json())
       .then((j: { data: { items: Branch[] } }) => setBranches(j.data?.items ?? []))
       .catch(console.error);
   }, [token, setLocation]);
 
   useEffect(() => {
-    if (!selectedBranch) return;
-    fetch(getApiUrl(`/api/branches/${selectedBranch.id}/rooms?status=available`))
+    if (!selectedBranch || !token) return;
+    fetch(getApiUrl(`/api/customer/branches/${selectedBranch.id}/rooms`), {
+      headers: { Authorization: `Bearer ${token}` },
+    })
       .then((r) => r.json())
       .then((j: { data: Room[] }) => setRooms(j.data ?? []))
       .catch(console.error);
-  }, [selectedBranch]);
+  }, [selectedBranch, token]);
 
   const startTime = `${date}T${startHour.padStart(2, "0")}:00:00`;
   const endTime = new Date(new Date(startTime).getTime() + duration * 3600000).toISOString();

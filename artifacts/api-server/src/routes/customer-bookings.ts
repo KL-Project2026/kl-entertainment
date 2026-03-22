@@ -8,6 +8,35 @@ function auth(req: Request, res: Response, next: () => void) {
   return authenticateCustomer(req, res, next);
 }
 
+router.get("/customer/branches", auth, async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, name, city, address, phone FROM branches WHERE deleted_at IS NULL AND is_active = true ORDER BY name`
+    );
+    res.json({ data: { items: rows } });
+  } catch (err) {
+    console.error("[customer-bookings] branches error:", err);
+    res.status(500).json({ error: "INTERNAL_ERROR" });
+  }
+});
+
+router.get("/customer/branches/:id/rooms", auth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params as { id: string };
+    const { rows } = await pool.query(
+      `SELECT id, name, capacity_min, capacity_max, room_type, hourly_rate
+       FROM rooms
+       WHERE branch_id = $1 AND deleted_at IS NULL AND status = 'available'
+       ORDER BY name`,
+      [id]
+    );
+    res.json({ data: rows });
+  } catch (err) {
+    console.error("[customer-bookings] rooms error:", err);
+    res.status(500).json({ error: "INTERNAL_ERROR" });
+  }
+});
+
 router.get("/customer/bookings", auth, async (req: Request, res: Response): Promise<void> => {
   try {
     const customerId = (req as Request & { customerId: string }).customerId;
@@ -82,15 +111,16 @@ router.post("/customer/bookings", auth, async (req: Request, res: Response): Pro
     }
 
     const resNo = `RES-${Date.now().toString(36).toUpperCase()}`;
+    const reservationDate = new Date(startTime).toISOString().split("T")[0];
     const { rows } = await pool.query<{
       id: string; reservation_no: string; status: string; start_time: Date; end_time: Date;
     }>(
       `INSERT INTO reservations
-         (branch_id, room_id, customer_id, reservation_no, status, start_time, end_time,
-          guest_count, booking_channel, special_requests)
-       VALUES ($1, $2, $3, $4, 'tentative', $5, $6, $7, 'customer_app', $8)
+         (branch_id, room_id, customer_id, reservation_no, status, reservation_date,
+          start_time, end_time, guest_count, booking_channel, special_requests)
+       VALUES ($1, $2, $3, $4, 'tentative', $5, $6, $7, $8, 'customer_app', $9)
        RETURNING id, reservation_no, status, start_time, end_time`,
-      [branchId, roomId, customerId, resNo, startTime, endTime, guestCount, notes ?? null]
+      [branchId, roomId, customerId, resNo, reservationDate, startTime, endTime, guestCount, notes ?? null]
     );
     res.status(201).json({ data: rows[0] });
   } catch (err) {
