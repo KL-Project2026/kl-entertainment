@@ -25,7 +25,13 @@
     "daily_report": "日报",
     "settings": "设置",
     "menu_config": "菜单配置",
-    "user_management": "用户管理"
+    "user_management": "用户管理",
+    "bm_dashboard": "分店经理仪表板",
+    "manager_dashboard": "经理仪表板",
+    "driver_dashboard": "司机仪表板",
+    "kitchen_dashboard": "厨房仪表板",
+    "hall_dashboard": "厅堂仪表板",
+    "general_dashboard": "我的仪表板"
   },
   "auth": {
     "sign_in": "登录",

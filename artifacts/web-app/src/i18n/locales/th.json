@@ -20,7 +20,13 @@
     "settings": "การตั้งค่า",
     "menu_config": "ตั้งค่าเมนู",
     "menu_standard": "สั่งเมนู",
-    "menu_manager": "เมนูทั้งหมด (ผู้จัดการ)"
+    "menu_manager": "เมนูทั้งหมด (ผู้จัดการ)",
+    "bm_dashboard": "แดชบอร์ดผู้จัดการสาขา",
+    "manager_dashboard": "แดชบอร์ดผู้จัดการ",
+    "driver_dashboard": "แดชบอร์ดคนขับ",
+    "kitchen_dashboard": "แดชบอร์ดครัว",
+    "hall_dashboard": "แดชบอร์ดฮอลล์",
+    "general_dashboard": "แดชบอร์ดของฉัน"
   },
   "auth": {
     "sign_in": "เข้าสู่ระบบ",

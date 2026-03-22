@@ -33,6 +33,12 @@ import ShareholderDetail from "@/pages/shareholder-detail";
 import InvestorDashboard from "@/pages/investor-dashboard";
 import InvestorReports from "@/pages/investor-reports";
 import HostessDashboard from "@/pages/hostess-dashboard";
+import BranchManagerDashboard from "@/pages/branch-manager-dashboard";
+import ManagerDashboard from "@/pages/manager-dashboard";
+import DriverDashboard from "@/pages/driver-dashboard";
+import KitchenDashboard from "@/pages/kitchen-dashboard";
+import HallDashboard from "@/pages/hall-dashboard";
+import GeneralDashboard from "@/pages/general-dashboard";
 import Reports from "@/pages/reports";
 import Invoices from "@/pages/invoices";
 import InvoiceDetail from "@/pages/invoice-detail";
@@ -124,12 +130,36 @@ function AuthRoute({ component: Component }: { component: React.ComponentType })
   return <Component />;
 }
 
+// Role-based home — redirects each role to their dedicated dashboard
+const ROLE_HOME: Record<string, string> = {
+  investor:       "/investor-dashboard",
+  branch_manager: "/branch-manager-dashboard",
+  manager:        "/manager-dashboard",
+  hostess:        "/hostess-dashboard",
+  driver:         "/driver-dashboard",
+  kitchen:        "/kitchen-dashboard",
+  hall:           "/hall-dashboard",
+  general:        "/general-dashboard",
+};
+
+function RoleHome() {
+  const { token, user } = useAuthStore();
+  if (!token) return <Redirect to="/login" />;
+  const target = ROLE_HOME[user?.role ?? ""] ?? null;
+  if (target) return <Redirect to={target} />;
+  return (
+    <DashboardLayout>
+      <Dashboard />
+    </DashboardLayout>
+  );
+}
+
 function Router() {
   return (
     <Switch>
       {/* Staff portal */}
       <Route path="/login" component={Login} />
-      <Route path="/" component={() => <ProtectedRoute component={Dashboard} />} />
+      <Route path="/" component={RoleHome} />
       <Route path="/room-board" component={() => <ProtectedRoute component={RoomBoard} />} />
       <Route path="/branches" component={() => <ProtectedRoute component={Branches} />} />
       <Route path="/products" component={() => <ProtectedRoute component={Products} />} />
@@ -155,6 +185,12 @@ function Router() {
       <Route path="/investor-dashboard" component={() => <AuthRoute component={InvestorDashboard} />} />
       <Route path="/investor-reports" component={() => <AuthRoute component={InvestorReports} />} />
       <Route path="/hostess-dashboard" component={() => <AuthRoute component={HostessDashboard} />} />
+      <Route path="/branch-manager-dashboard" component={() => <AuthRoute component={BranchManagerDashboard} />} />
+      <Route path="/manager-dashboard" component={() => <AuthRoute component={ManagerDashboard} />} />
+      <Route path="/driver-dashboard" component={() => <AuthRoute component={DriverDashboard} />} />
+      <Route path="/kitchen-dashboard" component={() => <AuthRoute component={KitchenDashboard} />} />
+      <Route path="/hall-dashboard" component={() => <AuthRoute component={HallDashboard} />} />
+      <Route path="/general-dashboard" component={() => <AuthRoute component={GeneralDashboard} />} />
       <Route path="/reports" component={() => <AuthRoute component={Reports} />} />
 
       {/* ── 신규 라우트 ── */}

@@ -25,7 +25,13 @@
     "menu_config": "Menu Config",
     "user_management": "User Management",
     "menu_standard": "Menu Order",
-    "menu_manager": "Full Menu (Manager)"
+    "menu_manager": "Full Menu (Manager)",
+    "bm_dashboard": "Branch Manager Dashboard",
+    "manager_dashboard": "Manager Dashboard",
+    "driver_dashboard": "Driver Dashboard",
+    "kitchen_dashboard": "Kitchen Dashboard",
+    "hall_dashboard": "Hall Dashboard",
+    "general_dashboard": "My Dashboard"
   },
   "auth": {
     "sign_in": "Sign In",

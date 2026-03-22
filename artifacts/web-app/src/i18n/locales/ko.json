@@ -21,7 +21,13 @@
     "menu_config": "메뉴 설정",
     "user_management": "사용자 관리",
     "menu_standard": "메뉴 오더",
-    "menu_manager": "전체 메뉴 (매니저)"
+    "menu_manager": "전체 메뉴 (매니저)",
+    "bm_dashboard": "지점장 대시보드",
+    "manager_dashboard": "매니저 대시보드",
+    "driver_dashboard": "드라이버 대시보드",
+    "kitchen_dashboard": "주방 대시보드",
+    "hall_dashboard": "홀 대시보드",
+    "general_dashboard": "내 대시보드"
   },
   "auth": {
     "sign_in": "로그인",

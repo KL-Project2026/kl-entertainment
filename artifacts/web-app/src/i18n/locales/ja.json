@@ -20,7 +20,13 @@
     "settings": "設定",
     "menu_config": "メニュー設定",
     "menu_standard": "メニュー注文",
-    "menu_manager": "全メニュー (マネージャー)"
+    "menu_manager": "全メニュー (マネージャー)",
+    "bm_dashboard": "支店長ダッシュボード",
+    "manager_dashboard": "マネージャーダッシュボード",
+    "driver_dashboard": "ドライバーダッシュボード",
+    "kitchen_dashboard": "キッチンダッシュボード",
+    "hall_dashboard": "ホールダッシュボード",
+    "general_dashboard": "マイダッシュボード"
   },
   "auth": {
     "sign_in": "サインイン",

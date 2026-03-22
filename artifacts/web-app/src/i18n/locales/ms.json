@@ -24,7 +24,13 @@
     "settings": "Tetapan",
     "menu_config": "Konfigurasi Menu",
     "menu_standard": "Pesanan Menu",
-    "menu_manager": "Menu Penuh (Pengurus)"
+    "menu_manager": "Menu Penuh (Pengurus)",
+    "bm_dashboard": "Papan Pemuka Pengurus Cawangan",
+    "manager_dashboard": "Papan Pemuka Pengurus",
+    "driver_dashboard": "Papan Pemuka Pemandu",
+    "kitchen_dashboard": "Papan Pemuka Dapur",
+    "hall_dashboard": "Papan Pemuka Dewan",
+    "general_dashboard": "Papan Pemuka Saya"
   },
   "auth": {
     "sign_in": "Log Masuk",

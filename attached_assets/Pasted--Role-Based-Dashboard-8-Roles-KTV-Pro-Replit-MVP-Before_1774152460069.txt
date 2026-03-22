@@ -1,0 +1,219 @@
+# Role-Based Dashboard — 8 Roles
+## KTV Pro | Replit MVP
+
+---
+
+## ⚠️ Before You Start
+
+```
+DO NOT TOUCH these files — ever:
+  server.js · middleware/auth.js · middleware/rbac.js
+  routes/reservations.js · routes/pos.js · routes/commission.js
+  socket/roomBoard.js · db/schema.sql · .env
+
+Rules:
+  ✅ Create new files only
+  ✅ Add exactly 1 line to server.js — at the very bottom
+  ✅ Verify existing APIs still work after each step
+  ❌ Never modify or delete existing code
+```
+
+---
+
+## 📁 New Files to Create
+
+```
+routes/
+  dashboards/
+    index.js
+    investor.js
+    branch_manager.js
+    manager.js
+    hostess.js
+    driver.js
+    kitchen.js
+    hall.js
+    general.js
+
+db/queries/
+  dashboard_queries.js        ← SELECT only. No INSERT / UPDATE.
+
+client/src/pages/dashboards/
+  index.jsx                   ← Role-based component router
+  InvestorDashboard.jsx
+  BranchManagerDashboard.jsx
+  ManagerDashboard.jsx
+  HostessDashboard.jsx
+  DriverDashboard.jsx
+  KitchenDashboard.jsx
+  HallDashboard.jsx
+  GeneralDashboard.jsx
+
+client/src/components/dashboard/
+  KpiCard.jsx · RoomChip.jsx · MiniBar.jsx
+  RingChart.jsx · Sparkline.jsx · Avatar.jsx
+```
+
+---
+
+## 📡 API Endpoints
+
+| Role | Endpoint | Allowed Roles |
+|---|---|---|
+| investor | `GET /api/dashboards/investor/summary` | investor, admin, super_admin |
+| investor | `GET /api/dashboards/investor/branch-performance` | investor, admin, super_admin |
+| investor | `GET /api/dashboards/investor/kpis` | investor, admin, super_admin |
+| branch_manager | `GET /api/dashboards/branch-manager/live` | branch_manager, admin |
+| branch_manager | `GET /api/dashboards/branch-manager/staff` | branch_manager, admin |
+| manager | `GET /api/dashboards/manager/orders` | manager, branch_manager |
+| manager | `GET /api/dashboards/manager/hostesses` | manager, branch_manager |
+| manager | `PATCH /api/dashboards/manager/comps/:id` | manager, branch_manager |
+| hostess | `GET /api/dashboards/hostess/summary` | hostess (own data only) |
+| hostess | `GET /api/dashboards/hostess/commission` | hostess (own data only) |
+| hostess | `GET /api/dashboards/hostess/schedule` | hostess (own data only) |
+| driver | `GET /api/dashboards/driver/jobs` | driver (own data only) |
+| kitchen | `GET /api/dashboards/kitchen/orders` | kitchen, manager |
+| kitchen | `PATCH /api/dashboards/kitchen/orders/:id/status` | kitchen, manager |
+| hall | `GET /api/dashboards/hall/tasks` | hall, manager |
+| hall | `PATCH /api/dashboards/hall/tasks/:id/done` | hall, manager |
+| general | `GET /api/dashboards/general/timesheet` | own data only |
+| general | `GET /api/dashboards/general/pay-estimate` | own data only |
+
+---
+
+## 🗄️ DB Query Rules
+
+```
+investor   → Query investor_reports and investor_kpi_snapshots only.
+             Never access raw sessions, guests, or staff tables.
+
+hostess    → Always filter WHERE staff_id = req.user.staffId.
+             Never expose another hostess's data.
+
+driver     → Return guest display_name + address only.
+             Never include phone number or any PII.
+
+kitchen    → Status transitions are one-way only:
+             pending → preparing → ready → done
+             Reject any other transition.
+
+general    → Always filter WHERE staff_id = req.user.staffId.
+```
+
+---
+
+## 🖥️ Dashboard UI Specs
+
+### 1. Investor
+```
+KPI Cards (4):   Total Revenue MTD · Gross Profit · EBITDA · Active Branches
+Branch Table:    Bar + GP% per branch — aggregated data only
+KPI Ring Charts: Occupancy · F&B Attach Rate · Package Conversion · Hostess Utilization
+Revenue Trend:   Last 7 months bar chart
+```
+
+### 2. Branch Manager
+```
+KPI Cards (4):   Today Revenue vs Target · Occupied Rooms · Staff on Duty · Sessions Today
+Live Room Board: Real-time status chips for all rooms (Socket.io)
+Alerts Panel:    Session expiring · Equipment issues · Pending approvals
+Staff on Duty:   Name · Role · Current status
+```
+
+### 3. Manager
+```
+KPI Cards (4):   Open Folios · Pending Orders · Active Hostesses · Awaiting Approval
+F&B Order Table: Room · Item · Qty · Status (live)
+Hostess Board:   Name · Room · Start time · Elapsed · Commission earned
+Comp Approval:   Approve / Reject buttons with reason
+```
+
+### 4. Hostess
+```
+Profile Header:  Name · Staff ID · Languages · Rating · Current session status
+KPI Cards (4):   Today's Commission · MTD Commission · Sessions This Month · Attendance Rate
+Commission:      Session · Drink · Package · Tips — itemized with bar chart
+Weekly Schedule: 7-day view, today highlighted
+Session History: Room · Guest name · Duration · Amount earned
+```
+
+### 5. Driver
+```
+Profile Header:  Name · Vehicle plate · Shift status
+KPI Cards (4):   Trips Today · Distance · Driving Hours · Next Job
+Job Queue:       Time-ordered list — Job ID · Guest name · Pax · Pickup → Dropoff · Status
+                 (No phone number displayed)
+```
+
+### 6. Kitchen
+```
+KPI Cards (4):   Pending · Preparing · Ready to Serve · Completed Today
+Active Orders:   Room · Item list · URGENT badge · Order time
+                 [Start Prep] [Mark Ready] [Complete] action buttons
+Completed Log:   Time · Room · Item summary · Avg prep time
+```
+
+### 7. Hall Staff
+```
+KPI Cards (4):   Open Tasks · In Progress · Completed Today · My Floor Zone
+Task Queue:      Room · Description · Priority color (high=red / normal=blue / low=gray)
+                 [✓ Done] button per task
+Room Board:      Status grid for assigned zone rooms
+```
+
+### 8. General Staff
+```
+Profile Header:  Name · Role · Today's clock-in status
+KPI Cards (4):   Attendance Rate · Hours This Week · Overtime This Month · Est. Net Pay
+Weekly Timesheet: Day · Clock In · Clock Out · Total Hours · Status (OK / Late / Day Off)
+Pay Estimate:    Base + Allowances − Deductions = Estimated Net Pay
+Schedule:        Next 7 days shift plan
+```
+
+---
+
+## 🎨 Design
+
+```
+Theme:       Dark (#0b0c10 background)
+Font:        DM Sans + DM Mono (numbers)
+
+Role Colors:
+  investor       → #f5c842  Gold
+  branch_manager → #2dd4bf  Teal
+  manager        → #60a5fa  Blue
+  hostess        → #e8407a  Pink
+  driver         → #fb923c  Orange
+  kitchen        → #4ade80  Green
+  hall           → #a78bfa  Purple
+  general        → #9a9baa  Gray
+
+Shared Components:
+  KpiCard   — muted label (11px) + bold value (26px) + trend sub-text
+  RoomChip  — status-colored border + room name + status + time remaining
+  RingChart — SVG donut, percentage in center
+  Avatar    — initials circle, role accent color
+  LivePulse — green dot + LIVE label (when Socket.io is connected)
+```
+
+---
+
+## 🔌 Register in server.js (add this 1 line only)
+
+```javascript
+// Add this after the last existing route — do not insert between existing routes
+app.use('/api/dashboards', require('./routes/dashboards'));
+```
+
+---
+
+## ✅ Done When
+
+```
+[ ] GET /api/reservations       → still responds normally
+[ ] Socket.io room:statusUpdated → still fires correctly
+[ ] GET /api/dashboards/investor/summary     → 401 without auth token
+[ ] GET /api/dashboards/hostess/commission   → returns own data only
+[ ] GET /api/dashboards/kitchen/orders       → updates in real time
+[ ] Each role login → renders only that role's dashboard
+```
