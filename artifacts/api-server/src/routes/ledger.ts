@@ -122,6 +122,100 @@ router.get(
   }
 );
 
+// ─── My Ledger (self-service) ─────────────────────────────────────────────────
+// GET /ledger/my — returns the current user's ledger accounts + recent entries
+
+router.get(
+  "/ledger/my",
+  authenticate,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userId = req.user!.id;
+      const role   = req.user!.role;
+      if (role === "investor") {
+        res.status(403).json({ success: false, error: "Investors use the investor summary endpoint." });
+        return;
+      }
+
+      const orgId = await resolveOrgId(userId);
+      if (!orgId) {
+        res.status(403).json({ success: false, error: "Cannot resolve org." });
+        return;
+      }
+
+      // Fetch all accounts belonging to this staff member (could be staff + hostess_profile)
+      const { rows: accounts } = await pool.query<{
+        id: string; account_type: string; entity_id: string; entity_type: string;
+        currency: string; balance_cache: string; balance_updated_at: string;
+      }>(
+        `SELECT la.id, la.account_type, la.entity_id, la.entity_type,
+                la.currency, la.balance_cache, la.balance_updated_at
+         FROM ledger_accounts la
+         WHERE la.org_id = $1
+           AND (
+             (la.entity_type = 'staff' AND la.entity_id = $2)
+             OR
+             (la.entity_type = 'hostess_profile' AND la.entity_id IN (
+               SELECT id FROM hostess_profiles WHERE staff_id = $2 AND deleted_at IS NULL
+             ))
+           )
+         ORDER BY la.account_type`,
+        [orgId, userId],
+      );
+
+      if (!accounts.length) {
+        res.json({ success: true, accounts: [], entries: [], summary: { total_cr: 0, total_dr: 0, net: 0 } });
+        return;
+      }
+
+      const accountIds = accounts.map((a) => a.id);
+      const placeholders = accountIds.map((_, i) => `$${i + 1}`).join(", ");
+
+      const { from, to, limit = "60", offset = "0" } = req.query as Record<string, string | undefined>;
+      const params: unknown[] = [...accountIds];
+      let q = `SELECT le.*, la.account_type, la.entity_type
+               FROM ledger_entries le
+               JOIN ledger_accounts la ON la.id = le.account_id
+               WHERE le.account_id IN (${placeholders})`;
+      if (from) { params.push(from); q += ` AND le.effective_date >= $${params.length}`; }
+      if (to)   { params.push(to);   q += ` AND le.effective_date <= $${params.length}`; }
+
+      const { rows: countRows } = await pool.query(`SELECT COUNT(*) FROM (${q}) t`, params);
+      params.push(parseInt(limit));
+      params.push(parseInt(offset ?? "0"));
+      q += ` ORDER BY le.effective_date DESC, le.posted_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`;
+
+      const { rows: entries } = await pool.query(q, params);
+
+      // Summary totals (last 90 days)
+      const { rows: sumRows } = await pool.query<{
+        total_cr: string; total_dr: string;
+      }>(
+        `SELECT
+           COALESCE(SUM(amount) FILTER (WHERE direction = 'CR'), 0) AS total_cr,
+           COALESCE(SUM(amount) FILTER (WHERE direction = 'DR'), 0) AS total_dr
+         FROM ledger_entries
+         WHERE account_id = ANY($1::uuid[])
+           AND effective_date >= CURRENT_DATE - INTERVAL '90 days'`,
+        [accountIds],
+      );
+      const totalCr = parseFloat(sumRows[0]?.total_cr ?? "0");
+      const totalDr = parseFloat(sumRows[0]?.total_dr ?? "0");
+
+      res.json({
+        success: true,
+        accounts,
+        entries,
+        total: parseInt(countRows[0].count),
+        summary: { total_cr: totalCr, total_dr: totalDr, net: totalCr - totalDr },
+      });
+    } catch (err) {
+      console.error("[ledger] GET /ledger/my failed:", err);
+      res.status(500).json({ success: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  },
+);
+
 // ─── Payslips ────────────────────────────────────────────────────────────────
 
 router.post(

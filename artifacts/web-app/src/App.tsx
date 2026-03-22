@@ -46,6 +46,7 @@ import Tables from "@/pages/tables";
 import TableDetail from "@/pages/table-detail";
 import DailyReport from "@/pages/daily-report";
 import MyProfile from "@/pages/my-profile";
+import MyLedger from "@/pages/my-ledger";
 
 import { DashboardLayout } from "@/components/layout";
 
@@ -201,6 +202,7 @@ function Router() {
       <Route path="/tables/:id" component={() => <AuthRoute component={TableDetail} />} />
       <Route path="/reports/daily" component={() => <AuthRoute component={DailyReport} />} />
       <Route path="/my-profile" component={() => <AuthRoute component={MyProfile} />} />
+      <Route path="/my-ledger"  component={() => <AuthRoute component={MyLedger} />} />
       {/* Customer portal */}
       <Route path="/customer/login" component={CustomerLogin} />
       <Route path="/customer/booking" component={CustomerBooking} />
