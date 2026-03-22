@@ -1,0 +1,455 @@
+# KTV Pro — Role Dashboard, Profile & Ledger
+## Replit MVP | Additive Update
+
+---
+
+## ⚠️ Safety Rules
+
+```
+DO NOT TOUCH:
+  server.js · middleware/auth.js · middleware/rbac.js
+  All existing routes · socket/roomBoard.js · db/schema.sql · .env
+
+Rules:
+  ✅ New files only — never overwrite existing files
+  ✅ Add sidebar nav items alongside existing ones — never reorder or remove
+  ✅ All DB queries: WHERE staff_id / user_id = req.user.id (own data only)
+  ✅ Add exactly 3 lines to server.js — at the very bottom only
+  ❌ Never modify or delete existing code
+```
+
+---
+
+## 🎯 What to Build
+
+3 pages per role. Add to existing sidebar under each role's nav group.
+
+```
+Dashboard       ← already exists, do not touch
+My Profile      ← NEW
+Account Ledger  ← NEW
+(My Timesheet, etc. already exist — keep as-is)
+```
+
+Roles: `investor` · `branch_manager` · `manager` · `hostess` · `driver` · `kitchen` · `hall` · `general`
+
+---
+
+## 📁 New Files
+
+```
+routes/
+  dashboards/index.js + [role].js × 8
+  profile/index.js   + [role].js × 8
+  ledger/index.js    + [role].js × 8
+
+db/queries/
+  dashboard_queries.js
+  profile_queries.js
+  ledger_queries.js          ← all SELECT only, no INSERT/UPDATE
+
+client/src/pages/
+  dashboards/index.jsx + [Role]Dashboard.jsx × 8
+  profile/MyProfile.jsx
+  ledger/AccountLedger.jsx
+
+client/src/components/dashboard/
+  KpiCard.jsx · RoomChip.jsx · RingChart.jsx
+  Sparkline.jsx · MiniBar.jsx · Avatar.jsx
+```
+
+---
+
+## 📡 API Endpoints
+
+### Dashboard
+| Role | Endpoints |
+|---|---|
+| investor | `GET /api/dashboards/investor/summary` · `/branch-performance` · `/kpis` |
+| branch_manager | `GET /api/dashboards/branch-manager/live` · `/staff` · `/handover` |
+| manager | `GET /api/dashboards/manager/orders` · `/hostesses` · `PATCH /comps/:id` |
+| hostess | `GET /api/dashboards/hostess/summary` · `/commission` · `/schedule` |
+| driver | `GET /api/dashboards/driver/jobs` |
+| kitchen | `GET /api/dashboards/kitchen/orders` · `PATCH /orders/:id/status` |
+| hall | `GET /api/dashboards/hall/tasks` · `PATCH /tasks/:id/done` |
+| general | `GET /api/dashboards/general/timesheet` · `/pay-estimate` |
+
+### My Profile
+| Endpoint | Allowed |
+|---|---|
+| `GET  /api/profile/me` | own data only |
+| `PATCH /api/profile/me` | display name · language · avatar only |
+| `GET  /api/profile/me/schedule` | own shifts only |
+| `GET  /api/profile/me/ratings` | hostess only |
+| `GET  /api/profile/me/vehicle` | driver only |
+| `GET  /api/profile/me/agency` | hostess (agency model) only |
+
+### Account Ledger
+| Role | Endpoints |
+|---|---|
+| investor | `GET /api/ledger/investor/distributions` · `/statements` · `/contributions` |
+| branch_manager · manager | `GET /api/ledger/:role/salary` · `/expenses` · `/incentives` |
+| hostess | `GET /api/ledger/hostess/commissions` · `/advances` · `/payouts` · `/disputes` |
+| driver · kitchen · hall · general | `GET /api/ledger/:role/salary` · `/advances` · `/allowances` |
+
+---
+
+## 🖥️ Dashboard — per role
+
+| Role | KPI Cards (4) | Main Sections |
+|---|---|---|
+| investor | Revenue MTD · Gross Profit · EBITDA · Active Branches | Branch performance table (aggregated only) · KPI ring charts · Revenue trend |
+| branch_manager | Revenue vs Target · Occupied Rooms · Staff on Duty · Sessions Today | Live room board (Socket.io) · Alerts panel · Shift handover note · Staff list |
+| manager | Open Folios · Pending Orders · Active Hostesses · Awaiting Approval | F&B order table · Hostess assignments · Comp approve/reject · Incident log shortcut |
+| hostess | Commission Today · Commission MTD · Sessions This Month · Attendance Rate | Commission breakdown · Weekly schedule · Session history · Current session status |
+| driver | Trips Today · Distance · Driving Hours · Next Job | Job queue — name + pickup → dropoff only (no phone number ever) |
+| kitchen | Pending · Preparing · Ready · Completed Today | Order cards with action buttons · Low-stock alert banner · Last call countdown |
+| hall | Open Tasks · In Progress · Completed · Floor Zone | Task queue with priority · Room status grid · Lost & found badge |
+| general | Attendance Rate · Hours This Week · Overtime · Est. Net Pay | Timesheet summary · Pay estimate · Upcoming schedule · Leave balance |
+
+---
+
+## 🖥️ My Profile — shared + role-specific
+
+### Shared (all roles)
+```
+Avatar · Full name · Role badge · Branch · Staff ID · Status (Active/On Leave/Suspended)
+Language preference selector: EN / ZH / MS / TH / KO / JA
+Phone (masked) · Email (masked) · Joined date · Last login
+[Edit] button → editable fields: display name + language preference + avatar only
+```
+
+### investor
+```
+Ownership & Portfolio:
+  Equity % per branch with visual bar
+  Total capital contributed (with contribution history dates)
+  Latest dividend received · Next expected distribution date
+  ROI % since first investment
+  Contact person at management (name + email only — no financials of others)
+
+⚠️ NEVER show: staff names, guest data, hostess info, session details
+```
+
+### branch_manager
+```
+Branch Assignment:
+  Branch name · Address · Branch code · Operating hours
+  Assigned branches list (if managing multiple branches)
+  Monthly KPI targets (revenue, occupancy, F&B attach rate)
+  Total direct reports — count only, no individual names
+
+Operational:
+  Petty cash float limit assigned
+  Emergency contact (own record)
+  Handover log — last 5 shift handover notes (read-only)
+
+⚠️ Can view own salary/incentive only — not other managers' pay
+```
+
+### manager
+```
+Shift Assignment:
+  Current shift · Floor zone · Direct supervisor
+  Clock-in requirement: must be in-venue (no remote clock-in)
+
+Responsibilities:
+  Rooms assigned for oversight
+  Comp approval limit (max RM amount per single comp)
+  Void authorization level
+  Incident reporting access
+
+Certifications: First aid · Fire warden (if applicable)
+
+⚠️ Cannot view hostess commission totals — can only see session assignments
+⚠️ Comp approval creates immutable audit log entry — show this notice on profile
+```
+
+### hostess
+```
+Employment Model (critical — display clearly):
+  Direct Staff  → employer is venue, salary+commission
+  Agency Staff  → show agency name, contract start/end date, agency contact
+
+Skills & Availability:
+  Languages spoken (editable)
+  Service types: Hostess / Entertainment / Bilingual / Interpreter
+  Availability status toggle: Available / Unavailable / On Leave / Blackout
+  Blackout dates: self-managed calendar (dates she is unavailable)
+  Preferred room types
+
+Performance:
+  Average guest rating (last 30 sessions, stars)
+  Total sessions completed (lifetime)
+  Repeat guest rate % (guests who requested her again)
+
+Guest Preferences (read-only — set by manager):
+  VIP guest pairings on file
+  Language match assignments
+
+⚠️ Commission disputes: hostess can flag a session as disputed — creates ticket
+⚠️ Agency model: deductions from agency fee must be visible in ledger
+⚠️ Never show other hostess names, ratings, or commission
+```
+
+### driver
+```
+License & Compliance (show expiry warnings):
+  Driving license number (masked: XX****XX format)
+  License class · Expiry date — ⚠️ WARNING banner if < 60 days
+  Background check date
+
+Vehicle Assignment:
+  Plate number · Make/Model · Color
+  Vehicle insurance expiry — ⚠️ WARNING banner if < 30 days
+  Last service date / next service due
+  Vehicle condition notes (read-only — set by manager)
+
+Performance:
+  Total trips completed (lifetime)
+  On-time arrival rate %
+  Average guest rating
+
+⚠️ Guest phone numbers must NEVER appear anywhere in driver's view
+⚠️ Only show guest first name + pickup/dropoff address
+```
+
+### kitchen
+```
+Station Assignment:
+  Primary station: Grill / Cold Kitchen / Prep / Pastry / Fryer
+  Secondary station (backup coverage)
+
+Compliance:
+  Food handler certification number + expiry — ⚠️ WARNING if < 30 days
+  Last hygiene training date
+
+Specializations: Halal-certified / Vegetarian / Allergen-aware
+
+Performance:
+  Average prep time this month
+  Orders completed today / this week
+  Error/remake count (returned orders)
+
+⚠️ Kitchen staff cannot see: guest names, room booking details, any financial data
+⚠️ Only show: room number + order items (guest identity is irrelevant to kitchen)
+```
+
+### hall
+```
+Zone & Assignment:
+  Floor zone (e.g. Ground Floor, Level 2)
+  Assigned rooms list for this shift
+  Languages spoken (for guest-facing interactions)
+
+Responsibilities:
+  Service request handling
+  Room reset / cleaning duty
+  Mini-bar restock tracking
+
+Certifications: Guest service · First aid (if applicable)
+
+Performance:
+  Tasks completed today
+  Average response time (time from task assigned to done)
+  Guest satisfaction score (if tracked per staff)
+
+⚠️ Hall staff see room number + service request only — no guest PII
+⚠️ Cannot see folio amounts or session charges
+```
+
+### general
+```
+Employment Details:
+  Department · Position title
+  Employment type: Full-time / Part-time / Contract
+  Probation end date (if still on probation — show countdown)
+  Reporting manager name
+
+Payroll Reference:
+  Bank account — last 4 digits only (for payroll confirmation)
+  Payment method: Bank transfer / Cash
+
+Leave & Time-off:
+  Annual leave balance · Medical leave balance
+  Pending leave requests with status
+  [Apply Leave] button → creates leave_requests record
+
+Shift Flexibility:
+  [Request Shift Swap] → creates shift_swap_requests record
+  Pending swap requests status
+
+⚠️ General staff cannot see: any other staff's pay, commission, or attendance
+```
+
+---
+
+## 🖥️ Account Ledger — per role
+
+### investor
+```
+Header KPIs: Distributions YTD · Ownership % · Est. Portfolio Value
+
+Distribution History:
+  Table: Date · Description · Branch · Amount · Status (Paid / Pending / Processing)
+  Filter: by year · by branch
+
+Capital Contributions:
+  Table: Date · Amount · Branch · Tranche label · Running total invested
+
+Monthly P&L Statements:
+  Table: Month · Branch(es) · Revenue · GP · EBITDA · [Download PDF]
+  PDF links from existing report storage — do not regenerate
+
+⚠️ All amounts are aggregated — never tied to individual staff or guest transactions
+```
+
+### branch_manager · manager
+```
+Header KPIs: Base Salary · Incentive MTD · YTD Total Earned
+
+Payroll History:
+  Table: Month · Base · Incentive · OT · Deductions · Net Paid · Status
+  Filter: by year
+
+Incentive Breakdown (manager only — branch_manager sees full):
+  Per KPI: Room occupancy bonus · F&B attach bonus · Team attendance bonus
+
+Expense Claims:
+  Table: Date · Category · Description · Amount · Receipt · Status
+  Status: Pending / Approved / Rejected / Paid
+  [Submit New Claim] → form: category + description + amount + receipt upload
+
+⚠️ branch_manager cannot see individual manager salary details
+⚠️ manager cannot see branch_manager salary details
+```
+
+### hostess
+```
+Header KPIs: Commission MTD · Total Paid YTD · Outstanding · Advance Balance
+
+Commission Ledger:
+  Table: Date · Room · Session hrs · Drink comm · Package comm · Tips · Total · Status
+  Status: Scheduled / Ongoing / Settled / Disputed
+  [Flag Dispute] button on Settled rows → creates commission_disputes record
+  Filter: by month · by status
+
+Agency Deduction section (agency model only):
+  Shows: Gross commission · Agency fee deducted · Net receivable
+  Agency invoice reference number per payout period
+
+Advance & Repayment:
+  Table: Date · Type (Advance / Repayment) · Amount · Approved by · Running Balance
+  Total advance taken · Total repaid · Net outstanding (highlighted if > 0)
+
+Payout History:
+  Table: Pay period · Gross · Agency deduction · Advance deduction · Net · Method · Date
+  Method: Cash / Bank transfer / E-wallet
+
+⚠️ Disputed commissions are locked (read-only) until manager resolves
+⚠️ Agency deduction line must be clearly separated from venue deductions
+```
+
+### driver · kitchen · hall · general
+```
+Header KPIs: Base Salary · Total Allowances · Net Pay This Month
+
+Payroll History:
+  Table: Month · Base · OT pay · Allowances · Late deduction · Advance deduction · Net · Status
+  Filter: by year
+
+Allowance Breakdown:
+  driver:  Trip allowance · Fuel · Waiting time
+  kitchen: Meal allowance · Shift allowance
+  hall:    Shift allowance · Weekend premium
+  general: Attendance bonus · Shift allowance
+
+Attendance Summary (link to existing My Timesheet — do not rebuild):
+  Days worked · Late count · Absent count · OT hours this month
+  → [View Full Timesheet] links to existing timesheet page
+
+Advance & Repayment (same structure as hostess, minus agency section)
+
+Leave Balance (general only):
+  Annual leave remaining · Medical leave remaining · Used this year
+```
+
+---
+
+## 🎨 Design
+
+```
+Theme:  Dark  (#0b0c10 bg · #13141a surface · #1c1e27 card)
+Font:   DM Sans + DM Mono (numbers)
+
+Role accent colors:
+  investor       #f5c842    branch_manager  #2dd4bf
+  manager        #60a5fa    hostess         #e8407a
+  driver         #fb923c    kitchen         #4ade80
+  hall           #a78bfa    general         #9a9baa
+
+Warning colors:
+  Expiry warning (< 60 days)   #fb923c orange
+  Expiry critical (< 30 days)  #f87171 red
+  Dispute flagged              #f5c842 gold
+  Outstanding balance > 0      #f87171 red
+
+Shared components (build once, reuse everywhere):
+  KpiCard     label(11px muted) + value(26px bold) + trend subtext
+  RoomChip    status-colored border + room name + time remaining
+  RingChart   SVG donut, % in center
+  Avatar      initials circle, role accent color
+  LivePulse   green dot + LIVE text (Socket.io pages only)
+  WarnBanner  orange/red dismissible banner for expiry alerts
+  StatusBadge Scheduled / Ongoing / Settled / Disputed / Pending / Paid
+```
+
+---
+
+## 🔌 Register in server.js (3 lines at the bottom only)
+
+```javascript
+app.use('/api/dashboards', require('./routes/dashboards'));
+app.use('/api/profile',    require('./routes/profile'));
+app.use('/api/ledger',     require('./routes/ledger'));
+```
+
+---
+
+## 🔐 DB Query Rules
+
+```
+dashboard_queries.js
+  investor   → investor_reports + investor_kpi_snapshots only. Zero raw PII tables.
+  others     → filter by req.user.branchId or req.user.staffId
+
+profile_queries.js
+  Every query: WHERE id = req.user.id
+  Editable:   display_name, language_preference, avatar_url only
+  hostess:    blackout_dates array is self-managed (UPDATE allowed for own record)
+  driver:     vehicle record is read-only (managed by branch_manager only)
+
+ledger_queries.js
+  Every query: WHERE staff_id = req.user.id (or investor_id for investor role)
+  Never expose: other staff salary, other hostess commission, raw bank details
+  Dispute flag: INSERT into commission_disputes — never UPDATE commission record directly
+  Advance records: read-only — creation managed by manager/branch_manager only
+```
+
+---
+
+## ✅ Done When
+
+```
+[ ] Sidebar: Dashboard · My Profile · Account Ledger visible for all 8 roles
+[ ] Existing nav items (My Timesheet etc.) unchanged and still work
+[ ] GET  /api/profile/me                       → 401 without token
+[ ] GET  /api/ledger/hostess/commissions       → own sessions only
+[ ] GET  /api/ledger/investor/distributions    → 403 if not investor role
+[ ] PATCH /api/profile/me with role=hostess    → updates blackout_dates
+[ ] GET  /api/dashboards/kitchen/orders        → real-time via Socket.io
+[ ] Driver profile: license expiry warning shows when < 60 days
+[ ] Hostess ledger: agency deduction line visible only for agency-model hostess
+[ ] GET  /api/reservations                     → still works (existing)
+[ ] Socket.io room:statusUpdated               → still fires (existing)
+```
