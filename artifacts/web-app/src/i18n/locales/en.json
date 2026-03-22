@@ -31,7 +31,9 @@
     "driver_dashboard": "Driver Dashboard",
     "kitchen_dashboard": "Kitchen Dashboard",
     "hall_dashboard": "Hall Dashboard",
-    "general_dashboard": "My Dashboard"
+    "general_dashboard": "My Dashboard",
+    "my_profile": "My Profile",
+    "my_ledger": "Account Ledger"
   },
   "auth": {
     "sign_in": "Sign In",

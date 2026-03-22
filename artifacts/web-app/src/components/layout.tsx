@@ -7,7 +7,7 @@ import {
   ShoppingCart, Users, CalendarCheck, Clock, Handshake, PieChart,
   LineChart, BarChart2, Globe, Receipt, Table2, FileBarChart, Menu, X,
   UserCheck, Briefcase, Settings, ChevronDown, LayoutList, Users2, ClipboardList,
-  Car, ChefHat, Gauge,
+  Car, ChefHat, Gauge, UserCircle, BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
@@ -29,6 +29,7 @@ type NavRole =
 const ADMIN_UP:   NavRole[] = ["super_admin", "admin"];
 const MANAGER_UP: NavRole[] = ["super_admin", "admin", "branch_manager", "manager"];
 const OPS_UP:     NavRole[] = ["super_admin", "admin", "branch_manager", "manager", "kitchen", "hall", "general"];
+const ALL_ROLES:  NavRole[] = ["super_admin","admin","investor","branch_manager","manager","hostess","driver","kitchen","hall","general"];
 
 type NavItem = { path: string; key: string; icon: React.ComponentType<{ className?: string }>; roles: NavRole[] };
 
@@ -61,10 +62,12 @@ const NAV_ITEMS: NavItem[] = [
   { path: "/branches",           key: "nav.branches",          icon: Building2,       roles: ADMIN_UP },
   { path: "/products",           key: "nav.products",          icon: Package,         roles: MANAGER_UP },
   { path: "/settings/users",     key: "nav.user_management",   icon: Users2,          roles: ["super_admin"] },
+  { path: "/my-profile",         key: "nav.my_profile",         icon: UserCircle,      roles: ALL_ROLES },
+  { path: "/my-ledger",          key: "nav.my_ledger",          icon: BookOpen,        roles: ALL_ROLES },
 ];
 
 // ── Category definitions ─────────────────────────────────────────────────────
-type CategoryKey = "dashboards" | "operations" | "staff" | "finance" | "investors" | "settings";
+type CategoryKey = "personal" | "dashboards" | "operations" | "staff" | "finance" | "investors" | "settings";
 
 interface CategoryDef {
   key: CategoryKey;
@@ -77,6 +80,16 @@ interface CategoryDef {
 const DASH_ROLES: NavRole[] = ["super_admin", "admin", "branch_manager", "manager"];
 
 const CATEGORIES: CategoryDef[] = [
+  {
+    key: "personal",
+    label: "My Account",
+    icon: UserCircle,
+    accent: "#64748B",
+    items: [
+      { path: "/my-profile",     key: "nav.my_profile",    icon: UserCircle, roles: ALL_ROLES },
+      { path: "/my-ledger",      key: "nav.my_ledger",     icon: BookOpen,   roles: ALL_ROLES },
+    ],
+  },
   {
     key: "dashboards",
     label: "Dashboards",
@@ -164,7 +177,7 @@ const CATEGORIES: CategoryDef[] = [
 // ── localStorage helpers ─────────────────────────────────────────────────────
 const LS_KEY = "sidebar_category_state";
 const DEFAULT_OPEN: Record<CategoryKey, boolean> = {
-  dashboards: true, operations: true, staff: false, finance: false, investors: false, settings: false,
+  personal: true, dashboards: true, operations: true, staff: false, finance: false, investors: false, settings: false,
 };
 
 function loadCategoryState(): Record<CategoryKey, boolean> {

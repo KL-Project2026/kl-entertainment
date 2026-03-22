@@ -36,6 +36,7 @@ import agencyReconciliationRouter from "./agencyReconciliation";
 import ledgerRouter from "./ledger";
 import adminUsersRouter from "./admin/users";
 import dashboardsRouter from "./dashboards";
+import profileRouter from "./profile";
 
 const router: IRouter = Router();
 
@@ -76,5 +77,6 @@ router.use(agencyReconciliationRouter);
 router.use(ledgerRouter);
 router.use(adminUsersRouter);
 router.use(dashboardsRouter);
+router.use(profileRouter);
 
 export default router;
