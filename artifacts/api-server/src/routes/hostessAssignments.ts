@@ -622,7 +622,10 @@ router.post(
   managerAccess,
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { reservationId } = req.body as { reservationId: string };
+      const { reservationId, billedHoursOverrides } = req.body as {
+        reservationId: string;
+        billedHoursOverrides?: Record<string, number>; // { [assignmentId]: hours }
+      };
 
       if (!reservationId) { errResp(res, 400, "VALIDATION_ERROR", "reservationId is required"); return; }
 
@@ -649,8 +652,10 @@ router.post(
         );
       }
 
-      // Calculate commissions
-      const summary = await calculateCommissionForReservation(reservationId, req.user!.id);
+      // Calculate commissions (with optional manual billed-hours overrides from POS modal)
+      const summary = await calculateCommissionForReservation(
+        reservationId, req.user!.id, billedHoursOverrides ?? {}
+      );
 
       // Update folio entries quantity to billed_hours
       for (const asm of summary.assignments) {

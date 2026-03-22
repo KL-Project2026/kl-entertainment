@@ -67,6 +67,213 @@ function useHostessAssignments(reservationId?: string) {
   });
 }
 
+// ── Client-side billing hours calculation (mirrors backend 10-min threshold rule) ──
+function computeBilledHoursClient(sessionStart: string, sessionEnd: string | null, override?: number): number {
+  if (override !== undefined && override > 0) return override;
+  const end = sessionEnd ? new Date(sessionEnd) : new Date();
+  const diffMs = end.getTime() - new Date(sessionStart).getTime();
+  const diffMins = diffMs / 60_000;
+  const whole = Math.floor(diffMins / 60);
+  const rem = diffMins % 60;
+  return Math.max(1, rem < 10 ? whole : whole + 1);
+}
+
+// ── Close Session Modal ────────────────────────────────────────────────────────
+function CloseSessionModal({
+  reservationId,
+  assignments,
+  onClose,
+  onClosed,
+}: {
+  reservationId: string;
+  assignments: HostessAssignment[];
+  onClose: () => void;
+  onClosed: () => void;
+}) {
+  const now = new Date().toISOString();
+  // Per-assignment manual hour overrides (number = edited, undefined = auto)
+  const [overrides, setOverrides] = useState<Record<string, number>>(() => {
+    const init: Record<string, number> = {};
+    for (const a of assignments) {
+      init[a.id] = computeBilledHoursClient(a.session_start, a.session_end ?? now);
+    }
+    return init;
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const rows = assignments.map(a => {
+    const hours = overrides[a.id] ?? computeBilledHoursClient(a.session_start, a.session_end ?? now);
+    const rate = Number(a.hourly_rate_guest);
+    const total = hours * rate;
+    return { ...a, hours, rate, total };
+  });
+
+  const grandTotal = rows.reduce((s, r) => s + r.total, 0);
+
+  const adjust = (id: string, delta: number) => {
+    setOverrides(prev => ({ ...prev, [id]: Math.max(0.5, (prev[id] ?? 1) + delta) }));
+  };
+
+  const setDirect = (id: string, val: string) => {
+    const n = parseFloat(val);
+    if (!isNaN(n) && n > 0) setOverrides(prev => ({ ...prev, [id]: Math.round(n * 2) / 2 }));
+  };
+
+  const fmtTime = (iso: string) =>
+    new Date(iso).toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit", hour12: true });
+
+  const handleConfirm = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const token = useAuthStore.getState().token;
+      const resp = await fetch("/api/hostess-assignments/close-session", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ reservationId, billedHoursOverrides: overrides }),
+      });
+      const body = await resp.json() as {
+        success?: boolean;
+        error?: string | { code?: string; message?: string };
+      };
+      if (!resp.ok || !body.success) {
+        const e = body.error;
+        const msg = typeof e === "object" && e !== null
+          ? e.message ?? e.code ?? "Close failed"
+          : typeof e === "string" ? e : "Close failed";
+        setError(msg ?? "Close session failed");
+        return;
+      }
+      onClosed();
+    } catch {
+      setError("Network error — please retry");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-md rounded-2xl border border-white/10 bg-[#14131a] shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/8">
+          <div>
+            <h2 className="font-display font-bold text-base text-foreground">Close Hostess Session</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Review &amp; confirm billing before closing</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/8 text-muted-foreground">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Billing rows */}
+        <div className="px-5 py-4 space-y-3 max-h-[55vh] overflow-y-auto">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">
+            Billing (10-min threshold rule auto-applied)
+          </p>
+          {rows.map(r => {
+            const autoHours = computeBilledHoursClient(r.session_start, r.session_end ?? now);
+            const isManual = r.hours !== autoHours;
+            return (
+              <div key={r.id} className="rounded-xl border border-white/8 bg-black/30 p-3 space-y-2.5">
+                {/* Name + times */}
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{r.hostess_name}</p>
+                    <p className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                      <Clock className="w-2.5 h-2.5" />
+                      {fmtTime(r.session_start)}
+                      {" → "}
+                      <span className={r.session_end ? "text-foreground" : "text-amber-400"}>
+                        {r.session_end ? fmtTime(r.session_end) : "now"}
+                      </span>
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-sm font-bold text-primary">MYR {r.total.toFixed(2)}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {r.hours}hr × MYR {r.rate.toFixed(0)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Hour adjuster */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-muted-foreground flex-1">
+                    콜시간 (Call Hours)
+                    {isManual && (
+                      <button
+                        onClick={() => setOverrides(prev => ({ ...prev, [r.id]: autoHours }))}
+                        className="ml-1.5 text-primary underline-offset-2 underline text-[10px]"
+                      >
+                        reset to auto ({autoHours}hr)
+                      </button>
+                    )}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      aria-label="Decrease hours"
+                      onClick={() => adjust(r.id, -0.5)}
+                      className="w-6 h-6 rounded-md bg-white/8 hover:bg-white/15 text-foreground text-sm font-bold flex items-center justify-center"
+                    >−</button>
+                    <input
+                      aria-label="Billed hours"
+                      type="number"
+                      min={0.5}
+                      step={0.5}
+                      value={r.hours}
+                      onChange={e => setDirect(r.id, e.target.value)}
+                      className="w-14 text-center bg-black/40 border border-white/15 rounded-md text-sm font-semibold text-foreground px-1 py-1 focus:outline-none focus:border-primary/50"
+                    />
+                    <button
+                      aria-label="Increase hours"
+                      onClick={() => adjust(r.id, 0.5)}
+                      className="w-6 h-6 rounded-md bg-white/8 hover:bg-white/15 text-foreground text-sm font-bold flex items-center justify-center"
+                    >+</button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Grand total */}
+          <div className="flex items-center justify-between pt-1 border-t border-white/8">
+            <span className="text-sm font-semibold text-muted-foreground">Total Hostess Charges</span>
+            <span className="text-base font-bold text-primary">MYR {grandTotal.toFixed(2)}</span>
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            Billed to folio. Hostess commission calculated automatically after close.
+          </p>
+        </div>
+
+        {/* Footer */}
+        {error && (
+          <div className="mx-5 mb-2 px-3 py-2 rounded-lg bg-destructive/10 border border-destructive/30 text-xs text-destructive">
+            {error}
+          </div>
+        )}
+        <div className="flex gap-3 px-5 pb-5">
+          <Button variant="ghost" onClick={onClose} className="flex-1">Cancel</Button>
+          <Button
+            onClick={handleConfirm}
+            disabled={loading}
+            className="flex-1 gap-2 bg-destructive hover:bg-destructive/90 text-white font-semibold"
+          >
+            {loading ? "Closing..." : "Confirm & Close Session"}
+          </Button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 function catMarker(menuCatName: string | null): string {
   if (!menuCatName) return "";
   const n = menuCatName.toLowerCase();
@@ -683,6 +890,7 @@ export default function POS() {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [addingOrder, setAddingOrder] = useState(false);
   const [assignedToast, setAssignedToast] = useState<string | null>(null);
+  const [showCloseSession, setShowCloseSession] = useState(false);
   // Extend state
   const [extendingId, setExtendingId] = useState<string | null>(null);
   const [extendMins, setExtendMins] = useState<number>(60);
@@ -1024,9 +1232,17 @@ export default function POS() {
                   Assigned Hostesses
                 </h4>
                 {activeAssignments.length > 0 && (
-                  <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 font-semibold">
-                    {activeAssignments.length} active
-                  </span>
+                  <>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 font-semibold">
+                      {activeAssignments.length} active
+                    </span>
+                    <button
+                      onClick={() => setShowCloseSession(true)}
+                      className="ml-auto text-[10px] px-2.5 py-1 rounded-lg bg-destructive/20 border border-destructive/40 text-destructive hover:bg-destructive/30 transition-colors font-semibold"
+                    >
+                      Close Session
+                    </button>
+                  </>
                 )}
               </div>
               {activeAssignments.length === 0 ? (
@@ -1246,6 +1462,18 @@ export default function POS() {
           order={currentOrder}
           onClose={() => setShowPayment(false)}
           onSuccess={handlePaymentSuccess}
+        />
+      )}
+
+      {showCloseSession && reservationId && activeAssignments.length > 0 && (
+        <CloseSessionModal
+          reservationId={reservationId}
+          assignments={activeAssignments}
+          onClose={() => setShowCloseSession(false)}
+          onClosed={() => {
+            setShowCloseSession(false);
+            refetchAssignments();
+          }}
         />
       )}
     </div>

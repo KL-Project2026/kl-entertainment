@@ -18,12 +18,34 @@ export interface ReservationCommissionSummary {
 }
 
 /**
+ * 10-minute threshold rounding rule:
+ *   - diffMinutes / 60 → wholeHours + remainingMins
+ *   - remainingMins < 10  → round DOWN  (ignore partial)
+ *   - remainingMins >= 10 → round UP    (count as next full hour)
+ *   - minimum 1 hour
+ * Override: if billedHoursOverride is supplied, use it directly (manual adjustment).
+ */
+export function computeBilledHours(
+  sessionStart: Date,
+  sessionEnd: Date,
+  billedHoursOverride?: number
+): number {
+  if (billedHoursOverride !== undefined && billedHoursOverride > 0) return billedHoursOverride;
+  const diffMs = sessionEnd.getTime() - sessionStart.getTime();
+  const diffMins = diffMs / 60_000;
+  const whole = Math.floor(diffMins / 60);
+  const rem = diffMins % 60;
+  return Math.max(1, rem < 10 ? whole : whole + 1);
+}
+
+/**
  * Calculate commission for a single COMPLETED assignment.
- * billed_hours = CEIL(minutes / 60), minimum 1.0
+ * Rounding: 10-minute threshold rule (see computeBilledHours).
  */
 export async function calculateCommission(
   assignmentId: string,
-  changedBy?: string
+  changedBy?: string,
+  billedHoursOverride?: number
 ): Promise<AssignmentCommission> {
   const { rows } = await pool.query<{
     id: string; status: string; session_start: Date; session_end: Date | null;
@@ -57,9 +79,9 @@ export async function calculateCommission(
     );
   }
 
-  const diffMs = new Date(a.session_end).getTime() - new Date(a.session_start).getTime();
-  const diffMinutes = diffMs / 60000;
-  const billedHours = Math.max(1.0, Math.ceil(diffMinutes / 60));
+  const billedHours = computeBilledHours(
+    new Date(a.session_start), new Date(a.session_end), billedHoursOverride
+  );
 
   const hourlyRate = parseFloat(a.hourly_rate_guest);
   const commissionPct = parseFloat(a.commission_rate_pct);
@@ -96,10 +118,12 @@ export async function calculateCommission(
 
 /**
  * Calculate commission for all COMPLETED assignments on a reservation.
+ * overrides: { [assignmentId]: billedHours } — manual adjustments from POS close-session modal.
  */
 export async function calculateCommissionForReservation(
   reservationId: string,
-  changedBy?: string
+  changedBy?: string,
+  overrides: Record<string, number> = {}
 ): Promise<ReservationCommissionSummary> {
   const { rows } = await pool.query<{ id: string }>(
     `SELECT id FROM hostess_session_assignments
@@ -111,7 +135,7 @@ export async function calculateCommissionForReservation(
   const assignments: AssignmentCommission[] = [];
   for (const row of rows) {
     try {
-      const result = await calculateCommission(row.id, changedBy);
+      const result = await calculateCommission(row.id, changedBy, overrides[row.id]);
       assignments.push(result);
     } catch {
       // Skip already-calculated ones
