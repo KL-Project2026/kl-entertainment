@@ -29,7 +29,8 @@ type NavRole =
 const ADMIN_UP:   NavRole[] = ["super_admin", "admin"];
 const MANAGER_UP: NavRole[] = ["super_admin", "admin", "branch_manager", "manager"];
 const OPS_UP:     NavRole[] = ["super_admin", "admin", "branch_manager", "manager", "kitchen", "hall", "general"];
-const ALL_ROLES:  NavRole[] = ["super_admin","admin","investor","branch_manager","manager","hostess","driver","kitchen","hall","general"];
+const ALL_ROLES:       NavRole[] = ["super_admin","admin","investor","branch_manager","manager","hostess","driver","kitchen","hall","general"];
+const STAFF_ROLES:     NavRole[] = ["super_admin","admin","branch_manager","manager","hostess","driver","kitchen","hall","general"];
 
 type NavItem = { path: string; key: string; icon: React.ComponentType<{ className?: string }>; roles: NavRole[] };
 
@@ -62,8 +63,8 @@ const NAV_ITEMS: NavItem[] = [
   { path: "/branches",           key: "nav.branches",          icon: Building2,       roles: ADMIN_UP },
   { path: "/products",           key: "nav.products",          icon: Package,         roles: MANAGER_UP },
   { path: "/settings/users",     key: "nav.user_management",   icon: Users2,          roles: ["super_admin"] },
-  { path: "/my-profile",         key: "nav.my_profile",         icon: UserCircle,      roles: ALL_ROLES },
-  { path: "/my-ledger",          key: "nav.my_ledger",          icon: BookOpen,        roles: ALL_ROLES },
+  { path: "/my-profile",         key: "nav.my_profile",         icon: UserCircle,      roles: ALL_ROLES   },
+  { path: "/my-ledger",          key: "nav.my_ledger",          icon: BookOpen,        roles: STAFF_ROLES },
 ];
 
 // ── Category definitions ─────────────────────────────────────────────────────
@@ -86,8 +87,8 @@ const CATEGORIES: CategoryDef[] = [
     icon: UserCircle,
     accent: "#64748B",
     items: [
-      { path: "/my-profile",     key: "nav.my_profile",    icon: UserCircle, roles: ALL_ROLES },
-      { path: "/my-ledger",      key: "nav.my_ledger",     icon: BookOpen,   roles: ALL_ROLES },
+      { path: "/my-profile",     key: "nav.my_profile",    icon: UserCircle, roles: ALL_ROLES   },
+      { path: "/my-ledger",      key: "nav.my_ledger",     icon: BookOpen,   roles: STAFF_ROLES },
     ],
   },
   {
