@@ -24,28 +24,28 @@ const DEMO_GROUPS: { group: string; color: string; accounts: DemoAccount[] }[] =
     color: "primary",
     accounts: [
       { label: "Super Admin",  email: "admin@klproject.com",    password: "Admin@123!" },
-      { label: "Admin",        email: "admin2@klproject.com",   password: "Admin@123!" },
+      { label: "Admin",        email: "admin2@klproject.com",   password: "KL@12345!" },
     ],
   },
   {
     group: "Management",
     color: "blue",
     accounts: [
-      { label: "Investor",        email: "investor@klproject.com", password: "Demo@123!" },
-      { label: "Branch Mgr (KL)", email: "kl01@klproject.com",     password: "Manager@123!" },
-      { label: "Branch Mgr (PJ)", email: "kl02@klproject.com",     password: "Manager@123!" },
-      { label: "Manager",         email: "manager@klproject.com",   password: "Demo@123!" },
+      { label: "Investor",        email: "investor@klproject.com", password: "KL@12345!" },
+      { label: "Branch Mgr (KL)", email: "kl01@klproject.com",     password: "KL@12345!" },
+      { label: "Branch Mgr (PJ)", email: "kl02@klproject.com",     password: "KL@12345!" },
+      { label: "Manager",         email: "manager@klproject.com",   password: "KL@12345!" },
     ],
   },
   {
     group: "Operations",
     color: "green",
     accounts: [
-      { label: "Hostess",       email: "hostess@klproject.com", password: "Demo@123!" },
-      { label: "Driver",        email: "driver@klproject.com",  password: "Demo@123!" },
-      { label: "Kitchen",       email: "kitchen@klproject.com", password: "Demo@123!" },
-      { label: "Hall Staff",    email: "hall@klproject.com",    password: "Demo@123!" },
-      { label: "General Staff", email: "general@klproject.com", password: "Demo@123!" },
+      { label: "Hostess",       email: "hostess@klproject.com", password: "KL@12345!" },
+      { label: "Driver",        email: "driver@klproject.com",  password: "KL@12345!" },
+      { label: "Kitchen",       email: "kitchen@klproject.com", password: "KL@12345!" },
+      { label: "Hall Staff",    email: "hall@klproject.com",    password: "KL@12345!" },
+      { label: "General Staff", email: "general@klproject.com", password: "KL@12345!" },
     ],
   },
 ];
