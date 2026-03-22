@@ -1082,7 +1082,7 @@ export default function POS() {
       )}
 
       <div className="flex items-center gap-4">
-        <button onClick={() => navigate(reservationId ? "/reservations" : "/pos")}
+        <button onClick={() => navigate("/pos")}
           className="text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="w-5 h-5" />
         </button>
