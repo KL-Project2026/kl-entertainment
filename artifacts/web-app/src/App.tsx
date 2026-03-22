@@ -163,7 +163,7 @@ function Router() {
       <Route path="/room-board" component={() => <ProtectedRoute component={RoomBoard} />} />
       <Route path="/branches" component={() => <ProtectedRoute component={Branches} />} />
       <Route path="/products" component={() => <ProtectedRoute component={Products} />} />
-      <Route path="/products/:id" component={() => <ProtectedRoute component={ProductDetail} />} />
+      <Route path="/products/:id" component={() => <AuthRoute component={ProductDetail} />} />
       <Route path="/settings/menu-config" component={() => <ProtectedRoute component={SettingsMenuConfig} />} />
       <Route path="/settings/users" component={() => <ProtectedRoute component={SettingsUsers} />} />
       <Route path="/reservations" component={() => <ProtectedRoute component={Reservations} />} />
