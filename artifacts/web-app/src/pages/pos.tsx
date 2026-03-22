@@ -254,6 +254,10 @@ function AddItemModal({
   const [selectedHostess, setSelectedHostess] = useState<CatalogItem | null>(null);
   const [hostessLoading, setHostessLoading] = useState(false);
   const [hostessError, setHostessError] = useState<string | null>(null);
+  // Duration: number = minutes, null = open-ended
+  const [sessionDurationMins, setSessionDurationMins] = useState<number | null>(120);
+  const [useCustomTime, setUseCustomTime] = useState(false);
+  const [customEndTime, setCustomEndTime] = useState(""); // "HH:MM"
   const [desc, setDesc] = useState("");
   const [unitPrice, setUnitPrice] = useState("");
   const [qty, setQty] = useState("1");
@@ -302,19 +306,36 @@ function AddItemModal({
     onClose();
   };
 
+  // Compute sessionEnd ISO string from user selection
+  const computeSessionEnd = (): string | undefined => {
+    if (useCustomTime && customEndTime) {
+      const now = new Date();
+      const [h, m] = customEndTime.split(":").map(Number);
+      const end = new Date(now);
+      end.setHours(h, m, 0, 0);
+      if (end <= now) end.setDate(end.getDate() + 1); // wrap to next day
+      return end.toISOString();
+    }
+    if (sessionDurationMins !== null) {
+      return new Date(Date.now() + sessionDurationMins * 60_000).toISOString();
+    }
+    return undefined; // open-ended
+  };
+
   const handleAssignHostess = async () => {
     if (!selectedHostess || !reservationId) return;
     setHostessLoading(true);
     setHostessError(null);
     try {
       const token = useAuthStore.getState().token;
+      const sessionEnd = computeSessionEnd();
       const resp = await fetch("/api/hostess-assignments/add-on", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ reservationId, hostessId: selectedHostess.id }),
+        body: JSON.stringify({ reservationId, hostessId: selectedHostess.id, sessionEnd }),
       });
       // API returns { success: false, error: { code, message, detail } } on failure
       const body = await resp.json() as {
@@ -504,6 +525,7 @@ function AddItemModal({
               <div className="shrink-0 border-t border-white/8 px-4 py-4 bg-black/20">
                 {selectedHostess ? (
                   <div className="space-y-3">
+                    {/* Selected hostess card */}
                     <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-primary/8 border border-primary/20">
                       <div className="w-9 h-9 rounded-full bg-primary/25 flex items-center justify-center text-sm font-bold text-primary shrink-0">
                         {selectedHostess.name.charAt(0)}
@@ -513,6 +535,68 @@ function AddItemModal({
                         <p className="text-xs text-muted-foreground">MYR {selectedHostess.unitPrice.toFixed(0)}/hr · Billed at session close</p>
                       </div>
                     </div>
+
+                    {/* Session duration / end time selector */}
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                        <Clock className="w-3 h-3" /> Session End Time
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[60, 120, 180, 240].map(mins => (
+                          <button
+                            key={mins}
+                            type="button"
+                            onClick={() => { setSessionDurationMins(mins); setUseCustomTime(false); }}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                              !useCustomTime && sessionDurationMins === mins
+                                ? "bg-primary/20 border-primary/50 text-primary"
+                                : "bg-black/30 border-white/10 text-muted-foreground hover:border-white/20"
+                            }`}
+                          >
+                            {mins / 60}hr
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => { setSessionDurationMins(null); setUseCustomTime(false); }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                            !useCustomTime && sessionDurationMins === null
+                              ? "bg-amber-500/20 border-amber-500/40 text-amber-300"
+                              : "bg-black/30 border-white/10 text-muted-foreground hover:border-white/20"
+                          }`}
+                        >
+                          Open
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setUseCustomTime(true); setSessionDurationMins(null); }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                            useCustomTime
+                              ? "bg-primary/20 border-primary/50 text-primary"
+                              : "bg-black/30 border-white/10 text-muted-foreground hover:border-white/20"
+                          }`}
+                        >
+                          Custom
+                        </button>
+                      </div>
+                      {useCustomTime && (
+                        <input
+                          type="time"
+                          value={customEndTime}
+                          onChange={e => setCustomEndTime(e.target.value)}
+                          className="w-full rounded-lg px-3 py-2 bg-black/40 border border-white/15 text-sm text-foreground focus:outline-none focus:border-primary/50"
+                        />
+                      )}
+                      {!useCustomTime && sessionDurationMins !== null && (
+                        <p className="text-[11px] text-muted-foreground">
+                          Ends at ~{new Date(Date.now() + sessionDurationMins * 60_000).toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                        </p>
+                      )}
+                      {!useCustomTime && sessionDurationMins === null && (
+                        <p className="text-[11px] text-amber-400/70">Open-ended — end time set at session close</p>
+                      )}
+                    </div>
+
                     {hostessError && (
                       <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-destructive/10 border border-destructive/30 text-xs text-destructive">
                         <span className="shrink-0 font-bold mt-0.5">!</span>
@@ -523,7 +607,7 @@ function AddItemModal({
                       <Button variant="ghost" onClick={onClose} className="flex-1">Cancel</Button>
                       <Button
                         onClick={handleAssignHostess}
-                        disabled={hostessLoading || !reservationId}
+                        disabled={hostessLoading || !reservationId || (useCustomTime && !customEndTime)}
                         className="flex-1 gap-2 bg-primary hover:bg-primary/90 text-black font-semibold"
                       >
                         <Plus className="w-4 h-4" />
@@ -599,6 +683,13 @@ export default function POS() {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [addingOrder, setAddingOrder] = useState(false);
   const [assignedToast, setAssignedToast] = useState<string | null>(null);
+  // Extend state
+  const [extendingId, setExtendingId] = useState<string | null>(null);
+  const [extendMins, setExtendMins] = useState<number>(60);
+  const [extendCustomTime, setExtendCustomTime] = useState("");
+  const [extendUseCustom, setExtendUseCustom] = useState(false);
+  const [extendLoading, setExtendLoading] = useState(false);
+  const [extendError, setExtendError] = useState<string | null>(null);
 
   const { data: branchesData } = useListBranches();
   const branches = branchesData?.data || [];
@@ -611,6 +702,53 @@ export default function POS() {
     refetchAssignments();
     setTimeout(() => setAssignedToast(null), 4000);
   }, [refetchAssignments]);
+
+  const handleExtend = async (assignmentId: string) => {
+    setExtendLoading(true);
+    setExtendError(null);
+    try {
+      const token = useAuthStore.getState().token;
+      let body: Record<string, unknown>;
+      if (extendUseCustom && extendCustomTime) {
+        const now = new Date();
+        const [h, m] = extendCustomTime.split(":").map(Number);
+        const end = new Date(now);
+        end.setHours(h, m, 0, 0);
+        if (end <= now) end.setDate(end.getDate() + 1);
+        body = { newSessionEnd: end.toISOString() };
+      } else {
+        body = { addMinutes: extendMins };
+      }
+      const resp = await fetch(`/api/hostess-assignments/${assignmentId}/extend-time`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(body),
+      });
+      const data = await resp.json() as {
+        success?: boolean;
+        error?: string | { code?: string; message?: string; detail?: unknown };
+        data?: { newSessionEnd?: string };
+      };
+      if (!resp.ok || !data.success) {
+        const err = data.error;
+        const msg = typeof err === "object" && err !== null
+          ? err.message ?? err.code ?? "Extension failed"
+          : typeof err === "string" ? err : "Extension failed";
+        setExtendError(msg ?? "Extension failed");
+        return;
+      }
+      setExtendingId(null);
+      setExtendError(null);
+      refetchAssignments();
+    } catch {
+      setExtendError("Network error — please retry");
+    } finally {
+      setExtendLoading(false);
+    }
+  };
 
   const { data: reservationData } = useGetReservation(reservationId!, {
     query: { enabled: !!reservationId },
@@ -894,23 +1032,91 @@ export default function POS() {
               {activeAssignments.length === 0 ? (
                 <p className="text-xs text-muted-foreground italic">No hostesses assigned yet. Use Add Item → Hostess to assign.</p>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-1">
                   {activeAssignments.map(a => {
-                    const since = new Date(a.session_start);
-                    const sinceStr = since.toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit", hour12: true });
+                    const fmtTime = (iso: string) =>
+                      new Date(iso).toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit", hour12: true });
+                    const isExpanding = extendingId === a.id;
                     return (
-                      <div key={a.id} className="flex items-center gap-3 py-2 border-b border-white/5 last:border-0">
-                        <div className="w-7 h-7 rounded-full bg-pink-500/20 flex items-center justify-center shrink-0">
-                          <span className="text-[10px] font-bold text-pink-300">{a.hostess_name.charAt(0)}</span>
+                      <div key={a.id} className="border-b border-white/5 last:border-0 pb-2 last:pb-0">
+                        {/* Hostess row */}
+                        <div className="flex items-center gap-2 py-1.5">
+                          <div className="w-7 h-7 rounded-full bg-pink-500/20 flex items-center justify-center shrink-0">
+                            <span className="text-[10px] font-bold text-pink-300">{a.hostess_name.charAt(0)}</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-foreground truncate">{a.hostess_name}</p>
+                            <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+                              <Clock className="w-2.5 h-2.5" />
+                              {fmtTime(a.session_start)}
+                              {a.session_end
+                                ? <> → <span className="text-pink-300 font-medium">{fmtTime(a.session_end)}</span></>
+                                : <span className="text-amber-400/70 ml-0.5">(open)</span>
+                              }
+                              <span className="mx-1">·</span>MYR {Number(a.hourly_rate_guest).toFixed(0)}/hr
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => {
+                              if (isExpanding) { setExtendingId(null); setExtendError(null); }
+                              else { setExtendingId(a.id); setExtendMins(60); setExtendUseCustom(false); setExtendCustomTime(""); setExtendError(null); }
+                            }}
+                            className="text-[10px] px-2 py-1 rounded-lg bg-primary/15 border border-primary/30 text-primary hover:bg-primary/25 transition-colors font-medium shrink-0"
+                          >
+                            {isExpanding ? "Cancel" : "Extend"}
+                          </button>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-foreground truncate">{a.hostess_name}</p>
-                          <p className="text-[10px] text-muted-foreground flex items-center gap-1">
-                            <Clock className="w-2.5 h-2.5" />
-                            Since {sinceStr} · MYR {Number(a.hourly_rate_guest).toFixed(0)}/hr
-                          </p>
-                        </div>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-pink-500/15 text-pink-400 font-semibold shrink-0">Active</span>
+
+                        {/* Extend panel */}
+                        {isExpanding && (
+                          <div className="ml-9 space-y-2 pb-1">
+                            <div className="flex flex-wrap gap-1">
+                              {[30, 60, 90, 120].map(m => (
+                                <button
+                                  key={m}
+                                  type="button"
+                                  onClick={() => { setExtendMins(m); setExtendUseCustom(false); }}
+                                  className={`px-2.5 py-1 rounded-lg text-[10px] font-medium border transition-all ${
+                                    !extendUseCustom && extendMins === m
+                                      ? "bg-primary/20 border-primary/50 text-primary"
+                                      : "bg-black/30 border-white/10 text-muted-foreground hover:border-white/20"
+                                  }`}
+                                >
+                                  +{m >= 60 ? `${m / 60}h` : `${m}m`}
+                                </button>
+                              ))}
+                              <button
+                                type="button"
+                                onClick={() => setExtendUseCustom(true)}
+                                className={`px-2.5 py-1 rounded-lg text-[10px] font-medium border transition-all ${
+                                  extendUseCustom
+                                    ? "bg-primary/20 border-primary/50 text-primary"
+                                    : "bg-black/30 border-white/10 text-muted-foreground hover:border-white/20"
+                                }`}
+                              >
+                                Until...
+                              </button>
+                            </div>
+                            {extendUseCustom && (
+                              <input
+                                type="time"
+                                value={extendCustomTime}
+                                onChange={e => setExtendCustomTime(e.target.value)}
+                                className="w-full rounded-lg px-3 py-1.5 bg-black/40 border border-white/15 text-xs text-foreground focus:outline-none focus:border-primary/50"
+                              />
+                            )}
+                            {extendError && (
+                              <p className="text-[10px] text-destructive">{extendError}</p>
+                            )}
+                            <button
+                              onClick={() => handleExtend(a.id)}
+                              disabled={extendLoading || (extendUseCustom && !extendCustomTime)}
+                              className="w-full py-1.5 rounded-lg bg-primary/90 text-black text-[11px] font-semibold hover:bg-primary transition-colors disabled:opacity-50"
+                            >
+                              {extendLoading ? "Extending..." : "Confirm Extension"}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     );
                   })}

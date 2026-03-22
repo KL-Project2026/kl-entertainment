@@ -89,6 +89,7 @@ export async function createHostessAssignmentFromPOS(params: {
   assignedBy?:   string;
   branchId:      string;
   sessionStart?: Date;
+  sessionEnd?:   Date;
   parentAssignmentId?: string;
   excludeAssignmentIds?: string[];
 }): Promise<{ assignmentId: string; folioEntryId: string }> {
@@ -104,7 +105,9 @@ export async function createHostessAssignmentFromPOS(params: {
     `SELECT end_time, room_id FROM reservations WHERE id = $1`,
     [reservationId]
   );
-  const requiredUntil = resRows[0]?.end_time ? new Date(resRows[0].end_time) : new Date(sessionStart.getTime() + 2 * 3600 * 1000);
+  // Prefer explicit sessionEnd, then reservation end_time, then +2h fallback
+  const requiredUntil = params.sessionEnd
+    ?? (resRows[0]?.end_time ? new Date(resRows[0].end_time) : new Date(sessionStart.getTime() + 2 * 3600 * 1000));
 
   // 2. Availability check
   const avail = await checkHostessAvailability(hostessId, sessionStart, requiredUntil, branchId, excludeAssignmentIds);
@@ -132,18 +135,20 @@ export async function createHostessAssignmentFromPOS(params: {
     hour: "2-digit", minute: "2-digit", hour12: false,
   }).format(sessionStart);
 
-  // 5. INSERT assignment
+  // 5. INSERT assignment (session_end stored if provided — null = open-ended until close-session)
+  const sessionEnd = params.sessionEnd ?? null;
   const { rows: asmRows } = await pool.query<{ id: string }>(
     `INSERT INTO hostess_session_assignments
        (reservation_id, hostess_id, agency_id, pos_order_id,
-        session_start, order_type, parent_assignment_id,
+        session_start, session_end, order_type, parent_assignment_id,
         hourly_rate_guest, commission_rate_pct, agency_rate_pct,
         assigned_by, notes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
      RETURNING id`,
     [
       reservationId, hostessId, rates.agencyId, posOrderId,
-      sessionStart.toISOString(), orderType, parentAssignmentId ?? null,
+      sessionStart.toISOString(), sessionEnd ? sessionEnd.toISOString() : null,
+      orderType, parentAssignmentId ?? null,
       rates.hourlyRateGuest, rates.commissionRatePct, rates.agencyRatePct,
       assignedBy ?? null, notes ?? null,
     ]
@@ -198,11 +203,23 @@ router.post(
   managerAccess,
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { reservationId, hostessId, notes } = req.body as Record<string, string>;
+      const { reservationId, hostessId, notes, sessionEnd } = req.body as Record<string, string>;
 
       if (!reservationId || !hostessId) {
         errResp(res, 400, "VALIDATION_ERROR", "reservationId and hostessId are required");
         return;
+      }
+
+      // Validate sessionEnd if provided
+      let sessionEndDate: Date | undefined;
+      if (sessionEnd) {
+        sessionEndDate = new Date(sessionEnd);
+        if (isNaN(sessionEndDate.getTime())) {
+          errResp(res, 400, "VALIDATION_ERROR", "sessionEnd must be a valid ISO datetime"); return;
+        }
+        if (sessionEndDate <= new Date()) {
+          errResp(res, 400, "VALIDATION_ERROR", "sessionEnd must be in the future"); return;
+        }
       }
 
       // 1. Validate reservation is OCCUPIED (checked_in or extended)
@@ -242,6 +259,7 @@ router.post(
         assignedBy:   req.user!.id,
         branchId:     reservation.branch_id,
         sessionStart: new Date(),
+        sessionEnd:   sessionEndDate,
       });
 
       // Fetch created assignment
@@ -480,6 +498,116 @@ router.post(
         errResp(res, 400, e.code, e.message, { detail: e.detail }); return;
       }
       console.error("[hostess-assignments/extend]", err);
+      errResp(res, 500, "INTERNAL_ERROR", "Unexpected error");
+    }
+  }
+);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PATCH /api/hostess-assignments/:id/extend-time
+// Updates session_end of an ACTIVE assignment (simple time extension UX).
+// Does NOT create new assignment records — just sets/updates session_end.
+// ═══════════════════════════════════════════════════════════════════════════
+router.patch(
+  "/hostess-assignments/:id/extend-time",
+  authenticate,
+  managerAccess,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { id } = req.params;
+      const { newSessionEnd, addMinutes } = req.body as {
+        newSessionEnd?: string;
+        addMinutes?: number;
+      };
+
+      if (!newSessionEnd && !addMinutes) {
+        errResp(res, 400, "VALIDATION_ERROR", "Provide newSessionEnd (ISO datetime) or addMinutes"); return;
+      }
+
+      // Fetch the current assignment
+      const { rows: asmRows } = await pool.query<{
+        id: string; reservation_id: string; hostess_id: string;
+        status: string; session_start: Date; session_end: Date | null;
+        branch_id: string;
+      }>(
+        `SELECT hsa.id, hsa.reservation_id, hsa.hostess_id, hsa.status,
+                hsa.session_start, hsa.session_end,
+                r.branch_id
+         FROM hostess_session_assignments hsa
+         JOIN reservations r ON r.id = hsa.reservation_id
+         WHERE hsa.id = $1`,
+        [id]
+      );
+      if (!asmRows.length) { errResp(res, 404, "ASSIGNMENT_NOT_FOUND", "Assignment not found"); return; }
+      const asm = asmRows[0];
+
+      if (asm.status !== "ACTIVE") {
+        errResp(res, 400, "INVALID_STATE", `Assignment is ${asm.status} — only ACTIVE assignments can be extended`); return;
+      }
+
+      // Determine new end time
+      let newEnd: Date;
+      if (newSessionEnd) {
+        newEnd = new Date(newSessionEnd);
+        if (isNaN(newEnd.getTime())) { errResp(res, 400, "VALIDATION_ERROR", "newSessionEnd must be a valid ISO datetime"); return; }
+      } else {
+        const base = asm.session_end ? new Date(asm.session_end) : new Date();
+        newEnd = new Date(base.getTime() + Number(addMinutes) * 60_000);
+      }
+
+      const now = new Date();
+      if (newEnd <= now) { errResp(res, 400, "VALIDATION_ERROR", "New end time must be in the future"); return; }
+
+      const currentEnd = asm.session_end ? new Date(asm.session_end) : now;
+      if (newEnd <= currentEnd) { errResp(res, 400, "VALIDATION_ERROR", "New end time must be later than current end time"); return; }
+
+      // Availability check for the extended window (exclude this assignment from overlap check)
+      const checkFrom = currentEnd < now ? now : currentEnd;
+      const avail = await checkHostessAvailability(
+        asm.hostess_id, checkFrom, newEnd, asm.branch_id, [id]
+      );
+      if (!avail.available) {
+        errResp(res, 400, "SHIFT_END_CONFLICT",
+          "Hostess is not available for the extended period",
+          (avail as { available: false; reason: string; detail: Record<string, unknown> }).detail);
+        return;
+      }
+
+      // Update session_end
+      await pool.query(
+        `UPDATE hostess_session_assignments
+         SET session_end = $1, updated_at = NOW()
+         WHERE id = $2`,
+        [newEnd.toISOString(), id]
+      );
+
+      // Audit log
+      await pool.query(
+        `INSERT INTO audit_log (entity_type, entity_id, action, changed_by, new_values)
+         VALUES ('hostess_session_assignments', $1, 'extend_time', $2, $3)`,
+        [id, req.user!.id,
+          JSON.stringify({ previousEnd: asm.session_end, newEnd: newEnd.toISOString(), addMinutes })]
+      );
+
+      // Socket.io
+      if (_io) {
+        _io.to(`branch:${asm.branch_id}`).emit("hostess:time-extended", {
+          assignmentId: id,
+          reservationId: asm.reservation_id,
+          newSessionEnd: newEnd.toISOString(),
+        });
+      }
+
+      res.json({
+        success: true,
+        data: {
+          assignmentId: id,
+          newSessionEnd: newEnd.toISOString(),
+          previousSessionEnd: asm.session_end,
+        },
+      });
+    } catch (err) {
+      console.error("[hostess-assignments/extend-time]", err);
       errResp(res, 500, "INTERNAL_ERROR", "Unexpected error");
     }
   }
