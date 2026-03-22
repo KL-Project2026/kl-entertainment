@@ -24,6 +24,7 @@ import {
   Trash2,
   X,
   ArrowLeft,
+  ChevronLeft,
   Printer,
   Tag,
   CreditCard,
@@ -587,14 +588,33 @@ function AddItemModal({
     }
   };
 
+  // Mobile: track which panel is visible (categories or items)
+  const [mobilePanel, setMobilePanel] = useState<"categories" | "items">("categories");
+
   if (!mounted) return null;
   return createPortal(
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-3">
-      <div className="w-full max-w-5xl h-[90vh] flex flex-col rounded-2xl overflow-hidden border border-white/8 bg-[#0f0f14] shadow-2xl">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-2 md:p-3">
+      <div className="w-full max-w-5xl h-[92vh] md:h-[90vh] flex flex-col rounded-2xl overflow-hidden border border-white/8 bg-[#0f0f14] shadow-2xl">
 
         {/* ── Header ── */}
-        <div className="flex justify-between items-center px-6 py-4 border-b border-white/8 shrink-0">
-          <h3 className="font-display text-lg font-bold tracking-tight">Add Order Item</h3>
+        <div className="flex justify-between items-center px-4 md:px-6 py-3 md:py-4 border-b border-white/8 shrink-0">
+          <div className="flex items-center gap-2">
+            {/* Mobile back button (items panel) */}
+            {mobilePanel === "items" && (
+              <button
+                onClick={() => setMobilePanel("categories")}
+                className="md:hidden p-1.5 rounded-lg hover:bg-white/8 transition-colors mr-1"
+              >
+                <ChevronLeft className="w-4 h-4 text-muted-foreground" />
+              </button>
+            )}
+            <h3 className="font-display text-base md:text-lg font-bold tracking-tight">
+              {mobilePanel === "items" && activeGroup
+                ? <span className="md:hidden">{activeGroup.name}</span>
+                : null}
+              <span className={mobilePanel === "items" ? "hidden md:inline" : undefined}>Add Order Item</span>
+            </h3>
+          </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/8 transition-colors">
             <X className="w-4 h-4 text-muted-foreground" />
           </button>
@@ -603,8 +623,8 @@ function AddItemModal({
         {/* ── Body ── */}
         <div className="flex flex-1 min-h-0">
 
-          {/* Left — Category list */}
-          <div className="w-48 shrink-0 border-r border-white/8 flex flex-col overflow-y-auto py-2 px-2 gap-0.5">
+          {/* Left — Category list (hidden on mobile when items panel active) */}
+          <div className={`${mobilePanel === "items" ? "hidden md:flex" : "flex"} w-full md:w-48 shrink-0 border-r border-white/8 flex-col overflow-y-auto py-2 px-2 gap-0.5`}>
             {menuLoading ? (
               [1,2,3,4,5,6].map(i => <div key={i} className="h-9 rounded-lg bg-white/5 animate-pulse mx-1 mb-1" />)
             ) : categories.map(cat => {
@@ -615,7 +635,7 @@ function AddItemModal({
               return (
                 <button
                   key={cat.id}
-                  onClick={() => setActiveCatId(cat.id)}
+                  onClick={() => { setActiveCatId(cat.id); setMobilePanel("items"); }}
                   className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all flex items-center justify-between gap-1 ${
                     isActive
                       ? "bg-primary/15 text-primary font-semibold"
@@ -638,13 +658,13 @@ function AddItemModal({
             })}
           </div>
 
-          {/* Right — Items + form */}
-          <div className="flex-1 flex flex-col min-h-0">
+          {/* Right — Items + form (hidden on mobile when category panel active) */}
+          <div className={`${mobilePanel === "categories" ? "hidden md:flex" : "flex"} flex-1 flex-col min-h-0`}>
 
             {/* Items area */}
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex-1 overflow-y-auto p-3 md:p-4">
               {menuLoading ? (
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   {[1,2,3,4,5,6].map(i => <div key={i} className="h-20 rounded-xl bg-white/5 animate-pulse" />)}
                 </div>
               ) : activeItems.length === 0 ? (
@@ -660,7 +680,7 @@ function AddItemModal({
                       Hostess assignment requires an active reservation session.
                     </div>
                   )}
-                  <div className="grid grid-cols-3 xl:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
                     {activeItems.map(item => {
                       const isSelected = selectedHostess?.id === item.id;
                       return (
@@ -700,7 +720,7 @@ function AddItemModal({
                 </div>
               ) : (
                 /* ── Normal product grid ── */
-                <div className="grid grid-cols-3 xl:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
                   {activeItems.map(item => {
                     const isSelected = desc === item.name;
                     return (

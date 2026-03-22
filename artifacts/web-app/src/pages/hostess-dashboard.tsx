@@ -2,6 +2,7 @@ import { useState } from "react";
 import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAuthStore } from "@/lib/auth";
 import { formatCurrency } from "@/lib/utils";
 import {
   ClipboardList, Clock, LogIn, LogOut, CheckCircle,
@@ -80,7 +81,13 @@ async function getGPS(): Promise<{ lat: number | null; lng: number | null }> {
 
 export default function HostessDashboard() {
   const qc = useQueryClient();
+  const { token } = useAuthStore();
   const [banner, setBanner] = useState<Banner | null>(null);
+
+  const authHeaders = (extra?: Record<string, string>) => ({
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...extra,
+  });
 
   const showBanner = (type: Banner["type"], text: string) => {
     setBanner({ type, text });
@@ -91,7 +98,7 @@ export default function HostessDashboard() {
   const todayQuery = useQuery({
     queryKey: ["hostess-today"],
     queryFn: async () => {
-      const r = await fetch("/api/hostess/today-status");
+      const r = await fetch("/api/hostess/today-status", { headers: authHeaders() });
       if (!r.ok) throw new Error("Failed");
       const d = await r.json();
       return d.data as TodayStatus | null;
@@ -103,7 +110,7 @@ export default function HostessDashboard() {
   const assignmentsQuery = useQuery({
     queryKey: ["hostess-assignments"],
     queryFn: async () => {
-      const r = await fetch("/api/hostess/my-assignments");
+      const r = await fetch("/api/hostess/my-assignments", { headers: authHeaders() });
       if (!r.ok) throw new Error("Failed");
       const d = await r.json();
       return (d.data ?? []) as Assignment[];
@@ -114,7 +121,7 @@ export default function HostessDashboard() {
   const commissionsQuery = useQuery({
     queryKey: ["hostess-commissions"],
     queryFn: async () => {
-      const r = await fetch("/api/hostess/my-commissions");
+      const r = await fetch("/api/hostess/my-commissions", { headers: authHeaders() });
       if (!r.ok) throw new Error("Failed");
       const d = await r.json();
       return { data: (d.data ?? []) as Commission[], total: d.total_net_payout ?? 0 };
@@ -127,7 +134,7 @@ export default function HostessDashboard() {
       const { lat, lng } = await getGPS();
       const r = await fetch("/api/hostess/clock-in", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ latitude: lat, longitude: lng }),
       });
       const d = await r.json();
@@ -148,7 +155,7 @@ export default function HostessDashboard() {
       const { lat, lng } = await getGPS();
       const r = await fetch("/api/hostess/clock-out", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ latitude: lat, longitude: lng }),
       });
       const d = await r.json();

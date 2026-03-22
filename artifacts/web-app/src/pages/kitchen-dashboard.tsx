@@ -53,21 +53,23 @@ function KpiCard({ label, value, icon: Icon, color }: { label: string; value: nu
   );
 }
 
-async function fetchJson(url: string) {
-  const r = await fetch(url);
+async function fetchJson(url: string, token?: string | null) {
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const r = await fetch(url, { headers });
   if (!r.ok) throw new Error(r.statusText);
   return r.json();
 }
 
 export default function KitchenDashboard() {
-  const { user } = useAuthStore();
+  const { user, token } = useAuthStore();
   const qc = useQueryClient();
   const branchId = user?.branchId;
   const qs = branchId ? `?branch_id=${branchId}` : "";
 
   const { data, isLoading } = useQuery({
     queryKey: ["dash:kitchen:orders", branchId],
-    queryFn: () => fetchJson(`/api/dashboards/kitchen/orders${qs}`),
+    queryFn: () => fetchJson(`/api/dashboards/kitchen/orders${qs}`, token),
     refetchInterval: 15_000,
   });
 
@@ -77,9 +79,11 @@ export default function KitchenDashboard() {
 
   const updateStatus = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
       const r = await fetch(`/api/dashboards/kitchen/orders/${id}/status`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ status }),
       });
       if (!r.ok) throw new Error("Update failed");

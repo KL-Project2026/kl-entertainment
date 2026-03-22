@@ -45,26 +45,28 @@ function KpiCard({ label, value, sub, icon: Icon, color }: { label: string; valu
   );
 }
 
-async function fetchJson(url: string) {
-  const r = await fetch(url);
+async function fetchJson(url: string, token?: string | null) {
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const r = await fetch(url, { headers });
   if (!r.ok) throw new Error(r.statusText);
   return r.json();
 }
 
 export default function BranchManagerDashboard() {
-  const { user } = useAuthStore();
+  const { user, token } = useAuthStore();
   const branchId = user?.branchId;
   const qs = branchId ? `?branch_id=${branchId}` : "";
 
   const { data: liveData, isLoading: liveLoading } = useQuery({
     queryKey: ["dash:bm:live", branchId],
-    queryFn: () => fetchJson(`/api/dashboards/branch-manager/live${qs}`),
+    queryFn: () => fetchJson(`/api/dashboards/branch-manager/live${qs}`, token),
     refetchInterval: 30_000,
   });
 
   const { data: staffData, isLoading: staffLoading } = useQuery({
     queryKey: ["dash:bm:staff", branchId],
-    queryFn: () => fetchJson(`/api/dashboards/branch-manager/staff${qs}`),
+    queryFn: () => fetchJson(`/api/dashboards/branch-manager/staff${qs}`, token),
     refetchInterval: 60_000,
   });
 

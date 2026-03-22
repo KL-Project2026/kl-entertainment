@@ -55,24 +55,26 @@ function fmtDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("en-MY", { weekday: "short", month: "short", day: "numeric" });
 }
 
-async function fetchJson(url: string) {
-  const r = await fetch(url);
+async function fetchJson(url: string, token?: string | null) {
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const r = await fetch(url, { headers });
   if (!r.ok) throw new Error(r.statusText);
   return r.json();
 }
 
 export default function GeneralDashboard() {
-  const { user } = useAuthStore();
+  const { user, token } = useAuthStore();
 
   const { data: timeData, isLoading: timeLoading } = useQuery({
     queryKey: ["dash:general:timesheet", user?.id],
-    queryFn: () => fetchJson("/api/dashboards/general/timesheet"),
+    queryFn: () => fetchJson("/api/dashboards/general/timesheet", token),
     refetchInterval: 60_000,
   });
 
   const { data: payData, isLoading: payLoading } = useQuery({
     queryKey: ["dash:general:pay", user?.id],
-    queryFn: () => fetchJson("/api/dashboards/general/pay-estimate"),
+    queryFn: () => fetchJson("/api/dashboards/general/pay-estimate", token),
     refetchInterval: 300_000,
   });
 

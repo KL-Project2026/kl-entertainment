@@ -33,26 +33,28 @@ function elapsed(iso: string | null): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-async function fetchJson(url: string) {
-  const r = await fetch(url);
+async function fetchJson(url: string, token?: string | null) {
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const r = await fetch(url, { headers });
   if (!r.ok) throw new Error(r.statusText);
   return r.json();
 }
 
 export default function ManagerDashboard() {
-  const { user } = useAuthStore();
+  const { user, token } = useAuthStore();
   const branchId = user?.branchId;
   const qs = branchId ? `?branch_id=${branchId}` : "";
 
   const { data: ordersData, isLoading: ordersLoading } = useQuery({
     queryKey: ["dash:mgr:orders", branchId],
-    queryFn: () => fetchJson(`/api/dashboards/manager/orders${qs}`),
+    queryFn: () => fetchJson(`/api/dashboards/manager/orders${qs}`, token),
     refetchInterval: 30_000,
   });
 
   const { data: hostData, isLoading: hostLoading } = useQuery({
     queryKey: ["dash:mgr:hostesses", branchId],
-    queryFn: () => fetchJson(`/api/dashboards/manager/hostesses${qs}`),
+    queryFn: () => fetchJson(`/api/dashboards/manager/hostesses${qs}`, token),
     refetchInterval: 30_000,
   });
 

@@ -46,18 +46,20 @@ function fmtTime(iso: string | null): string {
   return new Date(iso).toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" });
 }
 
-async function fetchJson(url: string) {
-  const r = await fetch(url);
+async function fetchJson(url: string, token?: string | null) {
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const r = await fetch(url, { headers });
   if (!r.ok) throw new Error(r.statusText);
   return r.json();
 }
 
 export default function DriverDashboard() {
-  const { user } = useAuthStore();
+  const { user, token } = useAuthStore();
 
   const { data, isLoading } = useQuery({
     queryKey: ["dash:driver:jobs", user?.id],
-    queryFn: () => fetchJson("/api/dashboards/driver/jobs"),
+    queryFn: () => fetchJson("/api/dashboards/driver/jobs", token),
     refetchInterval: 30_000,
   });
 

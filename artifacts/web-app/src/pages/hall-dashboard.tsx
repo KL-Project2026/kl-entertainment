@@ -39,14 +39,16 @@ function KpiCard({ label, value, icon: Icon, color }: { label: string; value: nu
   );
 }
 
-async function fetchJson(url: string) {
-  const r = await fetch(url);
+async function fetchJson(url: string, token?: string | null) {
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const r = await fetch(url, { headers });
   if (!r.ok) throw new Error(r.statusText);
   return r.json();
 }
 
 export default function HallDashboard() {
-  const { user } = useAuthStore();
+  const { user, token } = useAuthStore();
   const qc = useQueryClient();
   const branchId = user?.branchId;
   const qs = branchId ? `?branch_id=${branchId}` : "";
@@ -55,13 +57,15 @@ export default function HallDashboard() {
 
   const { data, isLoading } = useQuery({
     queryKey: ["dash:hall:tasks", branchId],
-    queryFn: () => fetchJson(`/api/dashboards/hall/tasks${qs}`),
+    queryFn: () => fetchJson(`/api/dashboards/hall/tasks${qs}`, token),
     refetchInterval: 20_000,
   });
 
   const markDone = useMutation({
     mutationFn: async (id: string) => {
-      const r = await fetch(`/api/dashboards/hall/tasks/${id}/done`, { method: "PATCH" });
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const r = await fetch(`/api/dashboards/hall/tasks/${id}/done`, { method: "PATCH", headers });
       if (!r.ok) throw new Error("Failed");
       return r.json();
     },
