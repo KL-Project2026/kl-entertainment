@@ -295,6 +295,138 @@ export const AgentAccountTab: React.FC<AgentAccountTabProps> = ({ agentId, month
   );
 };
 
+// ── IndividualAgentAccountTab ────────────────────────────────────────
+interface IndividualAgentAccountTabProps { agentId: string; creditBalance?: number }
+export const IndividualAgentAccountTab: React.FC<IndividualAgentAccountTabProps> = ({ agentId, creditBalance }) => {
+  const [comms,   setComms]   = useState<Record<string, unknown>[]>([]);
+  const [payouts, setPayouts] = useState<Record<string, unknown>[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeSection, setActiveSection] = useState<"commissions" | "payouts">("commissions");
+
+  useEffect(() => {
+    Promise.all([
+      fetch(`/api/agents/${agentId}/commissions`).then(r => r.json()),
+      fetch(`/api/agents/${agentId}/payouts`).then(r => r.json()),
+    ]).then(([cJson, pJson]) => {
+      setComms(cJson.data ?? []);
+      setPayouts(pJson.data ?? []);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [agentId]);
+
+  if (loading) return <div style={{ padding: 40, textAlign: "center", color: "#9ca3af" }}>Loading...</div>;
+
+  const totalEarned   = comms.reduce((s, c) => s + parseFloat(String(c.commissionAmount ?? 0)), 0);
+  const totalPending  = comms.filter(c => c.status === "pending").reduce((s, c) => s + parseFloat(String(c.commissionAmount ?? 0)), 0);
+  const totalSettled  = comms.filter(c => c.status === "settled").reduce((s, c) => s + parseFloat(String(c.commissionAmount ?? 0)), 0);
+  const balance       = creditBalance ?? 0;
+
+  return (
+    <div style={{ padding: "4px 0" }}>
+      {/* Summary Cards */}
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 24 }}>
+        <SCard label="Referrals"      value={String(comms.length)}          />
+        <SCard label="Total Earned"   value={fmt(totalEarned)}  color="#D1AE38" />
+        <SCard label="Settled"        value={fmt(totalSettled)} color="#166534" />
+        <SCard label="Pending"        value={fmt(totalPending)}
+          color={totalPending > 0 ? "#dc2626" : "#166534"} />
+        <SCard label="Bal. Outstanding" value={fmt(balance)}
+          color={balance > 0 ? "#D1AE38" : "#9ca3af"} />
+      </div>
+
+      {/* Sub-tabs */}
+      <div style={{ display: "flex", gap: 4, borderBottom: "1px solid #e5e7eb", marginBottom: 16 }}>
+        {([["commissions", "Commission Records"], ["payouts", "Payout History"]] as const).map(([key, label]) => (
+          <button key={key} onClick={() => setActiveSection(key)} style={{
+            padding: "8px 16px", background: "none", border: "none",
+            borderBottom: `2px solid ${activeSection === key ? "#D1AE38" : "transparent"}`,
+            marginBottom: -1, fontSize: 13,
+            fontWeight: activeSection === key ? 600 : 400,
+            color: activeSection === key ? "#D1AE38" : "#6b7280",
+            cursor: "pointer",
+          }}>{label}</button>
+        ))}
+      </div>
+
+      {/* Commission Records */}
+      {activeSection === "commissions" && (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", minWidth: 560, borderCollapse: "collapse" }}>
+            <thead><tr style={{ background: "#f9fafb" }}>
+              {["Date", "Reservation", "Customer", "Base Amount", "Rate", "Commission", "Status"].map(h => (
+                <th key={h} style={{ padding: "8px 12px", fontSize: 11, color: "#6b7280",
+                  textAlign: "left", textTransform: "uppercase", fontWeight: 600,
+                  borderBottom: "1px solid #e5e7eb" }}>{h}</th>
+              ))}
+            </tr></thead>
+            <tbody>
+              {comms.length === 0
+                ? <tr><td colSpan={7} style={{ padding: 24, textAlign: "center", color: "#9ca3af" }}>No commission records yet.</td></tr>
+                : comms.map(c => (
+                  <tr key={String(c.id)} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                    <td style={{ padding: "10px 12px", fontSize: 13, whiteSpace: "nowrap" }}>
+                      {formatDate(c.reservationDate as string ?? c.createdAt as string)}</td>
+                    <td style={{ padding: "10px 12px", fontSize: 13, fontFamily: "monospace", color: "#374151" }}>
+                      {String(c.reservationNo ?? "—")}</td>
+                    <td style={{ padding: "10px 12px", fontSize: 13 }}>
+                      {String(c.customerName ?? "—")}</td>
+                    <td style={{ padding: "10px 12px", fontSize: 13 }}>
+                      {fmt(c.baseAmount as number)}</td>
+                    <td style={{ padding: "10px 12px", fontSize: 13 }}>
+                      {c.commissionType === "percentage" || c.commissionType === "pct"
+                        ? `${c.rate}%`
+                        : fmt(c.rate as number)}</td>
+                    <td style={{ padding: "10px 12px", fontSize: 13, fontWeight: 600, color: "#166534" }}>
+                      {fmt(c.commissionAmount as number)}</td>
+                    <td style={{ padding: "10px 12px" }}>
+                      <IBadge status={String(c.status ?? "pending")} /></td>
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Payout History */}
+      {activeSection === "payouts" && (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", minWidth: 500, borderCollapse: "collapse" }}>
+            <thead><tr style={{ background: "#f9fafb" }}>
+              {["Paid Date", "Period", "Amount (MYR)", "Method", "Reference", "Processed By"].map(h => (
+                <th key={h} style={{ padding: "8px 12px", fontSize: 11, color: "#6b7280",
+                  textAlign: "left", textTransform: "uppercase", fontWeight: 600,
+                  borderBottom: "1px solid #e5e7eb" }}>{h}</th>
+              ))}
+            </tr></thead>
+            <tbody>
+              {payouts.length === 0
+                ? <tr><td colSpan={6} style={{ padding: 24, textAlign: "center", color: "#9ca3af" }}>No payout records yet.</td></tr>
+                : payouts.map((p: Record<string, unknown>) => (
+                  <tr key={String(p.id)} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                    <td style={{ padding: "10px 12px", fontSize: 13, whiteSpace: "nowrap" }}>
+                      {formatDate(p.paidAt as string)}</td>
+                    <td style={{ padding: "10px 12px", fontSize: 12, color: "#6b7280" }}>
+                      {formatDate(p.periodFrom as string)} – {formatDate(p.periodTo as string)}</td>
+                    <td style={{ padding: "10px 12px", fontSize: 13, fontWeight: 600, color: "#166534" }}>
+                      {fmt(p.amountMyr as number)}</td>
+                    <td style={{ padding: "10px 12px", fontSize: 13, textTransform: "capitalize" }}>
+                      {String(p.paymentMethod ?? "—").replace(/_/g, " ")}</td>
+                    <td style={{ padding: "10px 12px", fontSize: 12, fontFamily: "monospace", color: "#374151" }}>
+                      {String(p.paymentRef ?? "—")}</td>
+                    <td style={{ padding: "10px 12px", fontSize: 13 }}>
+                      {String(p.paidByName ?? "—")}</td>
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ── StaffAccountTab ─────────────────────────────────────────────────
 interface StaffAccountTabProps { staffId: string; month?: string }
 export const StaffAccountTab: React.FC<StaffAccountTabProps> = ({ staffId, month }) => {

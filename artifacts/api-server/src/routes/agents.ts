@@ -12,6 +12,7 @@ function formatAgent(row: Record<string, unknown>) {
     id: row.id,
     orgId: row.org_id,
     agentType: row.agent_type ?? "agency",
+    agentCode: row.agent_code ?? null,
     name: row.name,
     contactPerson: row.contact_person ?? null,
     phone: row.phone ?? null,
@@ -309,6 +310,79 @@ router.get(
         })),
       });
     } catch (err) {
+      res.status(500).json({ error: "INTERNAL_ERROR" });
+    }
+  }
+);
+
+// List referral reservations for individual agent
+router.get(
+  "/agents/:id/referrals",
+  authenticate,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { rows } = await pool.query(
+        `SELECT r.id, r.reservation_no, r.customer_name, r.reservation_date,
+                r.status, r.guest_count, r.branch_id,
+                b.name AS branch_name, b.internal_code AS branch_code
+         FROM reservations r
+         LEFT JOIN branches b ON b.id = r.branch_id
+         WHERE r.agent_id = $1
+         ORDER BY r.reservation_date DESC`,
+        [req.params.id]
+      );
+      res.json({
+        data: (rows as Record<string, unknown>[]).map((r) => ({
+          id: r.id,
+          reservationNo: r.reservation_no,
+          customerName: r.customer_name ?? "—",
+          reservationDate: r.reservation_date,
+          status: r.status,
+          guestCount: r.guest_count ?? 0,
+          branchName: r.branch_name ?? null,
+          branchCode: r.branch_code ?? null,
+        })),
+      });
+    } catch (err) {
+      console.error("Agent referrals error:", err);
+      res.status(500).json({ error: "INTERNAL_ERROR" });
+    }
+  }
+);
+
+// List agent commissions
+router.get(
+  "/agents/:id/commissions",
+  authenticate,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { rows } = await pool.query(
+        `SELECT ac.*, r.reservation_no, r.customer_name, r.reservation_date
+         FROM agent_commissions ac
+         LEFT JOIN reservations r ON r.id = ac.reservation_id
+         WHERE ac.agent_id = $1
+         ORDER BY ac.created_at DESC`,
+        [req.params.id]
+      );
+      res.json({
+        data: (rows as Record<string, unknown>[]).map((r) => ({
+          id: r.id,
+          reservationId: r.reservation_id,
+          reservationNo: r.reservation_no ?? null,
+          customerName: r.customer_name ?? null,
+          reservationDate: r.reservation_date ?? null,
+          commissionType: r.commission_type,
+          rate: parseFloat(r.rate as string),
+          baseAmount: parseFloat(r.base_amount as string),
+          commissionAmount: parseFloat(r.commission_amount as string),
+          currency: r.currency ?? "MYR",
+          status: r.status ?? "pending",
+          notes: r.notes ?? null,
+          createdAt: r.created_at,
+        })),
+      });
+    } catch (err) {
+      console.error("Agent commissions error:", err);
       res.status(500).json({ error: "INTERNAL_ERROR" });
     }
   }

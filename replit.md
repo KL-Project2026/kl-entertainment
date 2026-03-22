@@ -38,7 +38,7 @@ The project is a pnpm monorepo using TypeScript, with distinct `api-server` and 
 - **Staff Management:** CRUD, clock-in/out, attendance, and earnings.
 - **Role-Based Access Control (RBAC):** Implemented with investor, manager, hostess, and driver roles, including branch-scope and field masking.
 - **Scheduling:** Weekly shift schedule builder.
-- **Agency & Agent Management:** CRUD for agencies and agents, contract assignments, split commissions, and payout tracking.
+- **Agency & Agent Management:** Two distinct types — Agencies (AGT-xxx codes, supply hostesses, 10–30% commission) and Individual Agents (REF-xxx codes, referral brokers, 2–5% commission from reservation sales). Individual agents have a dedicated Account tab showing commission records and payout history, without the hostess-centric view.
 - **Shareholder & Investor Management:** CRUD, equity tracking, settlements, and investor dashboards.
 - **Reporting:** Tabbed reports for Revenue, Occupancy, Commissions, and P&L.
 - **Customer Booking Portal:** Registration, login, booking management, and reservation wizard.

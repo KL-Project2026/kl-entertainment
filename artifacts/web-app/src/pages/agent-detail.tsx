@@ -6,9 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Handshake, Users, CreditCard, Edit2, X, Save } from "lucide-react";
+import { ArrowLeft, Handshake, Users, CreditCard, Edit2, X, Save, UserCheck } from "lucide-react";
 import { formatDate, formatCurrency } from "@/lib/utils";
-import { AgentAccountTab } from "@/components/shared/AccountTab";
+import { AgentAccountTab, IndividualAgentAccountTab } from "@/components/shared/AccountTab";
 
 function DetailRow({ label, value }: { label: string; value?: string | null | number }) {
   return (
@@ -37,6 +37,8 @@ export default function AgentDetail() {
     enabled: !!id,
   });
 
+  const isIndividual = agent?.agentType === "individual";
+
   const { data: hostesses } = useQuery({
     queryKey: ["agent-hostesses", id],
     queryFn: async () => {
@@ -44,7 +46,7 @@ export default function AgentDetail() {
       if (!r.ok) return [];
       return (await r.json()).data ?? [];
     },
-    enabled: !!id,
+    enabled: !!id && !isIndividual,
   });
 
   const { data: payouts } = useQuery({
@@ -54,7 +56,7 @@ export default function AgentDetail() {
       if (!r.ok) return [];
       return (await r.json()).data ?? [];
     },
-    enabled: !!id,
+    enabled: !!id && !isIndividual,
   });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["agent", id] });
@@ -115,10 +117,18 @@ export default function AgentDetail() {
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <h1 className="text-2xl font-display font-bold">{agent.name}</h1>
+                {agent.agentCode && (
+                  <span className="text-xs font-mono font-semibold px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 tracking-wider">
+                    {agent.agentCode}
+                  </span>
+                )}
                 <Badge className={`border text-xs ${agent.isActive ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" : "bg-red-500/10 text-red-400 border-red-500/30"}`}>
                   {agent.isActive ? "Active" : "Inactive"}
+                </Badge>
+                <Badge className="border text-xs bg-purple-500/10 text-purple-300 border-purple-500/20">
+                  {isIndividual ? "Individual Agent" : "Agency"}
                 </Badge>
               </div>
               {agent.contactPerson && (
@@ -163,12 +173,17 @@ export default function AgentDetail() {
           {/* Agent Info */}
           <Card className="p-5 bg-black/40 border-white/5">
             <h3 className="font-display font-semibold mb-4 flex items-center gap-2">
-              <Handshake className="w-4 h-4 text-primary" /> Agent Info
+              {isIndividual
+                ? <UserCheck className="w-4 h-4 text-primary" />
+                : <Handshake className="w-4 h-4 text-primary" />}
+              {isIndividual ? "Agent Info" : "Agency Info"}
             </h3>
             {editing ? (
               <div className="space-y-3">
                 <div>
-                  <label className="text-xs text-muted-foreground block mb-1">Agency Name</label>
+                  <label className="text-xs text-muted-foreground block mb-1">
+                    {isIndividual ? "Agent Name" : "Agency Name"}
+                  </label>
                   <Input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} />
                 </div>
                 <div>
@@ -186,11 +201,15 @@ export default function AgentDetail() {
               </div>
             ) : (
               <>
+                {agent.agentCode && <DetailRow label="Agent Code" value={agent.agentCode} />}
                 <DetailRow label="Contact Person" value={agent.contactPerson} />
                 <DetailRow label="Phone" value={agent.phone} />
                 <DetailRow label="Email" value={agent.email} />
                 <DetailRow label="Commission Type" value={agent.commissionType} />
                 <DetailRow label="Commission Rate" value={`${(agent.commissionRate * 100).toFixed(0)}%`} />
+                {isIndividual && (
+                  <DetailRow label="Commission Base" value="Reservation Sales" />
+                )}
                 <DetailRow label="Preferred Currency" value={agent.preferredCurrency} />
               </>
             )}
@@ -207,10 +226,15 @@ export default function AgentDetail() {
                 {formatCurrency(agent.creditBalance)}
               </p>
             </div>
-            <DetailRow label="Active Hostesses" value={agent.hostessCount ?? (hostesses?.length ?? "—")} />
 
-            {/* Recent Payouts */}
-            {payouts && payouts.length > 0 && (
+            {isIndividual ? (
+              <DetailRow label="Commission Rate" value={`${(agent.commissionRate * 100).toFixed(0)}% of reservation sales`} />
+            ) : (
+              <DetailRow label="Active Hostesses" value={agent.hostessCount ?? (hostesses?.length ?? "—")} />
+            )}
+
+            {/* Recent Payouts — only for agencies shown here in profile */}
+            {!isIndividual && payouts && payouts.length > 0 && (
               <div className="mt-4">
                 <p className="text-xs text-muted-foreground mb-2">Recent Payouts</p>
                 {payouts.slice(0, 3).map((p: Record<string, string>) => (
@@ -224,8 +248,8 @@ export default function AgentDetail() {
           </Card>
         </div>
 
-        {/* Hostesses */}
-        {hostesses && hostesses.length > 0 && (
+        {/* Assigned Hostesses — agency only */}
+        {!isIndividual && hostesses && hostesses.length > 0 && (
           <Card className="p-5 bg-black/40 border-white/5">
             <h3 className="font-display font-semibold mb-4 flex items-center gap-2">
               <Users className="w-4 h-4 text-primary" /> Assigned Hostesses ({hostesses.length})
@@ -248,7 +272,9 @@ export default function AgentDetail() {
         </div>)}
 
         {activeTab === "account" && (
-          <AgentAccountTab agentId={id!} />
+          isIndividual
+            ? <IndividualAgentAccountTab agentId={id!} creditBalance={agent.creditBalance} />
+            : <AgentAccountTab agentId={id!} />
         )}
       </div>
     </DashboardLayout>
