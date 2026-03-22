@@ -131,17 +131,15 @@ router.get(
              a.name           AS agency_name,
              a.contact_person AS agency_contact,
              a.phone          AS agency_phone,
-             a.contract_start AS agency_contract_start,
-             a.contract_end   AS agency_contract_end,
+             a.email          AS agency_email,
              -- Performance
              (SELECT COUNT(*) FROM hostess_sessions hs WHERE hs.hostess_id = hp.id)
                AS total_sessions,
-             (SELECT COALESCE(AVG(hs.rating),0)
+             (SELECT COALESCE(SUM(hs.hours_worked),0)
               FROM hostess_sessions hs
               WHERE hs.hostess_id = hp.id
-                AND hs.created_at >= NOW() - INTERVAL '30 days'
-                AND hs.rating IS NOT NULL)
-               AS avg_rating_30d
+                AND hs.created_at >= NOW() - INTERVAL '30 days')
+               AS hours_30d
            FROM hostess_profiles hp
            LEFT JOIN agents a ON a.id = hp.agency_id
            WHERE hp.staff_id = $1 AND hp.deleted_at IS NULL

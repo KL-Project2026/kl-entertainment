@@ -164,10 +164,9 @@ interface Profile {
     agency_id: string | null;
     agency_name: string | null;
     agency_contact: string | null;
-    agency_contract_start: string | null;
-    agency_contract_end: string | null;
+    agency_email: string | null;
     total_sessions: number;
-    avg_rating_30d: number;
+    hours_30d: number;
   } | null;
   driver_info?: {
     license_masked: string | null;
@@ -371,9 +370,9 @@ export default function MyProfile() {
             <>
               <SectionCard title="Hostess Profile" icon={Star} accent={ROLE_ACCENT.hostess}>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  <KpiCard label="Total Sessions"   value={hp.total_sessions}                    accent={ROLE_ACCENT.hostess} />
-                  <KpiCard label="Avg Rating (30d)"  value={Number(hp.avg_rating_30d).toFixed(1)} accent="#f5c842" sub="out of 5.0" />
-                  <KpiCard label="Status"            value={hp.availability_status ?? "—"} />
+                  <KpiCard label="Total Sessions"  value={hp.total_sessions}                   accent={ROLE_ACCENT.hostess} />
+                  <KpiCard label="Hours (30d)"      value={Number(hp.hours_30d).toFixed(1)}    accent="#f5c842" sub="hrs this month" />
+                  <KpiCard label="Status"           value={hp.availability_status ?? "—"} />
                 </div>
                 {hp.languages_spoken?.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-1">
@@ -386,10 +385,9 @@ export default function MyProfile() {
 
               {hp.agency_id && hp.agency_name && (
                 <SectionCard title="Agency Details" icon={Briefcase} accent={ROLE_ACCENT.hostess}>
-                  <InfoRow icon={Briefcase} label="Agency"          value={hp.agency_name} />
-                  <InfoRow icon={User}      label="Contact"         value={hp.agency_contact ?? "—"} />
-                  <InfoRow icon={Calendar}  label="Contract Start"  value={fmtDate(hp.agency_contract_start)} />
-                  <InfoRow icon={Calendar}  label="Contract End"    value={fmtDate(hp.agency_contract_end)} />
+                  <InfoRow icon={Briefcase} label="Agency"   value={hp.agency_name} />
+                  <InfoRow icon={User}      label="Contact"  value={hp.agency_contact ?? null} />
+                  <InfoRow icon={Mail}      label="Email"    value={hp.agency_email ?? null} />
                   <p className="text-xs text-muted-foreground mt-1">
                     Agency model — deductions visible in Account Ledger
                   </p>
