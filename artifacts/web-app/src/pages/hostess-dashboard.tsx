@@ -179,7 +179,7 @@ export default function HostessDashboard() {
         {/* Page header */}
         <div>
           <h1 className="text-2xl font-display font-bold flex items-center gap-2">
-            <ClipboardList className="w-6 h-6 text-primary" /> My Dashboard
+            <ClipboardList className="w-6 h-6 text-primary" /> My Timesheet
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             {new Date().toLocaleDateString("en-MY", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}

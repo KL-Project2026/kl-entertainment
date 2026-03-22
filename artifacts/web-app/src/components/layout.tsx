@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Grid, Building2, Package, LogOut, CalendarDays,
   ShoppingCart, Users, CalendarCheck, Clock, Handshake, PieChart,
   LineChart, BarChart2, Globe, Receipt, Table2, FileBarChart, Menu, X,
-  UserCheck, Briefcase, Settings, ChevronDown, LayoutList, Users2,
+  UserCheck, Briefcase, Settings, ChevronDown, LayoutList, Users2, ClipboardList,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
@@ -46,7 +46,7 @@ const NAV_ITEMS: NavItem[] = [
   { path: "/shareholders",       key: "nav.shareholders",      icon: PieChart,        roles: ADMIN_UP },
   { path: "/investor-dashboard", key: "nav.investor",          icon: LineChart,       roles: ["super_admin", "admin", "investor"] },
   { path: "/investor-reports",   key: "nav.investor_reports",  icon: PieChart,        roles: ["super_admin", "admin", "investor"] },
-  { path: "/hostess-dashboard",  key: "nav.hostess_dashboard", icon: Users,           roles: ["super_admin", "admin", "branch_manager", "manager", "hostess"] },
+  { path: "/hostess-dashboard",  key: "nav.hostess_dashboard", icon: ClipboardList,   roles: ["super_admin", "admin", "branch_manager", "manager", "hostess"] },
   { path: "/invoices",           key: "nav.invoices",          icon: Receipt,         roles: MANAGER_UP },
   { path: "/tables",             key: "nav.tables",            icon: Table2,          roles: MANAGER_UP },
   { path: "/reports/daily",      key: "nav.daily_report",      icon: FileBarChart,    roles: MANAGER_UP },
@@ -93,6 +93,7 @@ const CATEGORIES: CategoryDef[] = [
       { path: "/agents",            key: "nav.agents",            icon: Handshake,    roles: ADMIN_UP },
       { path: "/schedule-builder",  key: "nav.schedules",         icon: CalendarCheck,roles: MANAGER_UP },
       { path: "/attendance",        key: "nav.attendance",        icon: Clock,        roles: MANAGER_UP },
+      { path: "/hostess-dashboard", key: "nav.hostess_dashboard", icon: ClipboardList, roles: ["super_admin", "admin", "branch_manager", "manager", "hostess"] },
     ],
   },
   {
@@ -127,7 +128,6 @@ const CATEGORIES: CategoryDef[] = [
       { path: "/branches",             key: "nav.branches",          icon: Building2,  roles: ADMIN_UP },
       { path: "/settings/menu-config", key: "nav.menu_config",       icon: LayoutList, roles: ADMIN_UP },
       { path: "/settings/users",       key: "nav.user_management",   icon: Users2,     roles: ["super_admin"] },
-      { path: "/hostess-dashboard",    key: "nav.hostess_dashboard", icon: Users,      roles: ["super_admin", "admin", "branch_manager", "manager", "hostess"] },
     ],
   },
 ];
