@@ -94,6 +94,7 @@ export default function UserDetailPanel({ userId, onUserUpdated, onClose }: Prop
   const [ledgerError, setLedgerError] = useState<string | null>(null);
   const [showPwdModal, setShowPwdModal] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showProfilePwd, setShowProfilePwd] = useState(false);
 
   const fetchUser = async () => {
     setLoading(true);
@@ -288,6 +289,41 @@ export default function UserDetailPanel({ userId, onUserUpdated, onClose }: Prop
                     </>
                   )}
                 </div>
+
+                {/* Login Credentials box in Profile tab */}
+                <div className="rounded-lg border overflow-hidden">
+                  <div className="bg-muted/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+                    🔐 Login Credentials
+                  </div>
+                  <div className="divide-y text-sm">
+                    <div className="flex items-center px-4 py-3 gap-3">
+                      <span className="text-muted-foreground w-24 shrink-0">Email</span>
+                      <span className="font-mono font-medium break-all">{user.email ?? "—"}</span>
+                    </div>
+                    <div className="flex items-center px-4 py-3 gap-3">
+                      <span className="text-muted-foreground w-24 shrink-0">Password</span>
+                      <div className="flex items-center gap-2 flex-1">
+                        {user.plain_password ? (
+                          <>
+                            <span className="font-mono font-medium">
+                              {showProfilePwd ? user.plain_password : "••••••••"}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setShowProfilePwd(v => !v)}
+                              className="text-muted-foreground hover:text-foreground"
+                            >
+                              {showProfilePwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </button>
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground italic text-xs">Not set — go to Security tab</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="flex gap-2 pt-2">
                   <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
                     <User className="h-3.5 w-3.5 mr-1.5" />Edit
