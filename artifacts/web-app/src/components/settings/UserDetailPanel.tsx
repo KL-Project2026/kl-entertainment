@@ -7,23 +7,23 @@ import { Badge } from "@/components/ui/badge";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Loader2, ExternalLink, User, Wallet, Shield, AlertTriangle } from "lucide-react";
+import { Loader2, ExternalLink, User, Wallet, Shield, AlertTriangle, Eye, EyeOff } from "lucide-react";
 import { useAuthStore } from "@/lib/auth";
 import { getApiUrl } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import PasswordChangeModal from "./PasswordChangeModal";
 
 const ROLE_LABELS: Record<string, string> = {
-  super_admin:    "슈퍼관리자",
-  admin:          "관리자",
-  branch_manager: "지점매니저",
-  manager:        "매니저",
-  hostess:        "호스티스",
-  driver:         "드라이버",
-  general:        "일반직원",
-  hall:           "홀직원",
-  kitchen:        "주방직원",
-  investor:       "투자자",
+  super_admin:    "Super Admin",
+  admin:          "Admin",
+  branch_manager: "Branch Manager",
+  manager:        "Manager",
+  hostess:        "Hostess",
+  driver:         "Driver",
+  general:        "General Staff",
+  hall:           "Hall Staff",
+  kitchen:        "Kitchen Staff",
+  investor:       "Investor",
 };
 
 const ALL_ROLES = Object.keys(ROLE_LABELS);
@@ -52,6 +52,7 @@ interface StaffUser {
   hostess_profile_id: string | null;
   hostess_code: string | null;
   agent_name: string | null;
+  plain_password: string | null;
 }
 
 interface LedgerEntry {
@@ -92,6 +93,7 @@ export default function UserDetailPanel({ userId, onUserUpdated, onClose }: Prop
   const [ledgerLoading, setLedgerLoading] = useState(false);
   const [ledgerError, setLedgerError] = useState<string | null>(null);
   const [showPwdModal, setShowPwdModal] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const fetchUser = async () => {
     setLoading(true);
@@ -115,12 +117,12 @@ export default function UserDetailPanel({ userId, onUserUpdated, onClose }: Prop
       });
       const data = await res.json() as { success: boolean; noLedger?: boolean; isInvestor?: boolean; data: LedgerData | unknown[]; message?: string };
       if (data.success) {
-        if (data.noLedger) { setLedgerError(data.message ?? "원장 없음"); setLedger(null); }
-        else if (data.isInvestor) { setLedgerError("투자자: 집계 데이터만 표시"); setLedger(null); }
+        if (data.noLedger) { setLedgerError(data.message ?? "No ledger account"); setLedger(null); }
+        else if (data.isInvestor) { setLedgerError("Investor: Summary data only"); setLedger(null); }
         else setLedger(data.data as LedgerData);
       }
     } catch {
-      setLedgerError("원장 데이터 로드 실패");
+      setLedgerError("Failed to load ledger data");
     } finally {
       setLedgerLoading(false);
     }
@@ -146,7 +148,7 @@ export default function UserDetailPanel({ userId, onUserUpdated, onClose }: Prop
   };
 
   const handleDeactivate = async () => {
-    if (!user || !confirm(`${user.full_name} 계정을 비활성화하시겠습니까?`)) return;
+    if (!user || !confirm(`Deactivate account for ${user.full_name}?`)) return;
     setDeactivating(true);
     try {
       const res = await fetch(getApiUrl(`/api/admin/users/${user.id}`), {
@@ -160,10 +162,14 @@ export default function UserDetailPanel({ userId, onUserUpdated, onClose }: Prop
     }
   };
 
+  const handlePasswordChanged = (newPwd: string) => {
+    setUser(prev => prev ? { ...prev, plain_password: newPwd } : prev);
+  };
+
   const tabs: { key: Tab; label: string; icon: string }[] = [
-    { key: "info",     label: "기본정보", icon: "👤" },
-    { key: "ledger",   label: "원장",    icon: "💰" },
-    { key: "security", label: "보안",    icon: "🔐" },
+    { key: "info",     label: "Profile",  icon: "👤" },
+    { key: "ledger",   label: "Ledger",   icon: "💰" },
+    { key: "security", label: "Security", icon: "🔐" },
   ];
 
   if (loading) {
@@ -173,7 +179,7 @@ export default function UserDetailPanel({ userId, onUserUpdated, onClose }: Prop
       </div>
     );
   }
-  if (!user) return <div className="p-6 text-muted-foreground">사용자를 찾을 수 없습니다.</div>;
+  if (!user) return <div className="p-6 text-muted-foreground">User not found.</div>;
 
   return (
     <div className="flex flex-col h-full">
@@ -185,10 +191,10 @@ export default function UserDetailPanel({ userId, onUserUpdated, onClose }: Prop
           </div>
           <div>
             <p className="font-semibold">{user.full_name}</p>
-            <p className="text-xs text-muted-foreground">{user.email}</p>
+            <p className="text-xs text-muted-foreground">{user.email ?? "—"}</p>
           </div>
           <Badge variant={user.is_active ? "default" : "secondary"} className="ml-1">
-            {user.is_active ? "활성" : "비활성"}
+            {user.is_active ? "Active" : "Inactive"}
           </Badge>
           <Badge variant="outline">{ROLE_LABELS[user.role] ?? user.role}</Badge>
         </div>
@@ -215,26 +221,26 @@ export default function UserDetailPanel({ userId, onUserUpdated, onClose }: Prop
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
-        {/* ─── TAB 1: 기본정보 ─── */}
+        {/* ─── TAB 1: Profile ─── */}
         {tab === "info" && (
           <div className="space-y-5">
             {editing ? (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <Label>이름</Label>
+                    <Label>Full Name</Label>
                     <Input value={editForm.full_name ?? ""} onChange={e => setEditForm(f => ({ ...f, full_name: e.target.value }))} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label>이메일</Label>
+                    <Label>Email</Label>
                     <Input value={editForm.email ?? ""} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label>전화번호</Label>
+                    <Label>Phone</Label>
                     <Input value={editForm.phone ?? ""} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label>역할</Label>
+                    <Label>Role</Label>
                     <Select value={editForm.role ?? "__none__"} onValueChange={v => setEditForm(f => ({ ...f, role: v === "__none__" ? "" : v }))}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
@@ -245,38 +251,38 @@ export default function UserDetailPanel({ userId, onUserUpdated, onClose }: Prop
                 </div>
                 <div className="flex gap-2">
                   <Button onClick={() => void handleSave()} disabled={saving}>
-                    {saving ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" />저장 중…</> : "저장"}
+                    {saving ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" />Saving…</> : "Save"}
                   </Button>
-                  <Button variant="outline" onClick={() => { setEditing(false); setEditForm(user); }}>취소</Button>
+                  <Button variant="outline" onClick={() => { setEditing(false); setEditForm(user); }}>Cancel</Button>
                 </div>
               </div>
             ) : (
               <>
                 <div className="grid grid-cols-2 gap-y-4 gap-x-6 text-sm">
-                  {[
-                    ["이름",       user.full_name],
-                    ["이메일",     user.email],
-                    ["전화번호",   user.phone ?? "—"],
-                    ["역할",       ROLE_LABELS[user.role] ?? user.role],
-                    ["지점",       user.branch_name ?? "—"],
-                    ["소속",       user.org_name ?? "—"],
-                    ["상태",       user.is_active ? "✅ 활성" : "❌ 비활성"],
-                    ["가입일",     fmtDate(user.created_at)],
-                    ["최근 로그인", fmtDate(user.last_login_at)],
-                  ].map(([label, val]) => (
-                    <div key={label as string}>
-                      <p className="text-xs text-muted-foreground mb-0.5">{label as string}</p>
-                      <p className="font-medium">{val as string}</p>
+                  {([
+                    ["Full Name",    user.full_name],
+                    ["Email",        user.email ?? "—"],
+                    ["Phone",        user.phone ?? "—"],
+                    ["Role",         ROLE_LABELS[user.role] ?? user.role],
+                    ["Branch",       user.branch_name ?? "—"],
+                    ["Organisation", user.org_name ?? "—"],
+                    ["Status",       user.is_active ? "✅ Active" : "❌ Inactive"],
+                    ["Joined",       fmtDate(user.created_at)],
+                    ["Last Login",   fmtDate(user.last_login_at)],
+                  ] as [string, string][]).map(([label, val]) => (
+                    <div key={label}>
+                      <p className="text-xs text-muted-foreground mb-0.5">{label}</p>
+                      <p className="font-medium">{val}</p>
                     </div>
                   ))}
                   {user.role === "hostess" && (
                     <>
                       <div>
-                        <p className="text-xs text-muted-foreground mb-0.5">에이전시 코드</p>
+                        <p className="text-xs text-muted-foreground mb-0.5">Agency Code</p>
                         <p className="font-medium">{user.hostess_code ?? "—"}</p>
                       </div>
                       <div>
-                        <p className="text-xs text-muted-foreground mb-0.5">에이전트</p>
+                        <p className="text-xs text-muted-foreground mb-0.5">Agent</p>
                         <p className="font-medium">{user.agent_name ?? "—"}</p>
                       </div>
                     </>
@@ -284,12 +290,12 @@ export default function UserDetailPanel({ userId, onUserUpdated, onClose }: Prop
                 </div>
                 <div className="flex gap-2 pt-2">
                   <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
-                    <User className="h-3.5 w-3.5 mr-1.5" />편집
+                    <User className="h-3.5 w-3.5 mr-1.5" />Edit
                   </Button>
                   {user.is_active && (
                     <Button size="sm" variant="destructive" onClick={() => void handleDeactivate()} disabled={deactivating}>
                       {deactivating ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <AlertTriangle className="h-3.5 w-3.5 mr-1.5" />}
-                      비활성화
+                      Deactivate
                     </Button>
                   )}
                 </div>
@@ -298,7 +304,7 @@ export default function UserDetailPanel({ userId, onUserUpdated, onClose }: Prop
           </div>
         )}
 
-        {/* ─── TAB 2: 원장 ─── */}
+        {/* ─── TAB 2: Ledger ─── */}
         {tab === "ledger" && (
           <div className="space-y-5">
             {ledgerLoading && (
@@ -314,30 +320,27 @@ export default function UserDetailPanel({ userId, onUserUpdated, onClose }: Prop
             )}
             {!ledgerLoading && ledger && (
               <>
-                {/* Balance */}
                 <Card className="p-5 text-center bg-primary/5 border-primary/20">
-                  <p className="text-xs text-muted-foreground mb-1">미지급 잔액</p>
+                  <p className="text-xs text-muted-foreground mb-1">Outstanding Balance</p>
                   <p className="text-3xl font-bold text-primary">{fmtMYR(ledger.account.balance_cache)}</p>
                   <p className="text-xs text-muted-foreground mt-1">{ledger.account.currency}</p>
                 </Card>
 
-                {/* Monthly summary */}
                 <div className="grid grid-cols-2 gap-4">
                   <Card className="p-4 text-center bg-green-50 border-green-200">
-                    <p className="text-xs text-muted-foreground">이번달 수입</p>
+                    <p className="text-xs text-muted-foreground">This Month Income</p>
                     <p className="text-lg font-semibold text-green-700">{fmtMYR(ledger.thisMonth.income)}</p>
                   </Card>
                   <Card className="p-4 text-center bg-red-50 border-red-200">
-                    <p className="text-xs text-muted-foreground">이번달 공제</p>
+                    <p className="text-xs text-muted-foreground">This Month Deductions</p>
                     <p className="text-lg font-semibold text-red-700">{fmtMYR(ledger.thisMonth.deductions)}</p>
                   </Card>
                 </div>
 
-                {/* Recent entries */}
                 <div>
-                  <p className="text-sm font-medium mb-2">최근 거래 10건</p>
+                  <p className="text-sm font-medium mb-2">Recent 10 Transactions</p>
                   {ledger.recentEntries.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">거래 내역이 없습니다.</p>
+                    <p className="text-sm text-muted-foreground">No transactions found.</p>
                   ) : (
                     <div className="space-y-1.5">
                       {ledger.recentEntries.map(entry => {
@@ -360,7 +363,7 @@ export default function UserDetailPanel({ userId, onUserUpdated, onClose }: Prop
 
                 <Button size="sm" variant="outline" className="w-full" asChild>
                   <a href="/ledger" className="flex items-center justify-center gap-1">
-                    <ExternalLink className="h-3.5 w-3.5" />전체 원장 보기
+                    <ExternalLink className="h-3.5 w-3.5" />View Full Ledger
                   </a>
                 </Button>
               </>
@@ -368,27 +371,62 @@ export default function UserDetailPanel({ userId, onUserUpdated, onClose }: Prop
           </div>
         )}
 
-        {/* ─── TAB 3: 보안 ─── */}
+        {/* ─── TAB 3: Security ─── */}
         {tab === "security" && (
           <div className="space-y-5">
             <div className="rounded-lg border bg-amber-50 border-amber-200 px-4 py-3 text-sm text-amber-800 flex items-start gap-2">
               <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
-              <span>패스워드 변경 시 <strong>감사 로그</strong>에 기록됩니다.</span>
+              <span>Password changes are <strong>recorded in the audit log</strong>. Visible to Super Admin only.</span>
             </div>
 
-            <div className="grid grid-cols-2 gap-y-4 gap-x-6 text-sm">
-              {[
-                ["이메일",    user.email],
-                ["역할",      ROLE_LABELS[user.role] ?? user.role],
-                ["계정 상태", user.is_active ? "✅ 활성" : "❌ 비활성"],
-                ["가입일",    fmtDate(user.created_at)],
-                ["최근 로그인", fmtDate(user.last_login_at)],
-              ].map(([label, val]) => (
-                <div key={label as string}>
-                  <p className="text-xs text-muted-foreground mb-0.5">{label as string}</p>
-                  <p className="font-medium">{val as string}</p>
+            {/* Login credentials table */}
+            <div className="rounded-lg border overflow-hidden">
+              <div className="bg-muted/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Login Credentials
+              </div>
+              <div className="divide-y text-sm">
+                <div className="flex items-center justify-between px-4 py-3">
+                  <span className="text-muted-foreground w-24 shrink-0">Email</span>
+                  <span className="font-mono font-medium flex-1">{user.email ?? "—"}</span>
                 </div>
-              ))}
+                <div className="flex items-center justify-between px-4 py-3">
+                  <span className="text-muted-foreground w-24 shrink-0">Password</span>
+                  <div className="flex items-center gap-2 flex-1">
+                    {user.plain_password ? (
+                      <>
+                        <span className="font-mono font-medium">
+                          {showPassword ? user.plain_password : "••••••••"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(v => !v)}
+                          className="text-muted-foreground hover:text-foreground ml-1"
+                        >
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground italic">Not recorded — use Change Password to set</span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between px-4 py-3">
+                  <span className="text-muted-foreground w-24 shrink-0">Role</span>
+                  <span className="font-medium flex-1">{ROLE_LABELS[user.role] ?? user.role}</span>
+                </div>
+                <div className="flex items-center justify-between px-4 py-3">
+                  <span className="text-muted-foreground w-24 shrink-0">Status</span>
+                  <span className="font-medium flex-1">{user.is_active ? "✅ Active" : "❌ Inactive"}</span>
+                </div>
+                <div className="flex items-center justify-between px-4 py-3">
+                  <span className="text-muted-foreground w-24 shrink-0">Joined</span>
+                  <span className="font-medium flex-1">{fmtDate(user.created_at)}</span>
+                </div>
+                <div className="flex items-center justify-between px-4 py-3">
+                  <span className="text-muted-foreground w-24 shrink-0">Last Login</span>
+                  <span className="font-medium flex-1">{fmtDate(user.last_login_at)}</span>
+                </div>
+              </div>
             </div>
 
             <Button
@@ -396,18 +434,18 @@ export default function UserDetailPanel({ userId, onUserUpdated, onClose }: Prop
               className="border-primary text-primary hover:bg-primary/5"
               onClick={() => setShowPwdModal(true)}
             >
-              <Shield className="h-4 w-4 mr-1.5" />패스워드 변경
+              <Shield className="h-4 w-4 mr-1.5" />Change Password
             </Button>
           </div>
         )}
       </div>
 
-      {/* Password Change Modal */}
       <PasswordChangeModal
         open={showPwdModal}
         onClose={() => setShowPwdModal(false)}
         userId={user.id}
         userName={user.full_name}
+        onPasswordChanged={handlePasswordChanged}
       />
     </div>
   );

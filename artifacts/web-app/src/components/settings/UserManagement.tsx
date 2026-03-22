@@ -11,7 +11,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  Search, Plus, Loader2, ChevronLeft, ChevronRight, UserCircle, Wallet,
+  Search, Plus, Loader2, ChevronLeft, ChevronRight, UserCircle, Wallet, Eye, EyeOff,
 } from "lucide-react";
 import { useAuthStore } from "@/lib/auth";
 import { getApiUrl } from "@/lib/api";
@@ -19,16 +19,16 @@ import { cn } from "@/lib/utils";
 import UserDetailPanel from "./UserDetailPanel";
 
 const ROLE_LABELS: Record<string, string> = {
-  super_admin:    "슈퍼관리자",
-  admin:          "관리자",
-  branch_manager: "지점매니저",
-  manager:        "매니저",
-  hostess:        "호스티스",
-  driver:         "드라이버",
-  general:        "일반직원",
-  hall:           "홀직원",
-  kitchen:        "주방직원",
-  investor:       "투자자",
+  super_admin:    "Super Admin",
+  admin:          "Admin",
+  branch_manager: "Branch Manager",
+  manager:        "Manager",
+  hostess:        "Hostess",
+  driver:         "Driver",
+  general:        "General Staff",
+  hall:           "Hall Staff",
+  kitchen:        "Kitchen Staff",
+  investor:       "Investor",
 };
 
 const ROLE_BADGE_COLORS: Record<string, string> = {
@@ -47,12 +47,20 @@ const ROLE_BADGE_COLORS: Record<string, string> = {
 interface StaffUser {
   id: string;
   full_name: string;
-  email: string;
+  email: string | null;
   role: string;
   is_active: boolean;
   branch_name: string | null;
+  branch_id: string | null;
+  plain_password: string | null;
   ledger_balance: string | null;
   ledger_currency: string | null;
+}
+
+interface Branch {
+  id: string;
+  name: string;
+  internal_code: string | null;
 }
 
 interface UsersResponse {
@@ -61,6 +69,11 @@ interface UsersResponse {
   total: number;
   limit: number;
   offset: number;
+}
+
+interface BranchesResponse {
+  success: boolean;
+  data: Branch[];
 }
 
 const PAGE_SIZE = 20;
@@ -72,39 +85,49 @@ function fmtMYR(val: string | number | null | undefined) {
   return `RM ${n.toLocaleString("en-MY", { minimumFractionDigits: 2 })}`;
 }
 
-// ─── New User Form Modal ────────────────────────────────────────────────────
+// ─── New User Modal ─────────────────────────────────────────────────────────
 interface NewUserModalProps {
   open: boolean;
   onClose: () => void;
   onCreated: () => void;
+  branches: Branch[];
 }
 
-function NewUserModal({ open, onClose, onCreated }: NewUserModalProps) {
+function NewUserModal({ open, onClose, onCreated, branches }: NewUserModalProps) {
   const { token } = useAuthStore();
-  const [form, setForm] = useState({ full_name: "", email: "", role: "__none__", password: "", phone: "" });
+  const [form, setForm] = useState({ full_name: "", email: "", role: "__none__", password: "", phone: "", branch_id: "__none__" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleCreate = async () => {
     setError(null);
     if (!form.full_name || !form.email || form.role === "__none__" || !form.password) {
-      setError("이름, 이메일, 역할, 비밀번호는 필수입니다."); return;
+      setError("Name, email, role, and password are required."); return;
     }
-    if (form.password.length < 8) { setError("비밀번호는 최소 8자 이상이어야 합니다."); return; }
+    if (form.password.length < 8) { setError("Password must be at least 8 characters."); return; }
     setSaving(true);
     try {
+      const body: Record<string, string> = {
+        full_name: form.full_name,
+        email: form.email,
+        role: form.role,
+        password: form.password,
+        phone: form.phone,
+      };
+      if (form.branch_id !== "__none__") body.branch_id = form.branch_id;
+
       const res = await fetch(getApiUrl("/api/admin/users"), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ ...form, role: form.role }),
+        body: JSON.stringify(body),
       });
       const data = await res.json() as { success: boolean; error?: string; message?: string };
-      if (!data.success) { setError(data.message ?? data.error ?? "생성 실패"); return; }
+      if (!data.success) { setError(data.message ?? data.error ?? "Creation failed"); return; }
       onCreated();
       onClose();
-      setForm({ full_name: "", email: "", role: "__none__", password: "", phone: "" });
+      setForm({ full_name: "", email: "", role: "__none__", password: "", phone: "", branch_id: "__none__" });
     } catch {
-      setError("서버 연결 오류");
+      setError("Server connection error");
     } finally {
       setSaving(false);
     }
@@ -113,28 +136,28 @@ function NewUserModal({ open, onClose, onCreated }: NewUserModalProps) {
   return (
     <Dialog open={open} onOpenChange={() => { if (!saving) onClose(); }}>
       <DialogContent className="sm:max-w-md">
-        <DialogHeader><DialogTitle>+ 새 사용자 생성</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>+ New User</DialogTitle></DialogHeader>
         <div className="space-y-4 py-2">
           {error && <p className="text-sm text-red-500 bg-red-50 border border-red-200 rounded-md px-3 py-2">{error}</p>}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5 col-span-2">
-              <Label>이름 *</Label>
+              <Label>Full Name *</Label>
               <Input value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} disabled={saving} />
             </div>
             <div className="space-y-1.5 col-span-2">
-              <Label>이메일 *</Label>
+              <Label>Email *</Label>
               <Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} disabled={saving} />
             </div>
             <div className="space-y-1.5">
-              <Label>전화번호</Label>
+              <Label>Phone</Label>
               <Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} disabled={saving} />
             </div>
             <div className="space-y-1.5">
-              <Label>역할 *</Label>
+              <Label>Role *</Label>
               <Select value={form.role} onValueChange={v => setForm(f => ({ ...f, role: v }))}>
-                <SelectTrigger><SelectValue placeholder="역할 선택" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Select role" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__none__" disabled>역할 선택</SelectItem>
+                  <SelectItem value="__none__" disabled>Select role</SelectItem>
                   {Object.entries(ROLE_LABELS).map(([k, v]) => (
                     <SelectItem key={k} value={k}>{v}</SelectItem>
                   ))}
@@ -142,15 +165,27 @@ function NewUserModal({ open, onClose, onCreated }: NewUserModalProps) {
               </Select>
             </div>
             <div className="space-y-1.5 col-span-2">
-              <Label>비밀번호 * (최소 8자)</Label>
+              <Label>Branch</Label>
+              <Select value={form.branch_id} onValueChange={v => setForm(f => ({ ...f, branch_id: v }))}>
+                <SelectTrigger><SelectValue placeholder="Select branch" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">No branch</SelectItem>
+                  {branches.map(b => (
+                    <SelectItem key={b.id} value={b.id}>{b.name}{b.internal_code ? ` (${b.internal_code})` : ""}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5 col-span-2">
+              <Label>Password * (min 8 characters)</Label>
               <Input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} disabled={saving} />
             </div>
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={saving}>취소</Button>
+          <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
           <Button onClick={() => void handleCreate()} disabled={saving}>
-            {saving ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" />생성 중…</> : "사용자 생성"}
+            {saving ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" />Creating…</> : "Create User"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -158,18 +193,20 @@ function NewUserModal({ open, onClose, onCreated }: NewUserModalProps) {
   );
 }
 
-// ─── Main UserManagement Component ──────────────────────────────────────────
+// ─── Main UserManagement Component ─────────────────────────────────────────
 export default function UserManagement() {
   const { token } = useAuthStore();
   const [search, setSearch]         = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("__all__");
+  const [branchFilter, setBranchFilter] = useState("__all__");
   const [activeFilter, setActiveFilter] = useState("__all__");
   const [page, setPage]             = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showNewModal, setShowNewModal] = useState(false);
+  // Track which user cards have password revealed
+  const [revealedPwds, setRevealedPwds] = useState<Set<string>>(new Set());
 
-  // Debounce search
   useEffect(() => {
     const t = setTimeout(() => { setDebouncedSearch(search); setPage(0); }, 350);
     return () => clearTimeout(t);
@@ -179,14 +216,15 @@ export default function UserManagement() {
     const params = new URLSearchParams();
     if (debouncedSearch) params.set("search", debouncedSearch);
     if (roleFilter !== "__all__") params.set("role", roleFilter);
+    if (branchFilter !== "__all__") params.set("branch_id", branchFilter);
     if (activeFilter !== "__all__") params.set("is_active", activeFilter);
     params.set("limit", String(PAGE_SIZE));
     params.set("offset", String(page * PAGE_SIZE));
     return getApiUrl(`/api/admin/users?${params.toString()}`);
-  }, [debouncedSearch, roleFilter, activeFilter, page]);
+  }, [debouncedSearch, roleFilter, branchFilter, activeFilter, page]);
 
   const { data, isLoading, refetch } = useQuery<UsersResponse>({
-    queryKey: ["admin-users", debouncedSearch, roleFilter, activeFilter, page],
+    queryKey: ["admin-users", debouncedSearch, roleFilter, branchFilter, activeFilter, page],
     queryFn: async () => {
       const res = await fetch(buildUrl(), { headers: { Authorization: `Bearer ${token}` } });
       return res.json() as Promise<UsersResponse>;
@@ -194,19 +232,39 @@ export default function UserManagement() {
     staleTime: 30_000,
   });
 
+  const { data: branchData } = useQuery<BranchesResponse>({
+    queryKey: ["admin-branches"],
+    queryFn: async () => {
+      const res = await fetch(getApiUrl("/api/admin/users/branches"), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      return res.json() as Promise<BranchesResponse>;
+    },
+    staleTime: 300_000,
+  });
+
   const users = data?.data ?? [];
   const total = data?.total ?? 0;
+  const branches = branchData?.data ?? [];
   const totalPages = Math.ceil(total / PAGE_SIZE);
+
+  const togglePwdReveal = (id: string) => {
+    setRevealedPwds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   return (
     <div className="flex h-full gap-0 overflow-hidden">
       {/* ── Left: User List ── */}
-      <div className={cn("flex flex-col border-r bg-background transition-all duration-200", selectedId ? "w-[380px] shrink-0" : "flex-1")}>
+      <div className={cn("flex flex-col border-r bg-background transition-all duration-200", selectedId ? "w-[420px] shrink-0" : "flex-1")}>
         {/* Toolbar */}
         <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
-          <h2 className="text-base font-semibold shrink-0">👤 사용자 관리</h2>
+          <h2 className="text-base font-semibold shrink-0">👤 User Management</h2>
           <Button size="sm" onClick={() => setShowNewModal(true)}>
-            <Plus className="h-4 w-4 mr-1" />새 사용자
+            <Plus className="h-4 w-4 mr-1" />New User
           </Button>
         </div>
 
@@ -216,39 +274,49 @@ export default function UserManagement() {
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               className="pl-8"
-              placeholder="이름 또는 이메일 검색…"
+              placeholder="Search name or email…"
               value={search}
               onChange={e => setSearch(e.target.value)}
             />
           </div>
-          <div className="flex gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <Select value={roleFilter} onValueChange={v => { setRoleFilter(v); setPage(0); }}>
-              <SelectTrigger className="flex-1 h-8 text-xs"><SelectValue placeholder="역할" /></SelectTrigger>
+              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="All Roles" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="__all__">전체 역할</SelectItem>
+                <SelectItem value="__all__">All Roles</SelectItem>
                 {Object.entries(ROLE_LABELS).map(([k, v]) => (
                   <SelectItem key={k} value={k}>{v}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <Select value={activeFilter} onValueChange={v => { setActiveFilter(v); setPage(0); }}>
-              <SelectTrigger className="flex-1 h-8 text-xs"><SelectValue placeholder="상태" /></SelectTrigger>
+            <Select value={branchFilter} onValueChange={v => { setBranchFilter(v); setPage(0); }}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="All Branches" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="__all__">전체 상태</SelectItem>
-                <SelectItem value="true">활성</SelectItem>
-                <SelectItem value="false">비활성</SelectItem>
+                <SelectItem value="__all__">All Branches</SelectItem>
+                {branches.map(b => (
+                  <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={activeFilter} onValueChange={v => { setActiveFilter(v); setPage(0); }}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="All Status" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All Status</SelectItem>
+                <SelectItem value="true">Active</SelectItem>
+                <SelectItem value="false">Inactive</SelectItem>
               </SelectContent>
             </Select>
           </div>
         </div>
 
-        {/* User count */}
+        {/* Count bar */}
         <div className="px-4 py-1.5 text-xs text-muted-foreground border-b bg-muted/30">
-          총 {total.toLocaleString()}명
-          {debouncedSearch && <span className="ml-1">검색: "{debouncedSearch}"</span>}
+          {total.toLocaleString()} user{total !== 1 ? "s" : ""}
+          {debouncedSearch && <span className="ml-1">— searching "{debouncedSearch}"</span>}
+          {branchFilter !== "__all__" && <span className="ml-1">— {branches.find(b => b.id === branchFilter)?.name ?? ""}</span>}
         </div>
 
-        {/* List */}
+        {/* User list */}
         <div className="flex-1 overflow-y-auto">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
@@ -257,32 +325,53 @@ export default function UserManagement() {
           ) : users.length === 0 ? (
             <div className="py-12 text-center">
               <UserCircle className="h-10 w-10 mx-auto text-muted-foreground mb-2" />
-              <p className="text-sm text-muted-foreground">사용자가 없습니다.</p>
+              <p className="text-sm text-muted-foreground">No users found.</p>
             </div>
           ) : (
             users.map(u => {
               const balance = fmtMYR(u.ledger_balance);
+              const pwdRevealed = revealedPwds.has(u.id);
               return (
                 <button
                   key={u.id}
                   onClick={() => setSelectedId(prev => prev === u.id ? null : u.id)}
                   className={cn(
-                    "w-full flex items-center gap-3 px-4 py-3 border-b text-left hover:bg-muted/50 transition-colors",
+                    "w-full flex items-start gap-3 px-4 py-3 border-b text-left hover:bg-muted/50 transition-colors",
                     selectedId === u.id && "bg-primary/5 border-l-2 border-l-primary",
                     !u.is_active && "opacity-50",
                   )}
                 >
                   {/* Avatar */}
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-sm">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-sm mt-0.5">
                     {u.full_name.charAt(0).toUpperCase()}
                   </div>
                   {/* Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <p className="text-sm font-medium truncate">{u.full_name}</p>
-                      {!u.is_active && <Badge variant="secondary" className="text-[10px] py-0 h-4">비활성</Badge>}
+                      {!u.is_active && <Badge variant="secondary" className="text-[10px] py-0 h-4">Inactive</Badge>}
                     </div>
-                    <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+                    {/* Email + Password row */}
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <p className="text-xs text-muted-foreground font-mono truncate max-w-[140px]">
+                        {u.email ?? "—"}
+                      </p>
+                      {u.plain_password && (
+                        <>
+                          <span className="text-muted-foreground text-xs">·</span>
+                          <span className="text-xs font-mono text-muted-foreground">
+                            {pwdRevealed ? u.plain_password : "••••••••"}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={e => { e.stopPropagation(); togglePwdReveal(u.id); }}
+                            className="text-muted-foreground hover:text-foreground flex-shrink-0"
+                          >
+                            {pwdRevealed ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                          </button>
+                        </>
+                      )}
+                    </div>
                     {u.branch_name && <p className="text-xs text-muted-foreground truncate">{u.branch_name}</p>}
                   </div>
                   {/* Right side */}
@@ -332,16 +421,16 @@ export default function UserManagement() {
         <div className="flex-1 flex items-center justify-center text-muted-foreground bg-muted/20">
           <div className="text-center">
             <UserCircle className="h-12 w-12 mx-auto mb-3 opacity-30" />
-            <p className="text-sm">사용자를 선택하면 상세 정보가 표시됩니다.</p>
+            <p className="text-sm">Select a user to view details.</p>
           </div>
         </div>
       )}
 
-      {/* New User Modal */}
       <NewUserModal
         open={showNewModal}
         onClose={() => setShowNewModal(false)}
         onCreated={() => void refetch()}
+        branches={branches}
       />
     </div>
   );

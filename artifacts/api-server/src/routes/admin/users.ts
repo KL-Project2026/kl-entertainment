@@ -2,6 +2,7 @@
 // ADMIN-ONLY User Management API — Super Admin only
 // Endpoints: GET/POST /api/admin/users, GET/PUT/DELETE /api/admin/users/:id
 //            GET /api/admin/users/:id/ledger, PUT /api/admin/users/:id/password
+//            GET /api/admin/users/branches — branch list for filter
 // ─────────────────────────────────────────────────────────────────────────────
 import { Router, type Request, type Response } from "express";
 import bcrypt from "bcryptjs";
@@ -41,7 +42,22 @@ async function writeAuditLog(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GET /api/admin/users — Full user list with ledger balance
+// GET /api/admin/users/branches — Branch list for filter dropdown
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/admin/users/branches", authenticate, superAdminOnly, async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, name, internal_code FROM branches WHERE deleted_at IS NULL ORDER BY name`
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error("[GET /admin/users/branches]", err);
+    res.status(500).json({ success: false, error: "INTERNAL_ERROR" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/admin/users — Full user list with ledger balance + plain_password
 // ─────────────────────────────────────────────────────────────────────────────
 router.get("/admin/users", authenticate, superAdminOnly, async (req: Request, res: Response): Promise<void> => {
   try {
@@ -56,18 +72,16 @@ router.get("/admin/users", authenticate, superAdminOnly, async (req: Request, re
     }
     if (role) { params.push(role); where.push(`s.role = $${params.length}`); }
     if (branch_id) { params.push(branch_id); where.push(`s.branch_id = $${params.length}`); }
-    if (is_active !== undefined) { params.push(is_active === "true"); where.push(`s.is_active = $${params.length}`); }
+    if (is_active !== undefined && is_active !== "") { params.push(is_active === "true"); where.push(`s.is_active = $${params.length}`); }
 
     const whereClause = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
-    // Count query
     const { rows: countRows } = await pool.query<{ total: string }>(
       `SELECT COUNT(*) AS total FROM staff s ${whereClause}`,
       params,
     );
     const total = parseInt(countRows[0].total, 10);
 
-    // Data query
     params.push(parseInt(limit, 10));
     params.push(parseInt(offset, 10));
 
@@ -75,6 +89,7 @@ router.get("/admin/users", authenticate, superAdminOnly, async (req: Request, re
       `SELECT
          s.id, s.employee_code, s.full_name, s.email, s.phone, s.role,
          s.is_active, s.created_at, s.last_login_at, s.hire_date,
+         s.plain_password,
          s.branch_id, b.name AS branch_name,
          o.id AS org_id, o.name AS org_name,
          hp.id AS hostess_profile_id, hp.agency_hostess_code AS hostess_code,
@@ -109,7 +124,7 @@ router.get("/admin/users/:id", authenticate, superAdminOnly, async (req: Request
       `SELECT
          s.id, s.employee_code, s.full_name, s.legal_name, s.email, s.phone, s.whatsapp,
          s.role, s.employment_type, s.hire_date, s.is_active, s.created_at, s.last_login_at,
-         s.bank_name, s.bank_account, s.notes,
+         s.bank_name, s.bank_account, s.notes, s.plain_password,
          s.branch_id, b.name AS branch_name,
          o.id AS org_id, o.name AS org_name,
          hp.id AS hostess_profile_id, hp.agency_hostess_code AS hostess_code,
@@ -137,7 +152,6 @@ router.get("/admin/users/:id/ledger", authenticate, superAdminOnly, async (req: 
   try {
     const { id } = req.params;
 
-    // Fetch user basics
     const { rows: userRows } = await pool.query<{ role: string; hostess_profile_id: string | null }>(
       `SELECT s.role, hp.id AS hostess_profile_id
        FROM staff s
@@ -148,7 +162,6 @@ router.get("/admin/users/:id/ledger", authenticate, superAdminOnly, async (req: 
     if (!userRows.length) { res.status(404).json({ success: false, error: "USER_NOT_FOUND" }); return; }
     const user = userRows[0];
 
-    // Investor: summary view only
     if (user.role === ROLES.INVESTOR) {
       const { rows: orgRow } = await pool.query<{ org_id: string }>(
         `SELECT org_id FROM branches WHERE id = (SELECT branch_id FROM staff WHERE id = $1) LIMIT 1`, [id]
@@ -161,34 +174,24 @@ router.get("/admin/users/:id/ledger", authenticate, superAdminOnly, async (req: 
       return;
     }
 
-    // Determine entityId & accountType
     const accountTypeMap: Record<string, string> = {
-      hostess: "hostess",
-      driver: "driver",
-      investor: "investor",
-      branch_manager: "staff",
-      manager: "staff",
-      kitchen: "staff",
-      hall: "staff",
-      general: "staff",
-      admin: "staff",
-      super_admin: "staff",
+      hostess: "hostess", driver: "driver", investor: "investor",
+      branch_manager: "staff", manager: "staff", kitchen: "staff",
+      hall: "staff", general: "staff", admin: "staff", super_admin: "staff",
     };
     const accountType = accountTypeMap[user.role] ?? "staff";
     const entityId = (user.role === ROLES.HOSTESS && user.hostess_profile_id) ? user.hostess_profile_id : id;
 
-    // Ledger account
     const { rows: accRows } = await pool.query(
       `SELECT * FROM ledger_accounts WHERE entity_id = $1 AND account_type = $2 AND is_active = true LIMIT 1`,
       [entityId, accountType]
     );
     if (!accRows.length) {
-      res.json({ success: true, noLedger: true, message: "이 사용자에게 원장 계정이 없습니다." });
+      res.json({ success: true, noLedger: true, message: "No ledger account found for this user." });
       return;
     }
     const account = accRows[0];
 
-    // Recent 10 entries
     const { rows: entries } = await pool.query(
       `SELECT id, effective_date, entry_type, direction, amount, currency, description, source_type, status
        FROM ledger_entries
@@ -198,7 +201,6 @@ router.get("/admin/users/:id/ledger", authenticate, superAdminOnly, async (req: 
       [account.id]
     );
 
-    // This month income / deductions (CR = income, DR = deductions)
     const { rows: monthlyRows } = await pool.query<{ income: string; deductions: string }>(
       `SELECT
          COALESCE(SUM(CASE WHEN direction = 'CR' THEN amount ELSE 0 END), 0) AS income,
@@ -215,10 +217,7 @@ router.get("/admin/users/:id/ledger", authenticate, superAdminOnly, async (req: 
       data: {
         account,
         recentEntries: entries,
-        thisMonth: {
-          income: parseFloat(monthly.income),
-          deductions: parseFloat(monthly.deductions),
-        },
+        thisMonth: { income: parseFloat(monthly.income), deductions: parseFloat(monthly.deductions) },
       },
     });
   } catch (err) {
@@ -235,32 +234,30 @@ router.post("/admin/users", authenticate, superAdminOnly, async (req: Request, r
     const { full_name, email, role, password, phone, branch_id, employment_type } = req.body as Record<string, string>;
 
     if (!full_name || !email || !role || !password) {
-      res.status(400).json({ success: false, error: "VALIDATION_ERROR", message: "full_name, email, role, password 는 필수입니다." });
+      res.status(400).json({ success: false, error: "VALIDATION_ERROR", message: "full_name, email, role, and password are required." });
       return;
     }
     if (password.length < 8) {
-      res.status(400).json({ success: false, error: "VALIDATION_ERROR", message: "비밀번호는 최소 8자 이상이어야 합니다." });
+      res.status(400).json({ success: false, error: "VALIDATION_ERROR", message: "Password must be at least 8 characters." });
       return;
     }
 
-    // Email duplicate check
     const { rows: existing } = await pool.query(`SELECT id FROM staff WHERE email = $1`, [email]);
     if (existing.length) {
-      res.status(409).json({ success: false, error: "EMAIL_DUPLICATE", message: "이미 사용 중인 이메일입니다." });
+      res.status(409).json({ success: false, error: "EMAIL_DUPLICATE", message: "This email is already in use." });
       return;
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
 
     const { rows: newUser } = await pool.query(
-      `INSERT INTO staff (full_name, email, password_hash, role, phone, branch_id, employment_type, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, true)
-       RETURNING id, full_name, email, role, is_active, created_at`,
-      [full_name, email, passwordHash, role, phone ?? null, branch_id ?? null, employment_type ?? "full_time"],
+      `INSERT INTO staff (full_name, email, password_hash, plain_password, role, phone, branch_id, employment_type, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)
+       RETURNING id, full_name, email, role, is_active, created_at, plain_password`,
+      [full_name, email, passwordHash, password, role, phone ?? null, branch_id ?? null, employment_type ?? "full_time"],
     );
     const created = newUser[0];
 
-    // Auto-create hostess_profile if role = hostess
     if (role === ROLES.HOSTESS) {
       await pool.query(
         `INSERT INTO hostess_profiles (staff_id, is_active) VALUES ($1, true) ON CONFLICT DO NOTHING`,
@@ -268,19 +265,16 @@ router.post("/admin/users", authenticate, superAdminOnly, async (req: Request, r
       );
     }
 
-    // Auto-create ledger account
     const accTypeMap: Record<string, string> = { hostess: "hostess", driver: "driver", investor: "investor" };
     const accountType = accTypeMap[role] ?? "staff";
-    const entityId = created.id; // for hostess, ledger will be linked after hostess_profile created
     const { rows: orgRow } = await pool.query(
       `SELECT org_id FROM branches WHERE id = $1 LIMIT 1`, [branch_id ?? null]
     );
     if (orgRow.length) {
       await pool.query(
         `INSERT INTO ledger_accounts (org_id, account_type, entity_id, currency, is_active)
-         VALUES ($1, $2, $3, 'MYR', true)
-         ON CONFLICT DO NOTHING`,
-        [orgRow[0].org_id, accountType, entityId]
+         VALUES ($1, $2, $3, 'MYR', true) ON CONFLICT DO NOTHING`,
+        [orgRow[0].org_id, accountType, created.id]
       );
     }
 
@@ -301,7 +295,6 @@ router.put("/admin/users/:id", authenticate, superAdminOnly, async (req: Request
     const { id } = req.params;
     const { full_name, email, phone, role, branch_id, is_active, employment_type, notes } = req.body as Record<string, unknown>;
 
-    // Fetch current for audit
     const { rows: curr } = await pool.query(
       `SELECT id, full_name, email, phone, role, branch_id, is_active FROM staff WHERE id = $1 AND deleted_at IS NULL`, [id]
     );
@@ -339,7 +332,7 @@ router.put("/admin/users/:id", authenticate, superAdminOnly, async (req: Request
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PUT /api/admin/users/:id/password — Change password
+// PUT /api/admin/users/:id/password — Change password (stores plain_password)
 // ─────────────────────────────────────────────────────────────────────────────
 router.put("/admin/users/:id/password", authenticate, superAdminOnly, async (req: Request, res: Response): Promise<void> => {
   try {
@@ -347,15 +340,15 @@ router.put("/admin/users/:id/password", authenticate, superAdminOnly, async (req
     const { new_password, confirm_password } = req.body as Record<string, string>;
 
     if (!new_password || !confirm_password) {
-      res.status(400).json({ success: false, error: "VALIDATION_ERROR", message: "new_password, confirm_password 는 필수입니다." });
+      res.status(400).json({ success: false, error: "VALIDATION_ERROR", message: "new_password and confirm_password are required." });
       return;
     }
     if (new_password !== confirm_password) {
-      res.status(400).json({ success: false, error: "VALIDATION_ERROR", message: "새 비밀번호가 일치하지 않습니다." });
+      res.status(400).json({ success: false, error: "VALIDATION_ERROR", message: "Passwords do not match." });
       return;
     }
     if (new_password.length < 8) {
-      res.status(400).json({ success: false, error: "VALIDATION_ERROR", message: "비밀번호는 최소 8자 이상이어야 합니다." });
+      res.status(400).json({ success: false, error: "VALIDATION_ERROR", message: "Password must be at least 8 characters." });
       return;
     }
 
@@ -363,11 +356,15 @@ router.put("/admin/users/:id/password", authenticate, superAdminOnly, async (req
     if (!rows.length) { res.status(404).json({ success: false, error: "USER_NOT_FOUND" }); return; }
 
     const hash = await bcrypt.hash(new_password, 12);
-    await pool.query(`UPDATE staff SET password_hash = $1 WHERE id = $2`, [hash, id]);
+    // Store both bcrypt hash (for auth) and plain text (for super admin visibility)
+    await pool.query(
+      `UPDATE staff SET password_hash = $1, plain_password = $2 WHERE id = $3`,
+      [hash, new_password, id]
+    );
 
     await writeAuditLog("staff", id, "password_changed", req.user!.id, null, { changed_by: req.user!.id, target_user: id });
 
-    res.json({ success: true, message: "비밀번호가 변경되었습니다. 감사 로그에 기록되었습니다." });
+    res.json({ success: true, message: "Password changed successfully. This action has been recorded in the audit log." });
   } catch (err) {
     console.error("[PUT /admin/users/:id/password]", err);
     res.status(500).json({ success: false, error: "INTERNAL_ERROR" });
@@ -381,9 +378,8 @@ router.delete("/admin/users/:id", authenticate, superAdminOnly, async (req: Requ
   try {
     const { id } = req.params;
 
-    // Prevent self-deletion
     if (id === req.user!.id) {
-      res.status(400).json({ success: false, error: "SELF_DELETE", message: "자신의 계정은 비활성화할 수 없습니다." });
+      res.status(400).json({ success: false, error: "SELF_DELETE", message: "You cannot deactivate your own account." });
       return;
     }
 
@@ -392,15 +388,13 @@ router.delete("/admin/users/:id", authenticate, superAdminOnly, async (req: Requ
     );
     if (!rows.length) { res.status(404).json({ success: false, error: "USER_NOT_FOUND" }); return; }
 
-    // SOFT DELETE only — no hard delete
     await pool.query(
-      `UPDATE staff SET is_active = false, deleted_at = NOW() WHERE id = $1`,
-      [id]
+      `UPDATE staff SET is_active = false, deleted_at = NOW() WHERE id = $1`, [id]
     );
 
     await writeAuditLog("staff", id, "user_deactivated", req.user!.id, { id, full_name: (rows[0] as { full_name: string }).full_name }, { is_active: false });
 
-    res.json({ success: true, message: "사용자가 비활성화되었습니다." });
+    res.json({ success: true, message: "User has been deactivated." });
   } catch (err) {
     console.error("[DELETE /admin/users/:id]", err);
     res.status(500).json({ success: false, error: "INTERNAL_ERROR" });
