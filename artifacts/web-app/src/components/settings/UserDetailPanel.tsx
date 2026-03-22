@@ -398,8 +398,8 @@ export default function UserDetailPanel({ userId, onUserUpdated, onClose }: Prop
                 </div>
 
                 <Button size="sm" variant="outline" className="w-full" asChild>
-                  <a href="/ledger" className="flex items-center justify-center gap-1">
-                    <ExternalLink className="h-3.5 w-3.5" />View Full Ledger
+                  <a href={`/staff/${user.id}`} className="flex items-center justify-center gap-1">
+                    <ExternalLink className="h-3.5 w-3.5" />View Full Staff Profile
                   </a>
                 </Button>
               </>

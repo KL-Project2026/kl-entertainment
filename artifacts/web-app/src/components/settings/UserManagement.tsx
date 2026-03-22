@@ -332,11 +332,14 @@ export default function UserManagement() {
               const balance = fmtMYR(u.ledger_balance);
               const pwdRevealed = revealedPwds.has(u.id);
               return (
-                <button
+                <div
                   key={u.id}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setSelectedId(prev => prev === u.id ? null : u.id)}
+                  onKeyDown={e => e.key === "Enter" && setSelectedId(prev => prev === u.id ? null : u.id)}
                   className={cn(
-                    "w-full flex items-start gap-3 px-4 py-3 border-b text-left hover:bg-muted/50 transition-colors",
+                    "w-full flex items-start gap-3 px-4 py-3 border-b text-left hover:bg-muted/50 transition-colors cursor-pointer",
                     selectedId === u.id && "bg-primary/5 border-l-2 border-l-primary",
                     !u.is_active && "opacity-50",
                   )}
@@ -385,7 +388,7 @@ export default function UserManagement() {
                       </span>
                     )}
                   </div>
-                </button>
+                </div>
               );
             })
           )}
