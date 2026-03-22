@@ -1,0 +1,315 @@
+당신은 기존 카라오케 관리 시스템에 기능을 추가하는 시니어 개발자입니다.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ 작업 전 반드시 읽을 것
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+▶ 기존 파일/테이블/코드 절대 수정 금지 — 추가만 허용
+▶ 오류 발견 즉시 중단 → "⛔ [오류내용]" 출력 후 대기
+▶ 각 단계 완료 후 → "✅ Step N 완료" 또는 "⛔ Step N 실패" 보고
+▶ PRE-CHECK 결과 확인 전 작업 시작 금지
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 작업 개요
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Settings 메뉴에 Super Admin 전용 User Management 페이지 추가.
+기능: 전체 사용자 목록 + 개인정보 편집 + 패스워드 변경 + Ledger 잔액 확인
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔍 STEP 0 — PRE-CHECK (먼저 실행, 결과 보고 후 대기)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+아래를 실행하고 결과를 전부 출력하라. 작업은 그 다음에 시작한다.
+
+[ DB 확인 ]
+
+-- 1. staff 테이블 주요 컬럼 확인
+SELECT column_name, data_type
+FROM information_schema.columns
+WHERE table_name = 'staff'
+ORDER BY ordinal_position;
+
+-- 2. 현재 role 종류 확인
+SELECT role, COUNT(*) FROM staff GROUP BY role ORDER BY role;
+
+-- 3. ledger_accounts 존재 확인
+SELECT COUNT(*) FROM ledger_accounts;
+
+-- 4. audit_log 테이블 존재 여부
+SELECT EXISTS (
+  SELECT FROM information_schema.tables
+  WHERE table_name = 'audit_log'
+) AS audit_log_exists;
+
+[ 파일 구조 확인 ]
+
+1. 프론트엔드 프레임워크는? (React / Vue / EJS)
+2. 기존 UI 라이브러리는? (Tailwind / Bootstrap / 기타)
+3. API 호출 방식은? (fetch / axios)
+4. localStorage 토큰 key명은?
+5. Settings 페이지 파일명은?
+6. 사이드바/네비게이션 파일명은?
+7. 기존 auth 미들웨어 파일명과 함수명은?
+8. app.js 또는 server.js 파일명은?
+9. db 객체 변수명은? (db / pool / client)
+10. bcrypt 이미 설치되어 있는가?
+
+[ 신규 파일명 충돌 확인 ]
+
+아래 파일이 이미 존재하면 "⛔ 파일 충돌" 보고 후 중단:
+- /routes/admin/users.js
+- /components/settings/UserManagement.jsx
+- /components/settings/UserDetailPanel.jsx
+- /components/settings/PasswordChangeModal.jsx
+
+결과 출력 후 → "PRE-CHECK 완료. 승인 대기." 출력하고 멈출 것.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔧 STEP 1 — 백엔드 API 생성
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+신규 파일 생성: /routes/admin/users.js
+⚠️ 기존 routes 파일 수정 금지
+
+[ 이 파일에 만들 API 목록 ]
+
+GET    /api/admin/users              → 전체 사용자 목록 (Ledger 잔액 포함)
+GET    /api/admin/users/:id          → 특정 사용자 상세
+GET    /api/admin/users/:id/ledger   → 해당 사용자 원장 요약
+POST   /api/admin/users              → 신규 사용자 생성
+PUT    /api/admin/users/:id          → 사용자 정보 수정
+PUT    /api/admin/users/:id/password → 패스워드 변경
+DELETE /api/admin/users/:id          → 비활성화 (Soft Delete만)
+
+[ 공통 규칙 ]
+
+▶ 모든 API: requireRole(['super_admin']) 적용 — 다른 role은 403
+▶ 패스워드: bcrypt hash 필수, 평문 저장 금지, 응답에 password_hash 절대 포함 금지
+▶ DELETE: hard delete 금지 — is_active=false + deleted_at=NOW() 만
+▶ 모든 변경: audit_log 테이블에 기록 (없으면 console.log로 대체)
+▶ Investor role: raw ledger 금지 — v_investor_summary 뷰만 반환
+▶ 테이블명: organizations(org_id), staff(id), agents(id), hostess_profiles(id)
+
+[ GET /api/admin/users 쿼리 ]
+
+staff 테이블 기준으로 조회.
+JOIN: branches(branch_name), organizations(org_name)
+LEFT JOIN: ledger_accounts(balance_cache, currency) — entity_id 기준
+LEFT JOIN: hostess_profiles — staff.id = hostess_profiles.staff_id
+
+쿼리 파라미터: search(full_name/email), role, branch_id, is_active
+페이지네이션: limit(기본 20), offset
+
+반환 시 password_hash 제거 필수.
+
+[ GET /api/admin/users/:id/ledger ]
+
+role에 따라 entity_id 결정:
+- hostess → hostess_profiles.id 사용
+- 나머지 → staff.id 사용
+
+accountType 매핑:
+hostess → 'hostess'
+driver  → 'driver'
+general/hall/kitchen/manager/branch_manager → 'staff'
+investor → 'investor' (v_investor_summary만 반환)
+
+반환: account 정보 + 최근 거래 10건 + 이번달 수입/공제 합계
+
+[ POST /api/admin/users ]
+
+필수값: full_name, email, role, password
+패스워드 최소 8자 검증
+이메일 중복 확인
+bcrypt hash 후 저장
+role = 'hostess'이면 hostess_profiles 자동 생성
+ledger_accounts 자동 생성 (ON CONFLICT DO NOTHING)
+
+[ PUT /api/admin/users/:id/password ]
+
+body: new_password, confirm_password
+일치 여부 확인
+최소 8자 확인
+bcrypt hash 후 UPDATE
+audit_log 기록 필수
+
+[ app.js에 추가할 코드 — 기존 코드 수정 없이 아래만 추가 ]
+
+const adminUserRoutes = require('./routes/admin/users');
+app.use('/api/admin/users', adminUserRoutes);
+
+완료 후 → "✅ Step 1 완료: API 엔드포인트 7개 생성" 보고
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎨 STEP 2 — 프론트엔드 컴포넌트 생성
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+신규 파일 3개 생성. 기존 파일 수정 금지.
+기존 UI 라이브러리와 동일한 스타일 사용.
+
+─────────────────────────────────
+파일 1: /components/settings/UserManagement.jsx
+─────────────────────────────────
+
+[ 역할 ]
+사용자 목록 페이지. Settings에서 불러오는 메인 컴포넌트.
+
+[ 화면 구성 ]
+좌측: 사용자 목록 (검색 + role 필터 + 상태 필터)
+우측: 선택한 사용자 상세 (UserDetailPanel 컴포넌트)
+
+[ 기능 목록 ]
+▶ 페이지 로드 시 GET /api/admin/users 호출
+▶ 검색창: full_name / email 실시간 검색
+▶ 필터: role 선택, 활성/비활성 선택
+▶ 사용자 카드 클릭 → 우측에 UserDetailPanel 표시
+▶ 우측 상단 "+ 새 사용자" 버튼 → 생성 폼 (inline 또는 모달)
+▶ 각 사용자 카드에 role 배지 + ledger_balance 표시
+▶ 페이지네이션 (20건씩)
+
+[ role 한글 라벨 ]
+super_admin → 슈퍼관리자
+admin → 관리자
+branch_manager → 지점매니저
+manager → 매니저
+hostess → 호스티스
+driver → 드라이버
+general → 일반직원
+hall → 홀직원
+kitchen → 주방직원
+investor → 투자자
+
+─────────────────────────────────
+파일 2: /components/settings/UserDetailPanel.jsx
+─────────────────────────────────
+
+[ 역할 ]
+선택된 사용자의 상세 정보 패널. 탭 3개로 구성.
+
+[ 탭 구성 ]
+
+탭 1 — 👤 기본정보
+  표시: full_name, email, phone, role, branch_name, org_name, is_active, created_at
+  호스티스인 경우 추가: stage_name, agent_name
+  편집 버튼 클릭 → 인라인 편집 폼으로 전환
+  PUT /api/admin/users/:id 호출
+  비활성화 버튼 → DELETE /api/admin/users/:id 호출
+
+탭 2 — 💰 원장
+  GET /api/admin/users/:id/ledger 호출
+  표시:
+  - 미지급 잔액 (큰 숫자로 강조)
+  - 이번 달 수입 / 공제 (나란히 2칸)
+  - 최근 거래 10건 (날짜 + 유형 + 금액)
+  - "전체 원장 보기" 링크
+  investor인 경우: 집계 테이블만 표시 (개인정보 없음)
+  ledger 계정 없는 role: "원장 없음" 안내
+
+탭 3 — 🔐 보안
+  표시: email, role, 계정상태, 가입일
+  "패스워드 변경" 버튼 → PasswordChangeModal 오픈
+  경고 문구 표시: "변경 시 감사 로그에 기록됩니다"
+
+─────────────────────────────────
+파일 3: /components/settings/PasswordChangeModal.jsx
+─────────────────────────────────
+
+[ 역할 ]
+패스워드 변경 전용 모달.
+
+[ 기능 ]
+▶ 입력 필드: 새 패스워드 + 확인 패스워드
+▶ 눈 아이콘으로 비밀번호 표시/숨김 토글
+▶ 패스워드 강도 측정 바 표시
+  (8자 미만: 매우약함 / 8자+: 약함 / 대문자포함: 보통 / 숫자포함: 강함 / 특수문자포함: 매우강함)
+▶ 두 필드 불일치 시 실시간 오류 메시지
+▶ 저장 버튼: PUT /api/admin/users/:id/password 호출
+▶ 성공 시 모달 닫기 + 성공 메시지
+▶ 경고 배너: "변경 내용은 감사 로그에 기록됩니다"
+
+완료 후 → "✅ Step 2 완료: 컴포넌트 3개 생성" 보고
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔗 STEP 3 — 기존 Settings 페이지에 연결
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+기존 Settings 파일에 아래만 추가. 기존 코드 수정 금지.
+
+[ 추가할 내용 ]
+
+1. import 추가:
+   import UserManagement from '../components/settings/UserManagement';
+
+2. 탭 목록에 조건부 추가:
+   super_admin role일 때만 "👤 Users" 탭 표시
+
+3. 탭 컨텐츠 렌더링에 추가:
+   activeTab === '👤 Users' 일 때 <UserManagement /> 렌더
+
+⚠️ 기존 탭이나 컨텐츠 건드리지 말 것
+⚠️ super_admin role 판단은 기존 auth 방식 그대로 사용
+
+완료 후 → "✅ Step 3 완료: Settings에 Users 탭 연결" 보고
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✔️ STEP 4 — 최종 확인
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+아래를 순서대로 확인하고 각 결과 보고.
+
+[ 서버 ]
+▶ 서버 재시작 오류 없음 확인
+
+[ 기존 기능 회귀 테스트 ]
+▶ 기존 로그인 API 정상 동작 확인
+▶ 기존 예약 API 정상 동작 확인
+▶ 기존 호스티스 API 정상 동작 확인
+
+[ 신규 API 테스트 ]
+▶ GET  /api/admin/users → 200 응답, password_hash 없음 확인
+▶ GET  /api/admin/users/:id → 200 응답
+▶ GET  /api/admin/users/:id/ledger → 200 응답
+▶ admin 토큰으로 GET /api/admin/users → 403 응답 확인
+
+[ DB 무결성 ]
+
+SELECT relname, n_live_tup
+FROM pg_stat_user_tables
+WHERE relname IN (
+  'staff','organizations','branches',
+  'hostess_profiles','agents',
+  'ledger_accounts','ledger_entries'
+)
+ORDER BY relname;
+
+-- PRE-CHECK 때와 숫자 동일해야 함
+
+[ UI 테스트 ]
+▶ Settings 접속 → Users 탭 보임 (super_admin만)
+▶ 사용자 목록 로드 확인
+▶ 사용자 클릭 → 우측 패널 표시 확인
+▶ 원장 탭 → 잔액 표시 확인
+▶ 패스워드 변경 모달 오픈 확인
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🏁 완료 조건
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+아래 항목 모두 통과 시 완료 선언:
+
+  ✅ API 7개 정상 동작
+  ✅ super_admin 외 role 403 차단
+  ✅ password_hash 응답 노출 없음
+  ✅ Soft Delete만 적용 (hard delete 없음)
+  ✅ Settings > Users 탭 (super_admin만 표시)
+  ✅ 원장 탭 잔액 표시 정상
+  ✅ 패스워드 변경 모달 정상
+  ✅ 기존 데이터 변화 없음
+  ✅ 기존 API 정상 동작
+
+⛔ 어느 단계에서든 기존 기능 오류 발견 시
+   즉시 중단 → 오류 내용 보고 → 지시 대기
+
+✅ 모두 통과 시
+   "✅ 완료: Settings > User Management 구현 완료" 출력

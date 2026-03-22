@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Grid, Building2, Package, LogOut, CalendarDays,
   ShoppingCart, Users, CalendarCheck, Clock, Handshake, PieChart,
   LineChart, BarChart2, Globe, Receipt, Table2, FileBarChart, Menu, X,
-  UserCheck, Briefcase, Settings, ChevronDown, LayoutList,
+  UserCheck, Briefcase, Settings, ChevronDown, LayoutList, Users2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
@@ -53,6 +53,7 @@ const NAV_ITEMS: NavItem[] = [
   { path: "/reports",            key: "nav.reports",           icon: BarChart2,       roles: MANAGER_UP },
   { path: "/branches",           key: "nav.branches",          icon: Building2,       roles: ADMIN_UP },
   { path: "/products",           key: "nav.products",          icon: Package,         roles: MANAGER_UP },
+  { path: "/settings/users",     key: "nav.user_management",   icon: Users2,          roles: ["super_admin"] },
 ];
 
 // ── Category definitions ─────────────────────────────────────────────────────
@@ -125,6 +126,7 @@ const CATEGORIES: CategoryDef[] = [
     items: [
       { path: "/branches",             key: "nav.branches",          icon: Building2,  roles: ADMIN_UP },
       { path: "/settings/menu-config", key: "nav.menu_config",       icon: LayoutList, roles: ADMIN_UP },
+      { path: "/settings/users",       key: "nav.user_management",   icon: Users2,     roles: ["super_admin"] },
       { path: "/hostess-dashboard",    key: "nav.hostess_dashboard", icon: Users,      roles: ["super_admin", "admin", "branch_manager", "manager", "hostess"] },
     ],
   },

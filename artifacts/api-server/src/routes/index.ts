@@ -34,6 +34,7 @@ import menuRouter from "./menu";
 import hostessAssignmentsRouter from "./hostessAssignments";
 import agencyReconciliationRouter from "./agencyReconciliation";
 import ledgerRouter from "./ledger";
+import adminUsersRouter from "./admin/users";
 
 const router: IRouter = Router();
 
@@ -72,5 +73,6 @@ router.use(menuRouter);
 router.use(hostessAssignmentsRouter);
 router.use(agencyReconciliationRouter);
 router.use(ledgerRouter);
+router.use(adminUsersRouter);
 
 export default router;
