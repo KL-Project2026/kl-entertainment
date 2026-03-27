@@ -1170,12 +1170,6 @@ INSERT INTO "public"."agent_hostess_contracts" VALUES ('145c947d-786c-4f79-9f50-
 
 
 --
--- Data for Name: agent_invoices; Type: TABLE DATA; Schema: public; Owner: -
---
-
-
-
---
 -- Data for Name: agent_payouts; Type: TABLE DATA; Schema: public; Owner: -
 --
 
