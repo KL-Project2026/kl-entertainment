@@ -116,7 +116,8 @@ export default function InvestorDashboard() {
 
   // Socket.io connection for live updates
   useEffect(() => {
-    const baseUrl = window.location.origin;
+    // MIGRATION: env-based API base for Railway+Vercel split
+    const baseUrl = (import.meta.env.VITE_SOCKET_URL as string | undefined) || window.location.origin;
     const socket = io(baseUrl, { path: "/socket.io", transports: ["websocket", "polling"] });
     socketRef.current = socket;
 

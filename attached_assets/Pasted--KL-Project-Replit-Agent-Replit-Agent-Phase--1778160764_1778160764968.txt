@@ -1,0 +1,507 @@
+# 🚚 KL Project — Replit Agent 이전 준비 프롬프트
+
+> **사용법**: 아래 전체를 Replit Agent에게 한 번에 던집니다. Phase 단위로 실행하고, 각 Phase 완료마다 변경 파일/검증 결과를 보고하도록 지시되어 있습니다.
+
+---
+
+## 0. 컨텍스트 (Replit Agent 에게)
+
+당신은 **KL Project**의 Replit Agent 입니다. KL Project 는 KL Entertainment Group 의 멀티 지점 KTV (가라오케) 비즈니스 통합 관리 플랫폼입니다.
+
+이 프로젝트를 곧 **로컬 VS Code + Claude Code 환경** 으로 이전합니다. 이전 후 인프라:
+
+| 영역 | 이전 후 |
+|---|---|
+| API 서버 (`artifacts/api-server`, port 8080) | **Railway** |
+| 프론트엔드 (`artifacts/web-app`) | **Vercel** |
+| 데이터베이스 (PostgreSQL 16.10) | **Supabase** (pooler 6543) |
+| 로컬 개발 | `./dev.sh` 다중 포트 동시 기동 |
+| 도구 | **VS Code + Claude Code** (Conventional Commits, Sydney/Bangkok timezone) |
+
+당신의 임무는 **Replit 환경에서 빠지기 전에** 코드베이스를 새 인프라 호환 상태로 만들고 동결하는 것입니다. 실제 Railway/Vercel/Supabase 배포는 다음 단계에서 수행합니다.
+
+---
+
+## 1. 절대 원칙 — Add Only Rule
+
+이 프로젝트는 운영 시스템입니다. 다음을 위반하면 작업을 즉시 중단하세요:
+
+1. ✅ **추가만, 삭제 금지** — 기존 파일/함수/엔드포인트는 그대로 보존. Replit 호환을 위한 코드도 `process.env.REPL_ID` 가드로 살려 둡니다.
+2. ✅ **MIGRATION 주석 필수** — 새/수정 코드에 다음 주석 패턴:
+   ```
+   // MIGRATION: Replit-specific behavior preserved via env guard
+   // MIGRATION: env-based API base for Railway+Vercel split
+   ```
+3. ✅ **데이터 모델 동결** — 53 개 테이블, Drizzle 스키마, 외래키 그래프 변경 0%. 마이그레이션 스크립트만 추가 가능.
+4. ✅ **API 시그니처 동결** — 35 개 라우트의 입출력 스키마, HTTP 메서드, 경로 모두 동일.
+5. ✅ **Socket.io 이벤트명 동결** — 룸보드/호스티스 가용성 실시간 이벤트는 SignalR 이전 시 1:1 매핑 필요.
+6. ✅ **JWT 페이로드 구조 동결** — `kl-auth-storage` 호환성. 클레임 추가는 OK, 기존 클레임 제거/타입 변경은 NO.
+7. ✅ **검증 가능한 변경** — 각 Phase 완료 후 회귀 테스트 결과 보고.
+
+---
+
+## Phase 0 · 문서 동결 (Documentation Freeze)
+
+`docs/migration/` 폴더 생성 후 다음 6 개 문서 작성:
+
+### `docs/migration/00_SNAPSHOT.md`
+- Node 24.13.0 / pnpm 10.26.1 / PostgreSQL 16.10 / TypeScript 5.9
+- pnpm monorepo: `artifacts/{api-server, web-app}` + `lib/{db, api-spec, api-zod, api-client-react}`
+- 인증: JWT (jsonwebtoken) + Cookie + Zustand persist (`kl-auth-storage`)
+- 실시간: Socket.io 4.8 (room-board, hostess availability, POS)
+- 빌드: tsx (dev) → esbuild CJS (prod)
+- 통화/로케일: MYR · en-MY/en-GB · DD/MM/YYYY
+- 주요 의존성 버전 lockfile 해시 기록
+
+### `docs/migration/01_API_INVENTORY.md`
+35 개 라우트를 카테고리별로 동결 명세. 각 라우트 항목:
+- 파일명 (예: `reservations.ts`)
+- HTTP 메서드 + 경로
+- 입력 Zod schema (api-zod)
+- 출력 타입 (api-spec)
+- 권한 (10 개 역할 중 어떤 것?)
+- 부수효과 (`audit_log` / `menu_config_audit_log` / `special_order_audit` / `investor_export_logs` 작성 여부)
+
+카테고리:
+- 인증 (`auth.ts`, `customer-auth.ts`)
+- 운영 (`reservations`, `rooms`, `orders`, `pos`*, `room-tables`, `tables-api`)
+- 직원 (`staff`, `attendance-api`, `schedules`, `staff-availability`)
+- 호스티스 (`hostess-profiles`, `hostess-portal`, `hostessAssignments`)
+- 에이전시 (`agency-mgmt`, `agents`, `agencyReconciliation`)
+- 재무 (`invoices`, `payments-api`, `ledger`, `receipts`, `folio`, `reports`)
+- 투자자 (`investor`, `shareholders`) ← **집계 데이터만, raw 접근 0%**
+- 관리/기타 (`branches`, `products`, `menu`, `settings-menu-config`, `dashboards`, `manager`, `driver`, `currency`, `profile`, `admin`)
+
+### `docs/migration/02_SCHEMA_FREEZE.md`
+53 개 테이블 ERD + 외래키 그래프. 특히 다음 체인 명시:
+- **회계 매핑**: `folio_entries → ledger_entries → ledger_accounts`
+- **호스티스 정산**: `hostess_sessions → agent_commissions → agent_payouts → financial_resolutions`
+- **투자자 집계**: `investor_reports` (nightly job 결과만 — raw 접근 절대 금지)
+- **감사 트레일**: `audit_log`, `menu_config_audit_log`, `special_order_audit`, `investor_export_logs`
+
+### `docs/migration/03_RBAC_MATRIX.md`
+10 개 역할 × 35 개 라우트 권한 매트릭스. 골든 룰 (검증용 어설션):
+- `investor` → `investor_reports` GET 만 허용. raw 테이블 접근 0%.
+- `hostess` → 본인 `hostess_sessions` / `agent_commissions` 만.
+- `driver` → 픽업/드롭오프 작업만. 재무/호스티스 0%.
+- `kitchen` / `hall` / `general` → 게스트 PII 마스킹 (전화번호 마지막 4자리, 이름은 성만).
+
+### `docs/migration/04_REALTIME_CONTRACTS.md`
+Socket.io 이벤트 인벤토리 — SignalR 이전 시 1:1 매핑용:
+- `room:status:changed` (Available → Reserved → Occupied → Cleaning → Maintenance → OOO)
+- `hostess:availability:changed`
+- `order:created` / `order:updated` (POS 실시간)
+- `reservation:created` / `reservation:extended` / `reservation:checked_out`
+- `folio:updated`
+- 각 이벤트의 페이로드 스키마 + 발신자/수신자 역할
+
+### `docs/migration/05_I18N_LOCALE_FREEZE.md`
+- 6 개 언어 키 인벤토리 (EN, ZH-Hans, ZH-Hant, MS, TH, KO, JA)
+- 통화 포맷 규칙: MYR 기본, 표시는 venue locale, 보고는 owner currency
+- 날짜 포맷: en-MY/en-GB → DD/MM/YYYY, ko/ja → YYYY-MM-DD
+- 세금 설정: SST 6% (Malaysia) — 향후 다지점 시 branch-level config 로 분리 가능한 구조 유지
+
+> ⚠️ **이 문서들은 Phase 1+ 작업의 정합성 검증 기준선** 입니다. 코드 변경 후 이 문서들과 다르면 변경을 롤백하세요.
+
+---
+
+## Phase 1 · 빌드 시스템 Railway 호환화
+
+### 1-1. `artifacts/api-server/build.mjs` 단순화
+
+기존 build.mjs 가 Replit Nix 기반 SPA 빌드/pg_dump 를 포함하면 **Railway 호환 esbuild 단독 빌드** 로 추가 (기존 코드 보존, 새 entry 추가):
+
+```js
+// MIGRATION: Railway 단독 빌드 — esbuild only, no SPA bundle, no pg_dump
+import { build } from 'esbuild';
+
+await build({
+  entryPoints: ['src/index.ts'],
+  outfile: 'dist/index.cjs',
+  bundle: true,
+  platform: 'node',
+  target: 'node24',
+  format: 'cjs',
+  // ESM-only deps (e.g. node-fetch v3, pino v9) → CJS require 호환 banner
+  banner: {
+    js: `
+      const { createRequire } = await import('module');
+      const require = createRequire(import.meta.url);
+    `,
+  },
+  external: ['pg-native'],
+  sourcemap: true,
+});
+```
+
+### 1-2. `package.json` (api-server)
+
+추가:
+```jsonc
+{
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "node dist/index.cjs",
+    "start:railway": "dotenv -e .env -- node dist/index.cjs"
+  },
+  "devDependencies": {
+    "dotenv-cli": "^7.4.2"
+  }
+}
+```
+
+### 1-3. dependencies 위치 재정렬
+
+다음을 `devDependencies` → `dependencies` 로 이동 (Railway/Vercel prod 빌드 시 누락 방지):
+- `esbuild`
+- `pino-pretty` (있다면)
+- `thread-stream` (있다면)
+
+### 1-4. pnpm overrides 정리
+
+루트 `package.json` 의 `pnpm.overrides` 에서 Replit 환경 충돌 해결용 강제 버전이 있으면 제거. Railway/Supabase 호환 버전만 유지.
+
+---
+
+## Phase 2 · 프론트엔드 Vercel 호환화
+
+### 2-1. `artifacts/web-app/vite.config.ts` 수정
+
+```ts
+// MIGRATION: Replit 플러그인 lazy load — Vercel 빌드 환경에는 미설치
+const replitPlugins = process.env.REPL_ID
+  ? await (async () => {
+      try {
+        const errMod = await import('@replit/vite-plugin-runtime-error-modal');
+        return [errMod.default()];
+      } catch {
+        return [];
+      }
+    })()
+  : [];
+
+// MIGRATION: PORT/BASE_PATH throw 제거 — Vercel 표준 환경변수만
+const PORT = Number(process.env.PORT ?? 5173);
+const BASE_PATH = process.env.BASE_PATH ?? '/';
+
+export default defineConfig({
+  base: BASE_PATH,
+  plugins: [react(), ...replitPlugins],
+  server: { port: PORT, host: '0.0.0.0' },
+  build: { outDir: 'dist', sourcemap: true },
+});
+```
+
+### 2-2. `lib/api-client-react/src/client.ts` (또는 동등 파일)
+
+```ts
+// MIGRATION: 환경변수 기반 API base — Replit 동일 origin → Railway 절대 URL
+const API_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL ?? API_URL;
+
+export const apiBase = (path: string) => `${API_URL}${path}`;
+
+// fetch wrapper — Cookie 인증 유지
+export const apiFetch = (path: string, init?: RequestInit) =>
+  fetch(apiBase(path), {
+    ...init,
+    credentials: 'include', // ← 필수: ALLOWED_ORIGINS 백엔드와 매칭
+  });
+```
+
+### 2-3. Socket.io 클라이언트 URL 분리
+
+`socket.io-client` 인스턴스 생성부에서 `VITE_SOCKET_URL` 사용. Replit 에서는 자동으로 동일 origin 으로 fallback.
+
+### 2-4. `vercel.json` (web-app 루트)
+
+```json
+{
+  "buildCommand": "pnpm build",
+  "outputDirectory": "dist",
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}
+```
+
+SPA fallback 필수 — Wouter 라우터 동작 보장.
+
+---
+
+## Phase 3 · 백엔드 환경변수 / Supabase 호환
+
+### 3-1. Supabase Pooler self-signed cert 수용
+
+`artifacts/api-server/src/db/index.ts` (또는 db 연결 파일):
+
+```ts
+// MIGRATION: Supabase pooler self-signed cert 수용
+const isSupabase = process.env.DATABASE_URL?.includes('supabase');
+const ssl = isSupabase
+  ? { rejectUnauthorized: false }
+  : process.env.NODE_ENV === 'production'
+    ? true
+    : undefined;
+```
+
+### 3-2. ALLOWED_ORIGINS CORS 설정
+
+`src/index.ts` (Express 미들웨어):
+
+```ts
+// MIGRATION: 다중 origin 지원 — Vercel 다중 도메인 대응
+const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    cb(new Error(`Origin ${origin} not allowed`));
+  },
+  credentials: true,
+}));
+```
+
+### 3-3. Cookie 도메인 / SameSite
+
+JWT cookie 발급부:
+```ts
+res.cookie('kl-auth', token, {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+  domain: process.env.COOKIE_DOMAIN, // .klproject.com
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+});
+```
+
+크로스 사이트 (api.* ↔ app.*) 시 `sameSite: 'none' + secure: true` 필수.
+
+---
+
+## Phase 4 · 보안 강화
+
+### 4-1. dev/migration 라우트 차단
+
+`src/routes/admin.ts` 등에 dev 전용 엔드포인트가 있으면:
+
+```ts
+// MIGRATION: dev-only routes — production 차단
+router.use((req, res, next) => {
+  if (process.env.NODE_ENV === 'production' && !process.env.ENABLE_DEV_ROUTES) {
+    return res.status(404).json({ error: 'Not Found' });
+  }
+  next();
+});
+```
+
+### 4-2. HSTS preload + helmet
+
+```ts
+import helmet from 'helmet';
+
+app.use(helmet({
+  hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+  contentSecurityPolicy: false, // SPA + Socket.io 호환 — 별도 정책 필요
+}));
+```
+
+### 4-3. 라우트별 레이트 리밋
+
+```ts
+import rateLimit from 'express-rate-limit';
+
+// 인증: 강한 제한
+app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: 20 }));
+
+// POS / orders: 영업 피크 시 분당 트래픽 폭증 → 느슨하게
+app.use('/api/orders', rateLimit({ windowMs: 60 * 1000, max: 300 }));
+
+// 투자자 PDF export: 감사 로그 + 강한 제한
+app.use('/api/investor', rateLimit({ windowMs: 60 * 1000, max: 10 }));
+```
+
+### 4-4. PII / 투자자 격리 재검증
+
+- `investor` 역할로 로그인 → `investor_reports` 외 모든 GET 시 `403 Forbidden` 검증 (자동 테스트 1 개 추가)
+- `hostess_profiles.photo_url` 이 public URL 이라면 signed URL (만료 1 시간) 로 전환하는 마이그레이션 노트 작성
+
+---
+
+## Phase 5 · gitignore / .env.example
+
+### 5-1. 루트 `.gitignore` 추가
+
+```
+# Local & secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Editor / AI agents
+.claude/
+.vscode/settings.json
+.idea/
+
+# Build
+dist/
+.turbo/
+.cache/
+
+# Replit
+.replit
+replit.nix
+.upm/
+.config/
+
+# OS
+.DS_Store
+Thumbs.db
+```
+
+### 5-2. 루트 `.env.example`
+
+```bash
+# === API Server (Railway) ===
+DATABASE_URL=postgresql://USER:PASS@db.PROJECT.pooler.supabase.com:6543/postgres?pgbouncer=true
+JWT_SECRET=
+JWT_EXPIRES_IN=7d
+COOKIE_DOMAIN=.klproject.com
+ALLOWED_ORIGINS=https://app.klproject.com,https://admin.klproject.com,http://localhost:5173
+PORT=8080
+NODE_ENV=development
+
+# === Web App (Vercel) ===
+VITE_API_URL=http://localhost:8080
+VITE_SOCKET_URL=http://localhost:8080
+VITE_DEFAULT_LOCALE=en-MY
+VITE_DEFAULT_CURRENCY=MYR
+
+# === Optional integrations ===
+WHATSAPP_API_KEY=
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+SENDGRID_API_KEY=
+```
+
+---
+
+## Phase 6 · 로컬 개발 스크립트 `dev.sh`
+
+루트에 `dev.sh` 생성:
+
+```bash
+#!/usr/bin/env bash
+# MIGRATION: 로컬 다중 서비스 동시 기동 (Replit 후속 환경)
+set -euo pipefail
+
+API_PORT="${API_PORT:-8080}"
+WEB_PORT="${WEB_PORT:-5173}"
+
+echo "🚀 KL Project local dev"
+echo "   API:  http://localhost:${API_PORT}"
+echo "   Web:  http://localhost:${WEB_PORT}"
+
+# API 서버
+(cd artifacts/api-server && PORT="${API_PORT}" pnpm dev) &
+API_PID=$!
+
+# Web App
+(cd artifacts/web-app && PORT="${WEB_PORT}" pnpm dev) &
+WEB_PID=$!
+
+cleanup() {
+  echo "🛑 Stopping..."
+  kill "${API_PID}" "${WEB_PID}" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+wait
+```
+
+`chmod +x dev.sh` 후 README 에 사용법 추가:
+```bash
+cp .env.example .env  # 값 채우기
+pnpm install
+./dev.sh
+```
+
+---
+
+## Phase 7 · 회귀 검증 체크리스트
+
+다음 모두 PASS 여야 Replit 환경 EXIT 가능. 보고서로 제출하세요:
+
+- [ ] **10 개 역할 로그인** 모두 성공 (super_admin, admin, branch_manager, manager, hostess, driver, kitchen, hall, general, investor)
+- [ ] **예약 흐름**: 생성 → room board 실시간 반영 (Socket.io) → 시간 연장 → 체크아웃
+- [ ] **POS 정합성**: 주문 → `folio_entries` → `ledger_entries` 금액 일치
+- [ ] **호스티스 정산**: `hostess_sessions` 종료 → `agent_commissions` 자동 계산 → `agent_payouts` 집계
+- [ ] **투자자 격리**: investor 로그인 시 `investor_reports` 외 모든 raw 라우트 403
+- [ ] **PDF**: 인보이스 / 영수증 / 일일보고서 / 투자자 보고서 모두 정상 생성
+- [ ] **node-cron 야간 집계 잡**: 수동 트리거 후 `investor_reports` 갱신 확인
+- [ ] **i18n**: 6 개 언어 전환, 비라틴 (한국어/일본어/중국어) 호스티스명 깨짐 없음
+- [ ] **로케일**: MYR 표시, DD/MM/YYYY, SST 6% 자동 계산
+- [ ] **Socket.io 이벤트**: 인벤토리 문서의 모든 이벤트 발화/수신 확인
+- [ ] **빌드**: `pnpm --filter api-server build` 성공, `pnpm --filter web-app build` 성공
+- [ ] **로컬 dev.sh**: 두 서비스 동시 기동 성공 (포트 8080, 5173)
+- [ ] **Replit 호환성**: REPL_ID 환경에서 기존 동작 유지 확인 (회귀 0건)
+
+---
+
+## Phase 8 · 동결 커밋 + 핸드오프
+
+마지막 Replit 커밋 메시지:
+
+```
+chore: freeze codebase before VS Code + Claude Code migration
+
+- docs/migration/ 6 documents written (snapshot, API, schema, RBAC, realtime, i18n)
+- build.mjs simplified for Railway (esbuild-only CJS)
+- vite.config.ts Vercel-compatible (Replit plugins lazy loaded)
+- VITE_API_URL / VITE_SOCKET_URL env-based
+- Supabase pooler SSL accepted
+- ALLOWED_ORIGINS CORS, helmet HSTS preload, route-scoped rate limit
+- .env.example, .gitignore, dev.sh added
+- All 53 tables / 35 routes / 10 roles regression-tested
+
+Next environment: VS Code + Claude Code
+Infra: Railway (api-server) + Vercel (web-app) + Supabase (postgres)
+```
+
+---
+
+## ❌ 절대 금지 사항 (재확인)
+
+- ❌ 기존 라우트의 입출력 schema 변경
+- ❌ Drizzle 스키마 컬럼 삭제 / 타입 변경
+- ❌ Socket.io 이벤트명 변경
+- ❌ JWT 페이로드 구조 변경 (`kl-auth-storage` 호환성)
+- ❌ `investor_reports` 집계 로직 변경
+- ❌ commission 계산 공식 변경 (호스티스 분쟁 직결)
+- ❌ `audit_log` 작성 누락된 신규 라우트 도입
+- ❌ Replit 환경에서 동작하던 기능 손상
+
+---
+
+## 📋 보고 형식
+
+각 Phase 완료마다 다음 형식으로 보고:
+
+```
+## Phase N 완료
+
+### 변경 파일
+- path/to/file.ts (added MIGRATION env guard)
+- path/to/other.ts (added new export)
+
+### 검증 결과
+- [x] 기존 기능 회귀 0건
+- [x] 새 기능 동작 확인: ...
+
+### 다음 Phase 진행 가능 여부
+✅ 가능 / ⛔ 차단 (사유: ...)
+```
+
+Phase 0 부터 순차 실행을 시작하세요.

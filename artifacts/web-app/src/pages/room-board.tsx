@@ -237,7 +237,9 @@ export default function RoomBoard() {
   useEffect(() => {
     if (!selectedBranchId || !isToday) return;
 
-    const socket = io(window.location.origin, { path: "/socket.io" });
+    // MIGRATION: env-based API base for Railway+Vercel split
+    const socketUrl = (import.meta.env.VITE_SOCKET_URL as string | undefined) || window.location.origin;
+    const socket = io(socketUrl, { path: "/socket.io" });
 
     socket.on("connect", () => {
       socket.emit("join_branch", { branchId: selectedBranchId });

@@ -44,6 +44,20 @@ Thumbs.db
 .cursor/rules/nx-rules.mdc
 .github/instructions/nx.instructions.md
 
+# Secrets & local env
+.env
+.env.*
+!.env.example
+*.local
+
+# AI agents & editors
+.claude/
+.cursor/
+.idea/
+
+# Build output
+.turbo/
+
 # Replit
 .cache/
 .local/

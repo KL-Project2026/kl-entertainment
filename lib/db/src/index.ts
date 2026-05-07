@@ -10,7 +10,18 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+// MIGRATION: Supabase pooler self-signed cert 수용 — rejectUnauthorized false when Supabase URL detected
+const isSupabase = process.env.DATABASE_URL?.includes("supabase");
+const sslConfig = isSupabase
+  ? { rejectUnauthorized: false }
+  : process.env.NODE_ENV === "production"
+    ? true
+    : undefined;
+
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: sslConfig as Parameters<typeof Pool>[0]["ssl"],
+});
 export const db = drizzle(pool, { schema });
 
 export * from "./schema";
