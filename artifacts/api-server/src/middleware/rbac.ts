@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import { pool } from "@workspace/db";
 import { ROLES, ROLE_LEVEL } from "../config/constants";
 
 export function requireRole(...allowedRoles: string[]) {
@@ -121,17 +122,49 @@ export const investorOnly = requireRole(
 /**
  * blockInvestor — Phase 9 RBAC hotfix
  * Blocks investor role from all operational routes.
- * SUPER_ADMIN auto-passes via requireRole internal check.
+ * Logs every investor denial to audit_log (non-blocking, fire-and-forget).
+ * SUPER_ADMIN auto-passes; all other non-investor ops roles pass.
  * Usage: router.use(authenticate, blockInvestor)
  */
-export const blockInvestor = requireRole(
-  ROLES.SUPER_ADMIN,
-  ROLES.ADMIN,
-  ROLES.BRANCH_MANAGER,
-  ROLES.MANAGER,
-  ROLES.HOSTESS,
-  ROLES.DRIVER,
-  ROLES.KITCHEN,
-  ROLES.HALL,
-  ROLES.GENERAL,
-);
+export async function blockInvestor(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: "UNAUTHORIZED" });
+      return;
+    }
+
+    const { role, id: userId } = req.user;
+
+    // Allow every role except investor
+    if (role !== ROLES.INVESTOR) {
+      next();
+      return;
+    }
+
+    // investor is denied — write audit trail then respond
+    pool.query(
+      `INSERT INTO audit_log
+         (entity_type, entity_id, action, changed_by, new_values, ip_address, user_agent)
+       VALUES ('rbac_access', $1, 'rbac_denied', $1, $2, $3, $4)`,
+      [
+        userId,
+        JSON.stringify({
+          role,
+          path: req.path,
+          method: req.method,
+          prefix: req.baseUrl,
+          attempted: true,
+        }),
+        req.ip ?? null,
+        (req.headers["user-agent"] ?? null) as string | null,
+      ]
+    ).catch((err: Error) =>
+      console.error("[RBAC] audit_log write error:", err.message)
+    );
+
+    res.status(403).json({ error: "FORBIDDEN", reason: "investor_not_allowed" });
+  } catch (err) {
+    console.error("[RBAC] blockInvestor error:", (err as Error).message);
+    res.status(403).json({ error: "Permission check failed" });
+  }
+}

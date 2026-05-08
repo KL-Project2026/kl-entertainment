@@ -1,0 +1,539 @@
+# 🚀 KL Project — Phase 8~14 이전 후 실행 순서
+
+> **현재 위치**: Replit Agent가 Phase 0~7 완료. 코드는 Replit git에 동결 커밋된 상태.
+> **목표**: Replit 빠지기 → local 검증 → RBAC 핫픽스 → Supabase → Railway → Vercel → DNS → prod 검증.
+> **소요 예상**: 단축 1.5일 (집중) / 일반 3~4일 (다른 일과 병행).
+
+---
+
+## 🚦 의사결정 요약
+
+사용자께서 제시하신 순서:
+1. ~~Supabase prod-data-seed.sql 실행~~
+2. ~~Railway api-server 배포~~
+3. ~~Vercel web-app 배포~~
+4. ~~investor staff 접근 버그 수정~~
+
+**조정된 순서:**
+1. Phase 8 — **local 환경 검증** (Replit 외부에서 실제 작동 확인)
+2. Phase 9 — **investor RBAC 핫픽스 + 35 라우트 격리 테스트** (배포 전 필수)
+3. Phase 10 — Supabase 프로젝트 + 스키마 + seed
+4. Phase 11 — Railway api-server 배포
+5. Phase 12 — Vercel web-app 배포
+6. Phase 13 — DNS + Cookie 도메인 + 최종 ALLOWED_ORIGINS
+7. Phase 14 — Prod 스모크 테스트 + investor 실환경 격리 검증
+
+---
+
+## Phase 8 · Local 환경 검증 (오늘)
+
+### 8-1. Replit 코드를 로컬로 가져오기
+
+**옵션 A — Replit GitHub 연동이 되어 있는 경우 (권장):**
+```bash
+cd ~/projects
+git clone git@github.com:<org>/kl-project.git
+cd kl-project
+git log --oneline -5  # Phase 0~7 동결 커밋이 보여야 함
+```
+
+**옵션 B — Replit 자체 git을 사용하는 경우:**
+```bash
+# Replit 콘솔에서: git remote get-url origin
+# (privately accessible 한 git URL 확인)
+git clone <replit-git-url> kl-project
+cd kl-project
+```
+
+> 💡 GitHub 연동이 없다면, **이 시점에 GitHub repo 부터 만드세요**. Railway·Vercel 모두 GitHub-based CI/CD가 가장 안정적입니다.
+
+### 8-2. 로컬 도구 버전 확인
+
+```bash
+node -v   # v24.13.0 (정확히)
+pnpm -v   # 10.26.1
+psql --version  # 16.x (선택, local PG 사용 시)
+```
+
+Node 버전 불일치는 esbuild banner 가 폭발하는 가장 흔한 원인입니다. `nvm install 24.13.0 && nvm use 24.13.0`.
+
+### 8-3. 의존성 + 환경변수
+
+```bash
+pnpm install --frozen-lockfile
+cp .env.example .env
+# .env 편집 — 로컬 PG 또는 임시 Supabase free tier 사용
+```
+
+`.env` (local 검증용):
+```bash
+DATABASE_URL=postgresql://localhost:5432/kl_project_dev
+JWT_SECRET=local-dev-secret-change-me
+COOKIE_DOMAIN=localhost
+ALLOWED_ORIGINS=http://localhost:5173
+PORT=8080
+NODE_ENV=development
+VITE_API_URL=http://localhost:8080
+VITE_SOCKET_URL=http://localhost:8080
+VITE_DEFAULT_LOCALE=en-MY
+VITE_DEFAULT_CURRENCY=MYR
+```
+
+### 8-4. dev.sh 검증
+
+```bash
+chmod +x dev.sh  # Replit에서 권한 안 따라온 경우
+./dev.sh
+```
+
+**성공 기준:**
+- `http://localhost:8080/health` (또는 동등) → 200
+- `http://localhost:5173` → 로그인 페이지 렌더
+- `process.env.REPL_ID` 가 `undefined` 인 환경에서 vite 가 polluted plugin 없이 정상 부팅
+- Socket.io 핸드셰이크 성공 (룸보드 페이지 진입 시 콘솔 에러 0)
+
+**실패 시 자주 보는 에러:**
+- `Cannot find module '@replit/vite-plugin-runtime-error-modal'` → vite.config.ts 의 lazy load try/catch 가 실제로 try/catch 인지 확인
+- `EADDRINUSE: 8080` → 다른 프로세스 점유. `lsof -i :8080`
+- Socket.io CORS 에러 → ALLOWED_ORIGINS 에 `http://localhost:5173` 명시 확인
+
+### 8-5. 프로덕션 빌드 검증
+
+```bash
+# api-server
+cd artifacts/api-server
+pnpm build
+ls -lh dist/index.cjs  # 2.0MB 근처 (Replit 보고와 일치해야 함)
+node dist/index.cjs    # 실제 부팅 확인
+```
+
+```bash
+# web-app
+cd artifacts/web-app
+pnpm build
+ls dist/  # index.html + assets/
+pnpm preview  # vite preview — Vercel 환경 시뮬레이션
+```
+
+> ⚠️ **여기서 빌드가 실패하면 절대 다음 Phase로 넘어가지 마세요.** Railway/Vercel은 빌드 실패 디버깅이 local 보다 훨씬 어렵습니다.
+
+### 8-6. 10 개 역할 로컬 로그인 회귀
+
+`./dev.sh` 띄운 상태에서 모든 테스트 계정 로그인 + 각 역할 메인 페이지 진입:
+
+| 계정 | 진입 페이지 | 검증 |
+|---|---|---|
+| `admin@klproject.com` (super_admin) | super admin 대시보드 | 전체 메뉴 노출 |
+| `kl01@klproject.com` (branch_manager) | 지점장 대시보드 | 단일 지점 데이터만 |
+| `manager@klproject.com` | 매니저 대시보드 | 룸보드 실시간 |
+| `hostess@klproject.com` | 호스티스 포털 | 본인 commission만 |
+| `driver@klproject.com` | 드라이버 페이지 | 픽업/드롭오프만 |
+| `kitchen@klproject.com` | 주방 보드 | 조리 큐 |
+| `hall@klproject.com` | 홀 보드 | 룸 서비스 |
+| `general@klproject.com` | 일반 대시보드 | 제한 메뉴 |
+| `investor@klproject.com` | 투자자 대시보드 | **investor_reports 만** |
+
+**Phase 8 완료 조건:** 위 9 개 + customer 포털 1 개 모두 PASS.
+
+---
+
+## Phase 9 · investor RBAC 핫픽스 + 35 라우트 격리 테스트 (Phase 8 완료 직후)
+
+> Add Only Rule 은 Phase 0~7 동결 작업의 원칙이었습니다. 동결 이후의 보안 버그 수정은 정상 개발 사이클에 속하며, **prod 배포 전에 반드시 처리**합니다.
+
+### 9-1. RBAC 미들웨어 누락 라우트 전수 스캔
+
+먼저 staff 만의 문제인지 전체 패턴인지 확인. 35 라우트 × investor 토큰 순회 테스트:
+
+```ts
+// artifacts/api-server/test/investor-isolation.test.ts (신규)
+import { describe, it, expect } from 'vitest';
+import request from 'supertest';
+import { app } from '../src/app.js';
+
+const INVESTOR_TOKEN = '<investor 로그인 후 발급된 토큰>';
+
+const ALLOWED_ROUTES = [
+  '/api/investor/reports',
+  '/api/investor/dashboard',
+  '/api/auth/me',
+  '/api/profile',
+];
+
+const ALL_ROUTES = [
+  '/api/staff', '/api/branches', '/api/reservations', '/api/rooms',
+  '/api/orders', '/api/hostess-profiles', '/api/agents', '/api/agency-mgmt',
+  '/api/invoices', '/api/payments', '/api/ledger', '/api/folio',
+  '/api/shareholders', '/api/admin/users', '/api/products', '/api/menu',
+  // ... 35 개 전수
+];
+
+describe('investor isolation — golden rule', () => {
+  for (const route of ALL_ROUTES) {
+    it(`investor cannot GET ${route} unless explicitly allowed`, async () => {
+      const res = await request(app)
+        .get(route)
+        .set('Cookie', [`kl-auth=${INVESTOR_TOKEN}`]);
+
+      if (ALLOWED_ROUTES.includes(route)) {
+        expect(res.status).toBe(200);
+      } else {
+        expect([403, 404]).toContain(res.status); // 403 권장, 404 도 허용
+      }
+    });
+  }
+});
+```
+
+**예상 결과**: `/api/staff` 외에도 2~5 개 라우트가 200 으로 떨어질 가능성 있음. 모두 식별.
+
+### 9-2. 공통 RBAC 미들웨어 적용 (가능한 최소 변경)
+
+각 라우트 파일 상단에:
+
+```ts
+// artifacts/api-server/src/routes/staff.ts
+import { requireRole } from '../middleware/auth.js';
+
+router.use(requireRole(['super_admin', 'admin', 'branch_manager', 'manager']));
+// ↑ 이 한 줄로 staff.ts 전체 라우트가 4 개 역할로 제한됨
+```
+
+`requireRole` 미들웨어가 없으면 다음 패턴으로 추가:
+
+```ts
+// artifacts/api-server/src/middleware/auth.ts
+export const requireRole = (allowed: string[]) => (req, res, next) => {
+  const role = req.user?.role;
+  if (!role || !allowed.includes(role)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  next();
+};
+```
+
+### 9-3. 패치 후 격리 테스트 재실행
+
+`pnpm --filter api-server test` → 모든 케이스 PASS 후 다음 Phase 진입.
+
+### 9-4. 감사 로그 1 줄 추가
+
+투자자가 차단된 시도도 audit_log 에 남깁니다 (감사 추적 + 컴플라이언스):
+
+```ts
+if (res.status === 403) {
+  await db.insert(auditLog).values({
+    userId: req.user.id,
+    action: 'rbac_denied',
+    resource: req.path,
+    metadata: { role: req.user.role, attempted: true },
+  });
+}
+```
+
+**Phase 9 완료 조건**: investor 로그인 → `/api/staff`, `/api/hostess-profiles`, `/api/orders`, `/api/agents` 등 모든 운영 라우트 403. 35 라우트 격리 테스트 100% PASS.
+
+---
+
+## Phase 10 · Supabase 프로젝트 + 스키마 + seed
+
+### 10-1. Supabase 프로젝트 생성
+
+- region: **Singapore (ap-southeast-1)** — KL 에서 가장 가까움 (Tokyo 도 옵션이지만 KL 발 latency 는 SG 가 우위)
+- plan: 초기 Free / Pro 결정 — Free는 7일 inactivity pause 라 production 부적합 → **Pro 권장**
+- database password 안전한 곳에 저장 (1Password 등)
+
+### 10-2. 연결 문자열 두 개 확보
+
+Supabase Dashboard → Project Settings → Database:
+
+```
+# Direct connection (port 5432, 마이그레이션 / pg_dump 용)
+DATABASE_URL_DIRECT=postgresql://postgres:[PW]@db.[PROJECT].supabase.co:5432/postgres
+
+# Pooler (port 6543, transaction mode — 앱 런타임용)
+DATABASE_URL=postgresql://postgres.[PROJECT]:[PW]@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true
+```
+
+### 10-3. Drizzle 스키마 마이그레이션
+
+```bash
+# 마이그레이션은 direct connection 으로 실행 (pgbouncer 는 prepared statement 충돌)
+DATABASE_URL=$DATABASE_URL_DIRECT pnpm --filter db migrate
+
+# 또는 Drizzle 명령어
+DATABASE_URL=$DATABASE_URL_DIRECT pnpm drizzle-kit push:pg
+```
+
+### 10-4. prod-data-seed.sql 실행
+
+```bash
+psql "$DATABASE_URL_DIRECT" -f prod-data-seed.sql
+```
+
+### 10-5. 검증
+
+```bash
+psql "$DATABASE_URL_DIRECT" -c "SELECT COUNT(*) FROM organizations;"  # 1
+psql "$DATABASE_URL_DIRECT" -c "SELECT COUNT(*) FROM branches;"
+psql "$DATABASE_URL_DIRECT" -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public';"  # 53
+```
+
+### 10-6. local 에서 Supabase pooler 로 테스트
+
+`.env` 의 DATABASE_URL 을 pooler URL 로 바꾸고 `./dev.sh` 다시 기동.
+
+> ⚠️ **PgBouncer transaction mode 주의**: Drizzle 의 일부 prepared statement 사용 패턴이 pooler 에서 깨질 수 있습니다. 룸보드·POS·commission 계산 cron job 모두 한 번씩 돌려서 SQL 에러가 안 나는지 확인. 발생 시 해당 쿼리만 direct connection 으로 분리 실행하도록 옵션 설정.
+
+**Phase 10 완료 조건**: local app 이 Supabase pooler 로 정상 작동. 53 테이블 존재. seed 데이터 진입.
+
+---
+
+## Phase 11 · Railway api-server 배포
+
+### 11-1. Railway 프로젝트 생성
+
+- New Project → Deploy from GitHub repo → 해당 organization/repo 선택
+- **Root Directory**: `artifacts/api-server` (monorepo 인식)
+- **Watch Paths**: `artifacts/api-server/**`, `lib/**` (lib 변경 시에도 빌드 트리거)
+
+### 11-2. 빌드/시작 커맨드
+
+Railway Settings → Build:
+```
+Build Command:  pnpm install --frozen-lockfile && pnpm --filter api-server build
+Start Command:  cd artifacts/api-server && node dist/index.cjs
+```
+
+> 💡 monorepo 의 경우 **루트에서 install** 하고 **artifacts/api-server 에서 start** 하는 패턴이 가장 안전합니다.
+
+### 11-3. 환경변수 설정 (Railway Variables)
+
+```
+DATABASE_URL=<Supabase pooler URL>
+JWT_SECRET=<openssl rand -base64 32 결과>
+JWT_EXPIRES_IN=7d
+COOKIE_DOMAIN=.klproject.com
+ALLOWED_ORIGINS=https://app.klproject.com
+PORT=8080
+NODE_ENV=production
+```
+
+### 11-4. Railway 도메인 확인
+
+Settings → Networking → Public Networking → **Generate Domain**.
+임시 도메인 (예: `kl-api-production.up.railway.app`) 발급. 이걸로 우선 검증, 나중에 custom domain.
+
+### 11-5. 헬스체크
+
+```bash
+curl https://<railway-domain>/health
+curl -X POST https://<railway-domain>/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@klproject.com","password":"Admin@123!"}'
+```
+
+200 + JWT cookie 발급 확인.
+
+### 11-6. 흔한 함정
+
+- **`pg-native` 모듈 에러** → external 처리 확인 (Phase 1 build.mjs 에 이미 있음)
+- **Socket.io 연결 실패** → Railway 는 default 로 WebSocket 지원. 별도 설정 불필요.
+- **Cron job 미실행** → Railway 는 free 인스턴스가 sleep 됨. **Pro / Hobby plan 필수** (nightly investor_reports 집계 잡 때문).
+
+**Phase 11 완료 조건**: Railway 도메인에서 모든 API 200 응답. nightly cron 1회 수동 트리거 성공.
+
+---
+
+## Phase 12 · Vercel web-app 배포
+
+### 12-1. Vercel 프로젝트 생성
+
+- New Project → Import GitHub repo
+- **Root Directory**: `artifacts/web-app`
+- Framework Preset: **Vite**
+- Build Command: `cd ../.. && pnpm install --frozen-lockfile && pnpm --filter web-app build`
+- Output Directory: `dist`
+- Install Command: (비움 — Build Command 가 처리)
+
+### 12-2. 환경변수 (Vercel)
+
+```
+VITE_API_URL=https://<railway-domain>
+VITE_SOCKET_URL=https://<railway-domain>
+VITE_DEFAULT_LOCALE=en-MY
+VITE_DEFAULT_CURRENCY=MYR
+```
+
+### 12-3. monorepo 인식 옵션
+
+`vercel.json` 이 web-app 루트에 있는 게 Phase 0~7 보고에 명시됨. 추가로 루트에 `.vercelignore` 도 필요할 수 있음:
+
+```
+# .vercelignore (루트)
+artifacts/api-server
+docs
+*.md
+```
+
+### 12-4. 첫 배포 후 검증
+
+Vercel 임시 URL (예: `kl-app.vercel.app`):
+- 로그인 페이지 렌더 확인
+- 로그인 시도 → CORS 에러 발생 예상
+  - **즉시 Railway ALLOWED_ORIGINS 에 Vercel URL 추가** → `https://kl-app.vercel.app`
+  - Railway 재배포 후 재시도
+- Socket.io 연결 → 룸보드 진입 시 콘솔 에러 0 확인
+
+### 12-5. SPA fallback 확인
+
+`https://kl-app.vercel.app/reservations/123` 직접 입력 → 404 가 아니라 React 앱이 떠야 함 (Wouter 가 라우팅). vercel.json 의 rewrite 룰이 작동하는지 확인.
+
+**Phase 12 완료 조건**: Vercel URL 에서 10 개 역할 로그인 + 핵심 워크플로 (예약 생성, POS 주문, 호스티스 배정) 모두 작동.
+
+---
+
+## Phase 13 · DNS + Cookie 도메인 + 최종 ALLOWED_ORIGINS
+
+### 13-1. DNS 레코드
+
+도메인 등록업체 (Cloudflare 권장):
+
+```
+api.klproject.com    CNAME  <railway-domain>.up.railway.app
+app.klproject.com    CNAME  cname.vercel-dns.com
+```
+
+> 💡 **Cloudflare 사용 시 Proxy 끄기** (회색 구름). Socket.io WebSocket 이 Cloudflare proxy 와 충돌. DNS only 모드.
+
+### 13-2. Railway / Vercel 에서 custom domain 등록
+
+- Railway → Settings → Networking → Custom Domain → `api.klproject.com`
+- Vercel → Settings → Domains → `app.klproject.com`
+
+각각 자동 SSL (Let's Encrypt) 발급 대기 (~5분).
+
+### 13-3. 환경변수 최종 갱신
+
+**Railway:**
+```
+ALLOWED_ORIGINS=https://app.klproject.com
+COOKIE_DOMAIN=.klproject.com
+```
+
+**Vercel:**
+```
+VITE_API_URL=https://api.klproject.com
+VITE_SOCKET_URL=https://api.klproject.com
+```
+
+각각 재배포.
+
+### 13-4. Cookie SameSite 검증
+
+크로스 사이트 (api.* ↔ app.*) 환경에서:
+- Cookie 옵션: `Secure: true`, `SameSite: 'none'`, `Domain: '.klproject.com'`
+- 브라우저 DevTools → Application → Cookies 에서 `kl-auth` 확인:
+  - SameSite: None
+  - Secure: ✓
+  - Domain: .klproject.com
+  - HttpOnly: ✓
+
+### 13-5. CSP / 헬멧 재검토
+
+helmet 의 default CSP 가 Socket.io 인라인 스크립트를 차단할 수 있음. Phase 0~7 보고에 `contentSecurityPolicy: false` 가 적용됐다면 OK. **추후 별도 CSP 정책 작성 백로그**.
+
+**Phase 13 완료 조건**: `https://app.klproject.com` 정상 접속, login → cookie 발급 → 페이지 이동 시 cookie 유지.
+
+---
+
+## Phase 14 · Prod 스모크 테스트 + investor 실환경 격리 검증
+
+### 14-1. 핵심 워크플로 7 종 (각 1 회 실행)
+
+| 워크플로 | 검증 포인트 |
+|---|---|
+| 예약 생성 → 룸보드 반영 | Socket.io live update 도달 시간 < 500ms |
+| 시간 연장 (mid-session extension) | folio 업데이트 + 호스티스 commission 재계산 |
+| POS 주문 | folio_entries → ledger_entries 정합 |
+| 호스티스 세션 종료 | agent_commissions 자동 생성 |
+| 인보이스 PDF 생성 | SST 6% 라인, MYR 표기, en-MY 날짜 |
+| 야간 cron 잡 (수동 트리거) | investor_reports 집계 갱신 |
+| WhatsApp 예약 확인 발송 | 실제 메시지 수신 (Twilio/360Dialog 환경변수 확인) |
+
+### 14-2. investor 격리 실환경 검증
+
+투자자 계정으로 prod 로그인 → 다음 모두 확인:
+- ✅ investor 대시보드 접근 가능
+- ✅ investor_reports PDF 다운로드 가능 (audit_log 에 download 기록 남음)
+- ❌ `/api/staff` GET → 403
+- ❌ `/api/hostess-profiles` GET → 403
+- ❌ `/api/agents` GET → 403
+- ❌ `/api/orders` GET → 403
+- ❌ `/api/folio` GET → 403
+- ❌ raw 데이터로 보이는 어떤 라우트도 200 없음
+
+브라우저 DevTools Network 탭에서 직접 확인 권장.
+
+### 14-3. 컴플라이언스 트레일
+
+prod 배포 시점 기록 — 향후 PDPA 감사 대비:
+- 배포 commit SHA
+- 배포 시각 (Asia/Kuala_Lumpur)
+- 배포자 이름
+- Phase 9 격리 테스트 결과 캡처
+- audit_log 가 정상 작동 중임을 증명하는 1주일 후 sample query
+
+`docs/compliance/2026-XX-XX-prod-launch.md` 로 정리 보관.
+
+### 14-4. 모니터링 연결 (백로그 가능)
+
+- Railway logs → 1주일 보관 (Railway free)
+- Sentry 또는 Better Stack — error tracking
+- Uptime: BetterUptime / UptimeRobot 으로 `https://api.klproject.com/health` 1분 폴링
+
+---
+
+## ✅ 최종 완료 정의
+
+다음 모두 충족 시 "이전 완료":
+
+- [ ] `https://app.klproject.com` 에서 10 개 역할 모두 로그인 + 정상 사용
+- [ ] `https://api.klproject.com` 에서 35 라우트 모두 정상 응답
+- [ ] investor 격리 35 라우트 격리 테스트 100% PASS
+- [ ] Socket.io 룸보드 < 500ms latency
+- [ ] nightly cron job 자동 실행 1 회 이상 확인
+- [ ] PDPA 컴플라이언스 트레일 문서화 완료
+- [ ] Replit 인스턴스 → archive (즉시 삭제 X, 1개월 read-only 보관)
+
+---
+
+## 📅 권장 일정
+
+| Day | 작업 | 소요 |
+|---|---|---|
+| Day 1 (오늘) | Phase 8 (local 검증) + Phase 9 (RBAC 핫픽스) | 4~6시간 |
+| Day 2 오전 | Phase 10 (Supabase) | 2~3시간 |
+| Day 2 오후 | Phase 11 (Railway) + Phase 12 (Vercel) — 임시 도메인 | 3~4시간 |
+| Day 3 | Phase 13 (DNS) — DNS propagation 대기 포함 | 2~4시간 |
+| Day 4 | Phase 14 (스모크 테스트) + 1주일 안정화 관찰 시작 | 4~6시간 |
+
+---
+
+## ❗ 흔한 함정 미리 보기
+
+| 함정 | 발생 Phase | 사전 대비 |
+|---|---|---|
+| Node 24 미설치 | 8 | nvm 으로 정확한 버전 |
+| pgbouncer prepared stmt 충돌 | 10 | 마이그레이션은 direct, 앱은 pooler |
+| Cloudflare orange cloud + WebSocket | 13 | DNS only 모드 |
+| Cookie SameSite=Lax 로 크로스 사이트 깨짐 | 12~13 | None + Secure |
+| Vercel monorepo install 실패 | 12 | Build Command 에 `cd ../.. && pnpm install` |
+| Railway free plan cron sleep | 11 | Hobby plan 이상 |
+| ALLOWED_ORIGINS 임시 도메인 잔존 | 13 후 | DNS 컷오버 후 정리 |
+
+---
+
+## 🎯 한 줄 결론
+
+**오늘은 Phase 8 (local 검증) + Phase 9 (RBAC 핫픽스) 까지만**. 배포는 격리 테스트 PASS 후. investor 가 staff 를 못 보는 것을 자동 테스트로 보장한 뒤에야 prod 에 배포합니다.
