@@ -117,3 +117,21 @@ export const investorOnly = requireRole(
   ROLES.ADMIN,
   ROLES.INVESTOR,
 );
+
+/**
+ * blockInvestor — Phase 9 RBAC hotfix
+ * Blocks investor role from all operational routes.
+ * SUPER_ADMIN auto-passes via requireRole internal check.
+ * Usage: router.use(authenticate, blockInvestor)
+ */
+export const blockInvestor = requireRole(
+  ROLES.SUPER_ADMIN,
+  ROLES.ADMIN,
+  ROLES.BRANCH_MANAGER,
+  ROLES.MANAGER,
+  ROLES.HOSTESS,
+  ROLES.DRIVER,
+  ROLES.KITCHEN,
+  ROLES.HALL,
+  ROLES.GENERAL,
+);

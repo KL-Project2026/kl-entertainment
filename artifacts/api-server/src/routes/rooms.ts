@@ -3,7 +3,7 @@ import { Server as SocketServer } from "socket.io";
 import jwt from "jsonwebtoken";
 import { pool } from "@workspace/db";
 import { authenticate } from "../middleware/auth";
-import { requireRole, requireBranchAccess } from "../middleware/rbac";
+import { requireRole, requireBranchAccess, blockInvestor } from "../middleware/rbac";
 import { ROLES, ROLE_LEVEL } from "../config/constants";
 
 const router: IRouter = Router();

@@ -18,10 +18,12 @@ router.get(
       // Resolve shareholder ID: if query param provided (admin viewing), use that; else look up by user
       let shareholderId = req.query["shareholder_id"] as string;
       if (!shareholderId) {
-        // Try to find a shareholder linked to this user's email
+        // Look up shareholder by matching staff email (req.user.id → staff.email → shareholders.email)
         const { rows } = await pool.query(
-          "SELECT id FROM shareholders WHERE email = $1 AND is_active = true LIMIT 1",
-          [req.user!.email]
+          `SELECT sh.id FROM shareholders sh
+           JOIN staff st ON st.email = sh.email
+           WHERE st.id = $1 AND sh.is_active = true LIMIT 1`,
+          [req.user!.id]
         );
         if (!rows.length) {
           res.status(403).json({ error: "No shareholder profile for this account" });
@@ -47,8 +49,10 @@ router.get(
       let shareholderId = req.query["shareholder_id"] as string;
       if (!shareholderId) {
         const { rows } = await pool.query(
-          "SELECT id FROM shareholders WHERE email = $1 AND is_active = true LIMIT 1",
-          [req.user!.email]
+          `SELECT sh.id FROM shareholders sh
+           JOIN staff st ON st.email = sh.email
+           WHERE st.id = $1 AND sh.is_active = true LIMIT 1`,
+          [req.user!.id]
         );
         if (!rows.length) { res.status(403).json({ error: "NO_SHAREHOLDER_PROFILE" }); return; }
         shareholderId = rows[0].id;
@@ -126,8 +130,10 @@ router.get(
       let shareholderId = req.query["shareholder_id"] as string;
       if (!shareholderId) {
         const { rows } = await pool.query(
-          "SELECT id FROM shareholders WHERE email = $1 AND is_active = true LIMIT 1",
-          [req.user!.email]
+          `SELECT sh.id FROM shareholders sh
+           JOIN staff st ON st.email = sh.email
+           WHERE st.id = $1 AND sh.is_active = true LIMIT 1`,
+          [req.user!.id]
         );
         if (!rows.length) { res.status(403).json({ error: "NO_SHAREHOLDER_PROFILE" }); return; }
         shareholderId = rows[0].id;

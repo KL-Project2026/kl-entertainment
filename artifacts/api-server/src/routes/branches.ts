@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
 import { authenticate } from "../middleware/auth";
-import { requireRole, requireBranchAccess } from "../middleware/rbac";
+import { requireRole, requireBranchAccess, blockInvestor } from "../middleware/rbac";
 import { ROLES } from "../config/constants";
 
 const router: IRouter = Router();

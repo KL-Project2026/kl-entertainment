@@ -1,6 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
 import { authenticate } from "../middleware/auth";
+import { blockInvestor } from "../middleware/rbac";
 
 const router: IRouter = Router();
 

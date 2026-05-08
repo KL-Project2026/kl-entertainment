@@ -1,4 +1,6 @@
 import { Router, type IRouter } from "express";
+import { authenticate } from "../middleware/auth";
+import { blockInvestor } from "../middleware/rbac";
 import healthRouter from "./health";
 import authRouter from "./auth";
 import branchesRouter from "./branches";
@@ -39,6 +41,45 @@ import dashboardsRouter from "./dashboards";
 import profileRouter from "./profile";
 
 const router: IRouter = Router();
+
+// ── Phase 9: investor RBAC hotfix ────────────────────────────────────────────
+// Express router.use(path) uses prefix matching, so "/branches" covers
+// "/branches", "/branches/:id", "/branches/:id/rooms", etc.
+// Must be registered BEFORE the individual sub-routers.
+// investor role is only allowed: /investor/*, /profile/*, /auth/*, /currency/*
+const INVESTOR_BLOCKED_PREFIXES = [
+  "/staff",
+  "/branches",
+  "/rooms",
+  "/agents",
+  "/products",
+  "/tables",
+  "/reservations",
+  "/orders",
+  "/receipts",
+  "/schedules",
+  "/shareholders",
+  "/reports",
+  "/attendance",
+  "/availability",
+  "/folio",
+  "/payments",
+  "/manager",
+  "/hostess-portal",
+  "/driver",
+  "/hostess-profiles",
+  "/agency-mgmt",
+  "/room-tables",
+  "/settings-menu-config",
+  "/menu",
+  "/hostess-assignments",
+  "/agency-reconciliation",
+  "/ledger",
+  "/admin",
+  "/dashboards",
+];
+router.use(INVESTOR_BLOCKED_PREFIXES, authenticate, blockInvestor);
+// ─────────────────────────────────────────────────────────────────────────────
 
 router.use(healthRouter);
 router.use(authRouter);
