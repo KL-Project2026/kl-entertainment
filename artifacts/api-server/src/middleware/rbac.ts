@@ -150,7 +150,7 @@ export async function blockInvestor(req: Request, res: Response, next: NextFunct
         userId,
         JSON.stringify({
           role,
-          path: req.path,
+          path: req.originalUrl.split("?")[0],
           method: req.method,
           prefix: req.baseUrl,
           attempted: true,
