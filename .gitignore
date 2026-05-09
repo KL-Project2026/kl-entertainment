@@ -48,6 +48,7 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+!.env.production.example
 *.local
 
 # AI agents & editors
