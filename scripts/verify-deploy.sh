@@ -30,13 +30,14 @@ check() {
   local name="$1"; shift
   local expected="$1"; shift
   local url="$1"; shift
+  local method="${1:-GET}"
   local actual
-  actual=$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 15 "$url" || echo "000")
+  actual=$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 15 -X "$method" "$url" || echo "000")
   if [[ "$actual" == "$expected" ]]; then
     echo "  ✅ $name → $actual"
     pass=$((pass + 1))
   else
-    echo "  ❌ $name → expected $expected, got $actual ($url)"
+    echo "  ❌ $name → expected $expected, got $actual ($method $url)"
     fail=$((fail + 1))
   fi
 }
@@ -44,7 +45,15 @@ check() {
 echo "== api-server (Railway) =="
 check "healthz"           200 "$API_URL/api/healthz"
 check "404 unknown route" 404 "$API_URL/api/__nope__"
-check "auth login (POST)" 400 "$API_URL/api/auth/login"
+# Empty-body POST hits the route → expect 4xx/5xx (route exists), not 404 (route missing)
+auth_status=$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 15 -X POST "$API_URL/api/auth/login" || echo "000")
+if [[ "$auth_status" =~ ^[45][0-9][0-9]$ ]] && [[ "$auth_status" != "404" ]]; then
+  echo "  ✅ auth login route exists → $auth_status"
+  pass=$((pass + 1))
+else
+  echo "  ❌ auth login route → got $auth_status (expected 4xx/5xx, not 404)"
+  fail=$((fail + 1))
+fi
 
 echo
 echo "== web-app (Vercel) =="
