@@ -1,3 +1,10 @@
-<svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect width="180" height="180" rx="36" fill="#FF3C00"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="KL">
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600&amp;display=swap');
+      .kl-mark { font-family: 'Playfair Display', 'Times New Roman', serif; font-weight: 600; letter-spacing: -0.02em; }
+    </style>
+  </defs>
+  <rect width="64" height="64" rx="10" fill="#0A0A0D"/>
+  <text x="32" y="46" class="kl-mark" font-size="36" fill="#C9A961" text-anchor="middle">KL</text>
 </svg>

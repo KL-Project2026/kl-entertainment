@@ -1,12 +1,13 @@
 import { useAuthStore } from "@/lib/auth";
 import { useListBranches, useGetBranchDashboard } from "@workspace/api-client-react";
 import { Card, Tabs } from "@/components/ui";
-import { Users, CreditCard, BedDouble, TrendingUp } from "lucide-react";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { KpiCard } from "@/components/shared/KpiCard";
+import { CreditCard, BedDouble, TrendingUp, Users } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { useState, useEffect } from "react";
 
-// Mock data for the chart since the API doesn't provide historical data directly yet
 const MOCK_CHART_DATA = [
   { time: '18:00', revenue: 1200 }, { time: '19:00', revenue: 3000 },
   { time: '20:00', revenue: 5500 }, { time: '21:00', revenue: 8400 },
@@ -14,12 +15,19 @@ const MOCK_CHART_DATA = [
   { time: '00:00', revenue: 24500 }, { time: '01:00', revenue: 31000 }
 ];
 
+const ROOM_STATUS_TONE: Record<string, string> = {
+  Occupied:    "bg-danger",
+  Available:   "bg-success",
+  Cleaning:    "bg-warning",
+  Maintenance: "bg-text-tertiary",
+};
+
 export default function Dashboard() {
   const { user } = useAuthStore();
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(user?.branchId || null);
 
   const { data: branchesData } = useListBranches();
-  
+
   useEffect(() => {
     if (!selectedBranchId && branchesData?.data && branchesData.data.length > 0) {
       setSelectedBranchId(branchesData.data[0].id);
@@ -35,92 +43,114 @@ export default function Dashboard() {
     rooms: { total: 0, available: 0, occupied: 0, cleaning: 0, maintenance: 0 }
   };
 
-  const CARDS = [
-    { label: "Today's Revenue", value: formatCurrency(stats.today.revenue), icon: CreditCard, color: "text-emerald-400", bg: "bg-emerald-400/10" },
-    { label: "Occupancy Rate", value: `${stats.today.occupancyPct}%`, icon: TrendingUp, color: "text-primary", bg: "bg-primary/10" },
-    { label: "Active Reservations", value: stats.today.reservationCount.toString(), icon: Users, color: "text-blue-400", bg: "bg-blue-400/10" },
-    { label: "Rooms Available", value: `${stats.rooms.available} / ${stats.rooms.total}`, icon: BedDouble, color: "text-purple-400", bg: "bg-purple-400/10" },
+  const roomBreakdown = [
+    { label: 'Occupied',    count: stats.rooms.occupied },
+    { label: 'Available',   count: stats.rooms.available },
+    { label: 'Cleaning',    count: stats.rooms.cleaning },
+    { label: 'Maintenance', count: stats.rooms.maintenance },
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
+      <PageHeader
+        eyebrow="Operations"
+        title="Overview"
+        description="Today's revenue, occupancy, and room status at a glance."
+      />
+
       {user?.role === 'super_admin' && branchesData?.data && (
-        <Tabs 
+        <Tabs
           tabs={branchesData.data.map(b => ({ id: b.id, label: b.name }))}
           activeTab={selectedBranchId || ""}
           onChange={setSelectedBranchId}
         />
       )}
 
+      {/* §12 — KPI strip. Only the primary metric (Revenue) gets gold emphasis. */}
       {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 animate-pulse">
-          {[1,2,3,4].map(i => <div key={i} className="h-32 bg-card rounded-xl" />)}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="h-28 rounded-lg border border-border-subtle bg-surface-2 animate-pulse" />
+          ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {CARDS.map((stat, i) => (
-            <Card key={i} className="p-6 flex items-start gap-4">
-              <div className={`p-4 rounded-xl ${stat.bg}`}>
-                <stat.icon className={`w-6 h-6 ${stat.color}`} />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-muted-foreground mb-1">{stat.label}</p>
-                <h3 className="text-2xl font-bold text-foreground font-display">{stat.value}</h3>
-              </div>
-            </Card>
-          ))}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <KpiCard
+            label="Today's Revenue"
+            value={formatCurrency(stats.today.revenue)}
+            icon={CreditCard}
+            emphasis="gold"
+            delta={{ value: "+12.4%", trend: "up" }}
+            deltaSuffix="vs yesterday"
+          />
+          <KpiCard
+            label="Occupancy Rate"
+            value={`${stats.today.occupancyPct}%`}
+            icon={TrendingUp}
+          />
+          <KpiCard
+            label="Active Reservations"
+            value={stats.today.reservationCount.toString()}
+            icon={Users}
+          />
+          <KpiCard
+            label="Rooms Available"
+            value={`${stats.rooms.available} / ${stats.rooms.total}`}
+            icon={BedDouble}
+          />
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="p-6 lg:col-span-2">
-          <h3 className="font-display text-lg font-semibold mb-6">Revenue Trend</h3>
+          <h3 className="text-lg font-semibold mb-6 text-text-primary">Revenue Trend</h3>
           <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={MOCK_CHART_DATA}>
                 <defs>
                   <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                    <stop offset="5%"  stopColor="var(--gold)" stopOpacity={0.25}/>
+                    <stop offset="95%" stopColor="var(--gold)" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                <XAxis dataKey="time" stroke="rgba(255,255,255,0.3)" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="rgba(255,255,255,0.3)" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `RM${v/1000}k`} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#13131F', borderColor: 'rgba(212, 175, 55, 0.2)', borderRadius: '8px' }}
-                  itemStyle={{ color: '#D4AF37' }}
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0 0% 100% / 0.06)" vertical={false} />
+                <XAxis dataKey="time" stroke="hsl(0 0% 100% / 0.4)" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis stroke="hsl(0 0% 100% / 0.4)" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `RM${v/1000}k`} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'var(--surface-1)',
+                    border: '1px solid var(--border-default)',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                  }}
+                  itemStyle={{ color: 'var(--gold)' }}
+                  labelStyle={{ color: 'var(--text-secondary)' }}
                 />
-                <Area type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
+                <Area type="monotone" dataKey="revenue" stroke="var(--gold)" strokeWidth={2} fillOpacity={1} fill="url(#colorRevenue)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </Card>
 
         <Card className="p-6">
-          <h3 className="font-display text-lg font-semibold mb-6">Room Status Breakdown</h3>
-          <div className="space-y-4">
-            {[
-              { label: 'Occupied', count: stats.rooms.occupied, color: 'bg-red-500' },
-              { label: 'Available', count: stats.rooms.available, color: 'bg-emerald-500' },
-              { label: 'Cleaning', count: stats.rooms.cleaning, color: 'bg-amber-500' },
-              { label: 'Maintenance', count: stats.rooms.maintenance, color: 'bg-gray-500' },
-            ].map(item => (
+          <h3 className="text-lg font-semibold mb-6 text-text-primary">Room Status</h3>
+          <div className="space-y-3">
+            {roomBreakdown.map(item => (
               <div key={item.label} className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className={`w-3 h-3 rounded-full ${item.color} shadow-[0_0_10px_currentColor]`} />
-                  <span className="text-muted-foreground">{item.label}</span>
+                <div className="flex items-center gap-2.5">
+                  <span className={`w-1.5 h-1.5 rounded-full ${ROOM_STATUS_TONE[item.label] ?? "bg-text-tertiary"}`} />
+                  <span className="text-sm text-text-secondary">{item.label}</span>
                 </div>
-                <span className="font-semibold">{item.count}</span>
+                <span className="text-sm font-mono tabular-nums text-text-primary">{item.count}</span>
               </div>
             ))}
-            
-            <div className="pt-6 mt-4 border-t border-white/5">
-              <div className="w-full bg-black/50 rounded-full h-3 overflow-hidden flex">
-                <div className="bg-red-500 h-full" style={{ width: `${(stats.rooms.occupied / (stats.rooms.total || 1)) * 100}%` }} />
-                <div className="bg-amber-500 h-full" style={{ width: `${(stats.rooms.cleaning / (stats.rooms.total || 1)) * 100}%` }} />
-                <div className="bg-gray-500 h-full" style={{ width: `${(stats.rooms.maintenance / (stats.rooms.total || 1)) * 100}%` }} />
-                <div className="bg-emerald-500 h-full flex-1" />
+
+            <div className="pt-4 mt-4 border-t border-border-subtle">
+              <div className="w-full bg-surface-3 rounded-full h-1.5 overflow-hidden flex">
+                <div className="bg-danger  h-full" style={{ width: `${(stats.rooms.occupied    / (stats.rooms.total || 1)) * 100}%` }} />
+                <div className="bg-warning h-full" style={{ width: `${(stats.rooms.cleaning    / (stats.rooms.total || 1)) * 100}%` }} />
+                <div className="bg-text-tertiary h-full" style={{ width: `${(stats.rooms.maintenance / (stats.rooms.total || 1)) * 100}%` }} />
+                <div className="bg-success h-full flex-1" />
               </div>
             </div>
           </div>

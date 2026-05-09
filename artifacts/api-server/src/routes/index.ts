@@ -47,6 +47,10 @@ const router: IRouter = Router();
 // "/branches", "/branches/:id", "/branches/:id/rooms", etc.
 // Must be registered BEFORE the individual sub-routers.
 // investor role is only allowed: /investor/*, /profile/*, /auth/*, /currency/*
+//
+// SOURCE OF TRUTH: docs/OPERATIONS_WORKFLOW.md §15 + lib/shared/route-permissions.ts
+// The list below maps API mount paths (Express); the shared map is by frontend
+// page paths. When adding/removing operational mounts, update both.
 const INVESTOR_BLOCKED_PREFIXES = [
   "/staff",
   "/branches",

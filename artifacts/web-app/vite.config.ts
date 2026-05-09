@@ -51,6 +51,17 @@ export default defineConfig({
       strict: true,
       deny: ["**/.*"],
     },
+    proxy: {
+      "/api": {
+        target: process.env.VITE_API_URL ?? "http://localhost:8080",
+        changeOrigin: true,
+      },
+      "/socket.io": {
+        target: process.env.VITE_SOCKET_URL ?? "http://localhost:8080",
+        changeOrigin: true,
+        ws: true,
+      },
+    },
   },
   preview: {
     port,

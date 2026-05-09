@@ -2,13 +2,22 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { writeCustomerAudit } from "../middleware/customer-audit";
 
 const router: IRouter = Router();
-const JWT_SECRET = process.env["JWT_SECRET"] ?? "changeme";
+
+// Customer portal MUST use a JWT secret separate from staff (OPERATIONS_WORKFLOW.md §13).
+// If CUSTOMER_JWT_SECRET is unset we fall back to JWT_SECRET to preserve dev boot,
+// but log a warning so prod deploys are forced to set it.
+const STAFF_JWT_SECRET = process.env["JWT_SECRET"] ?? "changeme";
+const CUSTOMER_JWT_SECRET = process.env["CUSTOMER_JWT_SECRET"] ?? STAFF_JWT_SECRET;
+if (CUSTOMER_JWT_SECRET === STAFF_JWT_SECRET) {
+  console.warn("[customer-auth] CUSTOMER_JWT_SECRET not set or equals JWT_SECRET — set a distinct value before production.");
+}
 const ORG_ID = process.env["DEFAULT_ORG_ID"] ?? "00000000-0000-0000-0000-000000000001";
 
 function customerToken(customerId: string): string {
-  return jwt.sign({ sub: customerId, type: "customer" }, JWT_SECRET, { expiresIn: "7d" });
+  return jwt.sign({ sub: customerId, type: "customer" }, CUSTOMER_JWT_SECRET, { expiresIn: "7d" });
 }
 
 export function authenticateCustomer(req: Request, res: Response, next: () => void): void {
@@ -16,7 +25,7 @@ export function authenticateCustomer(req: Request, res: Response, next: () => vo
   const token = header.startsWith("Bearer ") ? header.slice(7) : null;
   if (!token) { res.status(401).json({ error: "UNAUTHORIZED" }); return; }
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as { sub: string; type: string };
+    const payload = jwt.verify(token, CUSTOMER_JWT_SECRET) as { sub: string; type: string };
     if (payload.type !== "customer") { res.status(403).json({ error: "FORBIDDEN" }); return; }
     (req as Request & { customerId: string }).customerId = payload.sub;
     next();
@@ -51,6 +60,15 @@ router.post("/customer/auth/register", async (req: Request, res: Response): Prom
     );
 
     const customer = rows[0]!;
+    writeCustomerAudit({
+      entityType: "customer",
+      entityId: customer.id,
+      action: "register",
+      customerId: customer.id,
+      newValues: { email: customer.email, full_name: customer.full_name },
+      ipAddress: req.ip,
+      userAgent: req.get("user-agent"),
+    });
     res.status(201).json({ data: { ...customer, token: customerToken(customer.id) } });
   } catch (err) {
     console.error("[customer-auth] register error:", err);
@@ -74,8 +92,26 @@ router.post("/customer/auth/login", async (req: Request, res: Response): Promise
 
     const customer = rows[0];
     if (!customer || !(await bcrypt.compare(password, customer.password_hash))) {
+      writeCustomerAudit({
+        entityType: "customer",
+        entityId: customer?.id ?? "00000000-0000-0000-0000-000000000000",
+        action: "login_failed",
+        customerId: customer?.id ?? null,
+        newValues: { email },
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent"),
+      });
       res.status(401).json({ error: "INVALID_CREDENTIALS" }); return;
     }
+
+    writeCustomerAudit({
+      entityType: "customer",
+      entityId: customer.id,
+      action: "login",
+      customerId: customer.id,
+      ipAddress: req.ip,
+      userAgent: req.get("user-agent"),
+    });
 
     res.json({
       data: {
@@ -130,6 +166,15 @@ router.put("/customer/profile", (req: Request, res: Response, next: () => void) 
        RETURNING id, full_name, email, language_pref`,
       [fullName, phone, languagePref, nationality, customerId]
     );
+    writeCustomerAudit({
+      entityType: "customer",
+      entityId: customerId,
+      action: "profile_update",
+      customerId,
+      newValues: { fullName, phone, languagePref, nationality },
+      ipAddress: req.ip,
+      userAgent: req.get("user-agent"),
+    });
     res.json({ data: rows[0] });
   } catch (err) {
     console.error("[customer-auth] update profile error:", err);

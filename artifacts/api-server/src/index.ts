@@ -4,6 +4,7 @@ import app from "./app";
 import { initRoomSocket } from "./routes/rooms";
 import { initInvestorSocket } from "./services/investor-socket";
 import { initHostessAssignmentsSocket } from "./routes/hostessAssignments";
+import { initSocketNamespaces } from "./services/socket-namespaces";
 import { refreshFxRates } from "./services/currency-service";
 import { initTelegramBot } from "./services/telegram-service";
 import { seedDefaultData } from "./services/seed-service";
@@ -30,6 +31,7 @@ const io = new SocketServer(httpServer, {
   },
 });
 
+initSocketNamespaces(io);
 initRoomSocket(io);
 initInvestorSocket(io);
 initHostessAssignmentsSocket(io);

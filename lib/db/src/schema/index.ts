@@ -11,3 +11,4 @@ export * from "./receipts";
 export * from "./finances";
 export * from "./fx_rates";
 export * from "./audit_log";
+export * from "./customer_audit_log";

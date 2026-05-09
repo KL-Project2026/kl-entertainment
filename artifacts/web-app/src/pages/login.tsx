@@ -109,14 +109,13 @@ export default function Login() {
           alt="Luxury Nightclub"
           className="w-full h-full object-cover opacity-40 mix-blend-overlay"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#07070A] via-[#07070A]/80 to-transparent" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-primary/10 via-transparent to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-surface-base via-surface-base/85 to-transparent" />
       </div>
 
-      <div className="absolute top-8 right-8 z-20 flex items-center gap-2 bg-black/40 backdrop-blur-md px-4 py-2 rounded-full border border-white/5">
-        <Globe className="w-4 h-4 text-primary" />
+      <div className="absolute top-8 right-8 z-20 flex items-center gap-2 bg-surface-1/80 backdrop-blur-md px-4 py-2 rounded-full border border-border-subtle">
+        <Globe className="w-4 h-4 text-gold" />
         <select
-          className="bg-transparent text-sm text-white focus:outline-none cursor-pointer"
+          className="bg-transparent text-sm text-text-primary focus:outline-none cursor-pointer"
           value={i18n.language}
           onChange={(e) => handleLanguageChange(e.target.value)}
         >
@@ -134,17 +133,16 @@ export default function Login() {
         transition={{ duration: 0.8, ease: "easeOut" }}
         className="z-10 w-full max-w-md px-6"
       >
-        <Card className="p-8 backdrop-blur-2xl bg-[#0a0a0f]/80 border-primary/20 shadow-2xl shadow-primary/5">
+        <Card className="p-8">
           <div className="text-center mb-10">
-            <div className="w-16 h-16 mx-auto mb-6">
-              <img
-                src={`${import.meta.env.BASE_URL}images/logo.png`}
-                alt="KL Logo"
-                className="w-full h-full object-contain drop-shadow-[0_0_15px_rgba(212,175,55,0.5)]"
-              />
+            <div className="font-display text-5xl font-medium text-gold tracking-tight leading-none">
+              KL
             </div>
-            <h1 className="font-display text-3xl font-bold text-white mb-2 text-glow">KL Group</h1>
-            <p className="text-muted-foreground text-sm tracking-widest uppercase">
+            <div className="mx-auto mt-3 mb-3 h-px w-10 bg-border-default" />
+            <h1 className="text-base font-medium text-text-primary tracking-[0.18em] uppercase">
+              KL Group
+            </h1>
+            <p className="text-text-tertiary text-xs tracking-[0.24em] uppercase mt-1.5">
               {t("auth.management_portal")}
             </p>
           </div>

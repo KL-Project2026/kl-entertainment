@@ -1,77 +1,245 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@500;600&family=JetBrains+Mono:wght@400;500&family=Noto+Serif+KR:wght@500;600&family=Noto+Serif+JP:wght@500;600&family=Noto+Serif+SC:wght@500;600&family=Noto+Serif+TC:wght@500;600&family=Noto+Sans+SC&family=Noto+Sans+TC&family=Noto+Sans+KR&family=Noto+Sans+JP&family=Noto+Sans+Thai&display=swap');
 @import "tailwindcss";
 
-@theme inline {
-  --font-sans: 'Inter', sans-serif;
-  --font-display: 'Playfair Display', serif;
+/* ============================================================================
+ * KL Project — Design Tokens v3.0 (Quiet Luxury Edition)
+ * Source: docs/DESIGN_GUIDELINES.md
+ *
+ * Strategy: v3 tokens are the source of truth. Legacy v2 token names
+ * (--color-background, --color-card, --color-primary, etc.) are aliased to
+ * v3 values so existing pages/components keep working unchanged. Migrate
+ * call sites to surface-* / gold / text-primary tokens incrementally.
+ * ============================================================================ */
 
-  --color-background: hsl(240 21% 6%);
-  --color-foreground: hsl(0 0% 98%);
-  
-  --color-card: hsl(240 24% 10%);
-  --color-card-foreground: hsl(0 0% 98%);
-  
-  --color-popover: hsl(240 24% 10%);
-  --color-popover-foreground: hsl(0 0% 98%);
-  
-  --color-primary: hsl(46 65% 53%);
-  --color-primary-foreground: hsl(240 21% 6%);
-  
-  --color-secondary: hsl(240 20% 15%);
-  --color-secondary-foreground: hsl(0 0% 98%);
-  
-  --color-muted: hsl(240 20% 15%);
-  --color-muted-foreground: hsl(240 10% 65%);
-  
-  --color-accent: hsl(46 65% 53%);
-  --color-accent-foreground: hsl(240 21% 6%);
-  
-  --color-destructive: hsl(0 84% 60%);
-  --color-destructive-foreground: hsl(0 0% 98%);
-  
-  --color-border: hsl(240 18% 20%);
-  --color-input: hsl(240 18% 15%);
-  --color-ring: hsl(46 65% 53%);
+:root {
+  /* === v3 Surface (배경 위계) === */
+  --surface-base:      hsl(240 18% 5%);   /* #0A0A0D — page background */
+  --surface-1:         hsl(240 16% 8%);   /* #111114 — sidebar, header */
+  --surface-2:         hsl(240 14% 11%);  /* #18181C — cards */
+  --surface-3:         hsl(240 12% 14%);  /* #1F1F23 — hover, input */
+  --surface-overlay:   hsl(240 18% 5% / 0.85); /* dialog backdrop */
 
-  --color-chart-1: hsl(46 65% 53%);
-  --color-chart-2: hsl(240 20% 80%);
-  --color-chart-3: hsl(240 10% 40%);
-  --color-chart-4: hsl(240 5% 25%);
-  --color-chart-5: hsl(46 40% 40%);
+  /* === v3 Border === */
+  --border-subtle:     hsl(0 0% 100% / 0.06);
+  --border-default:    hsl(0 0% 100% / 0.10);
+  --border-strong:     hsl(0 0% 100% / 0.16);
+
+  /* === v3 Text === */
+  --text-primary:      hsl(0 0% 98%);
+  --text-secondary:    hsl(240 6% 70%);
+  --text-tertiary:     hsl(240 5% 50%);
+  --text-disabled:     hsl(240 4% 35%);
+
+  /* === v3 Accent (Gold — single accent) === */
+  --gold:              hsl(43 55% 58%);    /* #C9A961 */
+  --gold-hover:        hsl(43 60% 64%);
+  --gold-muted:        hsl(43 30% 58% / 0.12);
+  --gold-foreground:   hsl(240 18% 5%);
+
+  /* === v3 Status === */
+  --status-success:    hsl(142 50% 55%);
+  --status-warning:    hsl(38 75% 60%);
+  --status-danger:     hsl(0 70% 60%);
+  --status-info:       hsl(210 60% 65%);
+
+  /* === Motion === */
+  --ease-out:          cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out:       cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast:     100ms;
+  --duration-normal:   200ms;
+  --duration-slow:     300ms;
+
+  /* === Elevation (rare — floating UI only) === */
+  --shadow-popover:    0 8px 24px hsl(0 0% 0% / 0.4);
+  --shadow-dialog:     0 16px 48px hsl(0 0% 0% / 0.5);
 }
+
+/* Tailwind v4 token registration */
+@theme inline {
+  --font-sans: 'Inter', 'Noto Sans SC', 'Noto Sans TC', 'Noto Sans KR', 'Noto Sans JP', 'Noto Sans Thai', sans-serif;
+  --font-display: 'Playfair Display', serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* === v3 surface utilities (bg-surface-base, etc.) === */
+  --color-surface-base:    var(--surface-base);
+  --color-surface-1:       var(--surface-1);
+  --color-surface-2:       var(--surface-2);
+  --color-surface-3:       var(--surface-3);
+  --color-surface-overlay: var(--surface-overlay);
+
+  /* === v3 text utilities (text-primary, text-secondary, etc.) === */
+  --color-text-primary:    var(--text-primary);
+  --color-text-secondary:  var(--text-secondary);
+  --color-text-tertiary:   var(--text-tertiary);
+  --color-text-disabled:   var(--text-disabled);
+
+  /* === v3 border utilities === */
+  --color-border-subtle:   var(--border-subtle);
+  --color-border-default:  var(--border-default);
+  --color-border-strong:   var(--border-strong);
+
+  /* === v3 gold === */
+  --color-gold:            var(--gold);
+  --color-gold-hover:      var(--gold-hover);
+  --color-gold-muted:      var(--gold-muted);
+  --color-gold-foreground: var(--gold-foreground);
+
+  /* === v3 status === */
+  --color-success:         var(--status-success);
+  --color-warning:         var(--status-warning);
+  --color-danger:          var(--status-danger);
+  --color-info:            var(--status-info);
+
+  /* ── Legacy aliases (v2 names → v3 values) ────────────────────────────── */
+  /* Existing components use these names; we map them to v3 so visual
+     refresh propagates automatically without editing every file. */
+  --color-background:           var(--surface-base);
+  --color-foreground:           var(--text-primary);
+
+  --color-card:                 var(--surface-2);
+  --color-card-foreground:      var(--text-primary);
+
+  --color-popover:              var(--surface-1);
+  --color-popover-foreground:   var(--text-primary);
+
+  --color-primary:              var(--gold);
+  --color-primary-foreground:   var(--gold-foreground);
+
+  --color-secondary:            var(--surface-2);
+  --color-secondary-foreground: var(--text-primary);
+
+  --color-muted:                var(--surface-2);
+  --color-muted-foreground:     var(--text-secondary);
+
+  --color-accent:               var(--gold);
+  --color-accent-foreground:    var(--gold-foreground);
+
+  --color-destructive:          var(--status-danger);
+  --color-destructive-foreground: var(--text-primary);
+
+  --color-border:               var(--border-default);
+  --color-input:                var(--surface-3);
+  --color-ring:                 var(--gold);
+
+  /* Replit shadcn helper variables (used by existing button/badge variants) */
+  --color-primary-border:       var(--gold);
+  --color-secondary-border:     var(--border-default);
+  --color-destructive-border:   color-mix(in srgb, var(--status-danger) 30%, transparent);
+  --color-button-outline:       var(--border-default);
+  --color-badge-outline:        var(--border-default);
+
+  /* === v3 chart (sequential mono) === */
+  --color-chart-1: var(--gold);
+  --color-chart-2: hsl(0 0% 75%);
+  --color-chart-3: hsl(0 0% 55%);
+  --color-chart-4: hsl(0 0% 38%);
+  --color-chart-5: hsl(43 30% 38%);
+}
+
+/* ============================================================================
+ * Base
+ * ============================================================================ */
 
 @layer base {
   body {
-    @apply bg-background text-foreground antialiased font-sans selection:bg-primary/30;
+    @apply bg-background text-foreground antialiased font-sans;
+    background-color: var(--surface-base);
   }
 
-  h1, h2, h3, h4, h5, h6 {
+  /* §3.3 — Only h1 uses Playfair Display by default. h2–h6 use Inter.
+     Pages can opt-in to Playfair on h1 via `font-display` class. */
+  h1 {
     font-family: var(--font-display);
+    @apply font-medium tracking-tight;
+  }
+  h2, h3, h4, h5, h6 {
+    font-family: var(--font-sans);
     @apply font-semibold tracking-tight;
+  }
+
+  /* §13.2 — CJK / Thai display fallback to Noto Serif */
+  .font-display:lang(ko),
+  .font-display:lang(ja),
+  .font-display:lang(zh),
+  .font-display:lang(th) {
+    font-family: 'Noto Serif KR', 'Noto Serif JP', 'Noto Serif SC', 'Noto Serif TC', serif;
   }
 }
 
-/* Custom scrollbar for premium feel */
+/* ============================================================================
+ * Scrollbar (§6.2)
+ * ============================================================================ */
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 ::-webkit-scrollbar-track {
-  @apply bg-background;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  @apply bg-muted-foreground/30 rounded-full;
+  background: hsl(0 0% 100% / 0.08);
+  border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-primary/50;
+  background: hsl(0 0% 100% / 0.16);
 }
 
-/* Glassmorphism utilities */
+/* ============================================================================
+ * Selection (§6.3)
+ * ============================================================================ */
+
+::selection {
+  background: var(--gold-muted);
+  color: var(--text-primary);
+}
+
+/* ============================================================================
+ * Reduced motion (§11.2)
+ * ============================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================================================
+ * Legacy utility shims
+ * Kept so that existing markup continues to render. Visual treatment now
+ * follows v3 (solid surface, no glow). Remove call sites incrementally.
+ * ============================================================================ */
+
+/* §6.1 — glass-panel was applied to sidebars and cards in v2.
+   In v3 only dialogs/popovers retain backdrop blur. We keep the class so
+   existing markup doesn't 404, but render it as a solid surface-2 panel. */
 .glass-panel {
-  @apply bg-card/80 backdrop-blur-xl border border-white/5 shadow-2xl;
+  background-color: var(--surface-2);
+  border: 1px solid var(--border-subtle);
 }
 
-/* Subtle glowing gold text */
+/* §6.1 / §3.4 — text-glow is removed in v3. Class is a no-op for back-compat. */
 .text-glow {
-  text-shadow: 0 0 20px rgba(212, 175, 55, 0.4);
+  text-shadow: none;
+}
+
+/* Backdrop-blur overlay for dialogs/popovers (still allowed in v3). */
+.backdrop-blur-overlay {
+  backdrop-filter: blur(8px);
+  background: var(--surface-overlay);
+}
+
+/* ============================================================================
+ * Replit "hover-elevate" shim
+ * Some shadcn variants (button, badge) include hover-elevate / active-elevate-2
+ * classes from the Replit template. v3 design forbids hover scale/lift effects;
+ * we neutralize them here so the classes remain harmless if not yet removed. */
+.hover-elevate,
+.hover-elevate-2,
+.active-elevate,
+.active-elevate-2 {
+  /* no-op: v3 hover treatment is bg-surface-3 + border-strong only */
 }
