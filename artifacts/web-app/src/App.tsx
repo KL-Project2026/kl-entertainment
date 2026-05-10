@@ -7,6 +7,8 @@ import { useAuthStore } from "@/lib/auth";
 // Staff pages
 import NotFound from "@/pages/not-found";
 import Login from "@/pages/login";
+import ForgotPassword from "@/pages/forgot-password";
+import ResetPassword from "@/pages/reset-password";
 import Dashboard from "@/pages/dashboard";
 import RoomBoard from "@/pages/room-board";
 import Branches from "@/pages/branches";
@@ -162,6 +164,8 @@ function Router() {
     <Switch>
       {/* Staff portal */}
       <Route path="/login" component={Login} />
+      <Route path="/forgot-password" component={ForgotPassword} />
+      <Route path="/reset-password" component={ResetPassword} />
       <Route path="/" component={RoleHome} />
       <Route path="/room-board" component={() => <ProtectedRoute component={RoomBoard} />} />
       <Route path="/branches" component={() => <ProtectedRoute component={Branches} />} />

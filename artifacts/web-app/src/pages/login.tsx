@@ -3,8 +3,8 @@ import { motion } from "framer-motion";
 import { useLogin } from "@workspace/api-client-react";
 import { useAuthStore } from "@/lib/auth";
 import { Input, Button, Card } from "@/components/ui";
-import { Lock, Mail, Globe, ChevronDown, ChevronUp } from "lucide-react";
-import { useLocation } from "wouter";
+import { Lock, Mail, Globe, Eye, EyeOff } from "lucide-react";
+import { Link, useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 
 const LANGS = [
@@ -16,65 +16,13 @@ const LANGS = [
   { code: "th", label: "ภาษาไทย" },
 ];
 
-type DemoAccount = { label: string; email: string; password: string };
-
-const DEMO_GROUPS: { group: string; color: string; accounts: DemoAccount[] }[] = [
-  {
-    group: "Admin",
-    color: "primary",
-    accounts: [
-      { label: "Super Admin",  email: "admin@klproject.com",    password: "Admin@123!" },
-      { label: "Admin",        email: "admin2@klproject.com",   password: "KL@12345!" },
-    ],
-  },
-  {
-    group: "Management",
-    color: "blue",
-    accounts: [
-      { label: "Investor",        email: "investor@klproject.com", password: "KL@12345!" },
-      { label: "Branch Mgr (KL)", email: "kl01@klproject.com",     password: "KL@12345!" },
-      { label: "Branch Mgr (PJ)", email: "kl02@klproject.com",     password: "KL@12345!" },
-      { label: "Manager",         email: "manager@klproject.com",   password: "KL@12345!" },
-    ],
-  },
-  {
-    group: "Operations",
-    color: "green",
-    accounts: [
-      { label: "Hostess",       email: "hostess@klproject.com", password: "KL@12345!" },
-      { label: "Driver",        email: "driver@klproject.com",  password: "KL@12345!" },
-      { label: "Kitchen",       email: "kitchen@klproject.com", password: "KL@12345!" },
-      { label: "Hall Staff",    email: "hall@klproject.com",    password: "KL@12345!" },
-      { label: "General Staff", email: "general@klproject.com", password: "KL@12345!" },
-    ],
-  },
-];
-
-const GROUP_STYLES: Record<string, { group: string; btn: string; dot: string }> = {
-  primary: {
-    group: "text-primary/50",
-    btn: "border-primary/25 bg-primary/8 text-primary/80 hover:bg-primary/20 hover:border-primary/50 hover:text-primary",
-    dot: "bg-primary",
-  },
-  blue: {
-    group: "text-blue-400/50",
-    btn: "border-blue-500/25 bg-blue-500/8 text-blue-300/80 hover:bg-blue-500/20 hover:border-blue-400/50 hover:text-blue-200",
-    dot: "bg-blue-400",
-  },
-  green: {
-    group: "text-emerald-400/50",
-    btn: "border-emerald-500/25 bg-emerald-500/8 text-emerald-300/80 hover:bg-emerald-500/20 hover:border-emerald-400/50 hover:text-emerald-200",
-    dot: "bg-emerald-400",
-  },
-};
-
 export default function Login() {
-  const [email, setEmail]         = useState("");
-  const [password, setPassword]   = useState("");
-  const [showDemo, setShowDemo]   = useState(false);
-  const [, setLocation]           = useLocation();
-  const { t, i18n }               = useTranslation();
-  const setAuth                   = useAuthStore((state) => state.setAuth);
+  const [email, setEmail]               = useState("");
+  const [password, setPassword]         = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [, setLocation]                 = useLocation();
+  const { t, i18n }                     = useTranslation();
+  const setAuth                         = useAuthStore((state) => state.setAuth);
 
   const loginMutation = useLogin({
     mutation: {
@@ -93,12 +41,6 @@ export default function Login() {
   const handleLanguageChange = (code: string) => {
     i18n.changeLanguage(code);
     localStorage.setItem("kl_lang", code);
-  };
-
-  const fillAccount = (account: DemoAccount) => {
-    setEmail(account.email);
-    setPassword(account.password);
-    setShowDemo(false);
   };
 
   return (
@@ -154,62 +96,39 @@ export default function Login() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               icon={<Mail className="w-5 h-5" />}
-              required
-            />
-            <Input
-              type="password"
-              placeholder={t("auth.password")}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              icon={<Lock className="w-5 h-5" />}
+              autoComplete="email"
               required
             />
 
-            {/* ── Demo Accounts ─────────────────────────────────── */}
-            <div className="pt-1">
+            <div className="relative">
+              <Input
+                type={showPassword ? "text" : "password"}
+                placeholder={t("auth.password")}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                icon={<Lock className="w-5 h-5" />}
+                autoComplete="current-password"
+                className="pr-12"
+                required
+              />
               <button
                 type="button"
-                onClick={() => setShowDemo((v) => !v)}
-                className="flex items-center gap-1.5 text-xs text-muted-foreground/50 uppercase tracking-widest hover:text-muted-foreground/80 transition-colors cursor-pointer select-none"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? t("auth.hide_password") : t("auth.show_password")}
+                tabIndex={-1}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary transition-colors p-1 cursor-pointer focus:outline-none focus-visible:text-gold"
               >
-                {t("auth.demo_accounts")}
-                {showDemo
-                  ? <ChevronUp className="w-3 h-3" />
-                  : <ChevronDown className="w-3 h-3" />}
+                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
               </button>
+            </div>
 
-              <motion.div
-                initial={false}
-                animate={{ height: showDemo ? "auto" : 0, opacity: showDemo ? 1 : 0 }}
-                transition={{ duration: 0.25, ease: "easeInOut" }}
-                className="overflow-hidden"
+            <div className="flex justify-end -mt-2">
+              <Link
+                href="/forgot-password"
+                className="text-xs text-text-tertiary hover:text-gold transition-colors tracking-wide"
               >
-                <div className="pt-3 space-y-3">
-                  {DEMO_GROUPS.map(({ group, color, accounts }) => {
-                    const s = GROUP_STYLES[color];
-                    return (
-                      <div key={group}>
-                        <p className={`text-[10px] font-semibold uppercase tracking-widest mb-1.5 flex items-center gap-1.5 ${s.group}`}>
-                          <span className={`inline-block w-1.5 h-1.5 rounded-full ${s.dot}`} />
-                          {group}
-                        </p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {accounts.map((a) => (
-                            <button
-                              key={a.email}
-                              type="button"
-                              onClick={() => fillAccount(a)}
-                              className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer ${s.btn}`}
-                            >
-                              {a.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </motion.div>
+                {t("auth.forgot_password")}
+              </Link>
             </div>
 
             {loginMutation.isError && (

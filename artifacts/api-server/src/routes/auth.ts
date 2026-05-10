@@ -1,10 +1,38 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { pool } from "@workspace/db";
 import { authenticate, type JwtPayload } from "../middleware/auth";
+import { sendEmail } from "../services/email";
+import { passwordResetEmail } from "../services/email-templates";
 
 const router: IRouter = Router();
+
+const RESET_TOKEN_TTL_MINUTES = 60;
+
+type UserScope = "staff" | "customers" | "shareholders";
+type ResetUser = { id: string; name: string; email: string; scope: UserScope };
+
+function hashToken(raw: string): string {
+  return crypto.createHash("sha256").update(raw).digest("hex");
+}
+
+async function findUserByEmail(email: string): Promise<ResetUser | null> {
+  const { rows } = await pool.query(
+    `SELECT id, full_name AS name, email, 'staff' AS scope
+       FROM staff WHERE email = $1 AND is_active = true AND deleted_at IS NULL
+     UNION ALL
+     SELECT id, full_name AS name, email, 'customers' AS scope
+       FROM customers WHERE email = $1 AND is_active = true AND deleted_at IS NULL
+     UNION ALL
+     SELECT id, name, email, 'shareholders' AS scope
+       FROM shareholders WHERE email = $1 AND is_active = true
+     LIMIT 1`,
+    [email]
+  );
+  return rows.length ? (rows[0] as ResetUser) : null;
+}
 
 router.post("/auth/login", async (req: Request, res: Response): Promise<void> => {
   try {
@@ -178,6 +206,107 @@ router.get("/auth/me", authenticate, async (req: Request, res: Response): Promis
     });
   } catch (err) {
     console.error("Me error:", err);
+    res.status(500).json({ error: "INTERNAL_ERROR" });
+  }
+});
+
+// ─── Forgot Password ──────────────────────────────────────────
+// POST /auth/forgot-password { email }
+// Always returns 200 to avoid email enumeration. Sends reset email if user exists.
+router.post("/auth/forgot-password", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email } = req.body as { email?: string };
+    if (!email || typeof email !== "string") {
+      res.status(400).json({ error: "MISSING_EMAIL" });
+      return;
+    }
+
+    const normalized = email.trim().toLowerCase();
+    const user = await findUserByEmail(normalized);
+
+    if (user) {
+      const rawToken = crypto.randomBytes(32).toString("hex");
+      const tokenHash = hashToken(rawToken);
+      const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MINUTES * 60 * 1000);
+
+      await pool.query(
+        `UPDATE ${user.scope} SET reset_token_hash = $1, reset_token_expires_at = $2 WHERE id = $3`,
+        [tokenHash, expiresAt, user.id]
+      );
+
+      const appUrl = process.env.APP_PUBLIC_URL || "http://localhost:5173";
+      const resetUrl = `${appUrl}/reset-password?token=${rawToken}`;
+
+      const tpl = passwordResetEmail({
+        name: user.name || user.email,
+        resetUrl,
+        expiresInMinutes: RESET_TOKEN_TTL_MINUTES,
+      });
+
+      const result = await sendEmail({
+        to: user.email,
+        subject: tpl.subject,
+        html: tpl.html,
+        text: tpl.text,
+      });
+
+      if (!result.sent) {
+        console.error("[forgot-password] email send failed for", user.email, result.error);
+      }
+    }
+
+    // Always return success — do not reveal whether the email exists.
+    res.json({ ok: true, message: "If an account exists for this email, a reset link has been sent." });
+  } catch (err) {
+    console.error("Forgot password error:", err);
+    res.status(500).json({ error: "INTERNAL_ERROR" });
+  }
+});
+
+// POST /auth/reset-password { token, password }
+router.post("/auth/reset-password", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { token, password } = req.body as { token?: string; password?: string };
+    if (!token || !password) {
+      res.status(400).json({ error: "MISSING_FIELDS" });
+      return;
+    }
+    if (password.length < 8) {
+      res.status(400).json({ error: "PASSWORD_TOO_SHORT", message: "Password must be at least 8 characters." });
+      return;
+    }
+
+    const tokenHash = hashToken(token);
+    const scopes: UserScope[] = ["staff", "customers", "shareholders"];
+
+    for (const scope of scopes) {
+      const { rows } = await pool.query(
+        `SELECT id FROM ${scope}
+          WHERE reset_token_hash = $1
+            AND reset_token_expires_at IS NOT NULL
+            AND reset_token_expires_at > NOW()
+          LIMIT 1`,
+        [tokenHash]
+      );
+      if (rows.length) {
+        const userId = (rows[0] as { id: string }).id;
+        const newHash = await bcrypt.hash(password, 12);
+        await pool.query(
+          `UPDATE ${scope}
+              SET password_hash = $1,
+                  reset_token_hash = NULL,
+                  reset_token_expires_at = NULL
+            WHERE id = $2`,
+          [newHash, userId]
+        );
+        res.json({ ok: true });
+        return;
+      }
+    }
+
+    res.status(400).json({ error: "INVALID_OR_EXPIRED_TOKEN" });
+  } catch (err) {
+    console.error("Reset password error:", err);
     res.status(500).json({ error: "INTERNAL_ERROR" });
   }
 });
