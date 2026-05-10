@@ -10,12 +10,12 @@ import { passwordResetEmail, type EmailLocale } from "../src/services/email-temp
 const TO = "klproject.com@gmail.com";
 const RESET_URL = "https://app.kl-project.com/reset-password?token=SAMPLE_TOKEN_FOR_DESIGN_PREVIEW";
 const LOCALES: { code: EmailLocale; name: string }[] = [
-  { code: "en", name: "KL Group Admin" },
-  { code: "ko", name: "KL 그룹 관리자" },
-  { code: "zh", name: "KL Group 管理员" },
-  { code: "ms", name: "KL Group Admin" },
-  { code: "ja", name: "KL Group 管理者" },
-  { code: "th", name: "KL Group ผู้ดูแลระบบ" },
+  { code: "en", name: "KL Entertainment Admin" },
+  { code: "ko", name: "KL Entertainment 관리자" },
+  { code: "zh", name: "KL Entertainment 管理员" },
+  { code: "ms", name: "KL Entertainment Admin" },
+  { code: "ja", name: "KL Entertainment 管理者" },
+  { code: "th", name: "KL Entertainment ผู้ดูแลระบบ" },
 ];
 
 (async () => {

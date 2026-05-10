@@ -202,7 +202,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           </span>
           <span className="h-4 w-px bg-border-default" />
           <span className="text-[10px] font-medium tracking-[0.2em] uppercase text-text-secondary leading-none">
-            Group <span className="text-text-tertiary">·</span> Management
+            Entertainment <span className="text-text-tertiary">·</span> Management
           </span>
         </div>
         <button

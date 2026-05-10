@@ -25,7 +25,7 @@
 
 | 항목 | 값 |
 |---|---|
-| **서비스명** | KL Group Management |
+| **서비스명** | KL Entertainment Management |
 | **로고 표기** | 사이드바 상단 — `KL` (텍스트만, 배지 제거), 서브 `GROUP · MANAGEMENT` |
 | **컨셉** | Quiet Luxury KTV Management — 검정 캔버스 위 골드 한 점 |
 | **톤** | 절제 · 정밀 · 신뢰 · 고요한 고급감 |
@@ -543,7 +543,7 @@ Detail 페이지: max-w-4xl (896px) 중앙 정렬
 ### 10.1 구조
 ```
 ┌─────────────────────────────┐
-│ [KL]  KL Group              │  ← 로고 영역 (h-16, border-b-subtle)
+│ [KL]  KL Entertainment              │  ← 로고 영역 (h-16, border-b-subtle)
 │       MANAGEMENT            │
 ├─────────────────────────────┤
 │                             │
@@ -825,6 +825,6 @@ Phase 4 (Week 5): 검증
 ---
 
 *Version: 3.0 · Quiet Luxury Edition*
-*Project: KL Group Karaoke Management System*
+*Project: KL Entertainment Karaoke Management System*
 *Last Updated: 2026-05-08*
 *기존 v2.0 코드는 §17 마이그레이션 가이드에 따라 점진 전환*

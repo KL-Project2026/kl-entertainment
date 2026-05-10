@@ -3,7 +3,7 @@ import { Resend } from "resend";
 const resendKey = process.env.RESEND_API_KEY;
 const resend = resendKey ? new Resend(resendKey) : null;
 
-const FROM = process.env.EMAIL_FROM || "KL Group <onboarding@resend.dev>";
+const FROM = process.env.EMAIL_FROM || "KL Entertainment <onboarding@resend.dev>";
 
 export type SendResult = { id: string | null; sent: boolean; error?: string };
 

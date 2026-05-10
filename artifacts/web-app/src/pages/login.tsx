@@ -82,7 +82,7 @@ export default function Login() {
             </div>
             <div className="mx-auto mt-3 mb-3 h-px w-10 bg-border-default" />
             <h1 className="text-base font-medium text-text-primary tracking-[0.18em] uppercase">
-              KL Group
+              KL Entertainment
             </h1>
             <p className="text-text-tertiary text-xs tracking-[0.24em] uppercase mt-1.5">
               {t("auth.management_portal")}

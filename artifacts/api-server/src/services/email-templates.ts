@@ -1,5 +1,5 @@
 /**
- * KL Group email templates — Quiet Luxury Edition (Design Guidelines v3.0).
+ * KL Entertainment email templates — Quiet Luxury Edition (Design Guidelines v3.0).
  * Black canvas + gold accent + serif logo. No gradients, no shadows.
  * Inline styles only (Gmail strips <style>). 600px max width, table layout.
  *
@@ -50,111 +50,111 @@ type ResetStrings = {
 
 const RESET: Record<EmailLocale, ResetStrings> = {
   en: {
-    subject: "[KL Group] Password reset request",
+    subject: "[KL Entertainment] Password reset request",
     preheader: (m) => `Reset your password within ${m} minutes.`,
     heading: "Password Reset",
     subheading: "Account Security",
     greet: (name) => `Hello, <span style="color:${COLORS.textPrimary};font-weight:500;">${name}</span>.`,
-    intro: "We received a request to reset the password for your KL Group Management Portal account.<br/>Click the button below to set a new password.",
+    intro: "We received a request to reset the password for your KL Entertainment Management Portal account.<br/>Click the button below to set a new password.",
     cta: "Reset Password",
     validityLabel: "Valid for",
     validity: (m) => `This link will expire ${m} minutes after this email was sent.`,
     notRequestedLabel: "Didn't request this?",
     notRequested: "You can safely ignore this email. Your password will not change.",
     fallback: "If the button doesn't work, copy and paste the link below into your browser.",
-    footerNote: "This is an automated message from KL Group Management Portal.",
+    footerNote: "This is an automated message from KL Entertainment Management Portal.",
     footerSupport: (email) => `For assistance, please contact <a href="mailto:${email}" style="color:${COLORS.gold};text-decoration:none;">${email}</a>.`,
-    brandTag: "KL Group",
+    brandTag: "KL Entertainment",
     portalTag: "Management Portal",
   },
   ko: {
-    subject: "[KL Group] 비밀번호 재설정 안내",
+    subject: "[KL Entertainment] 비밀번호 재설정 안내",
     preheader: (m) => `${m}분 안에 아래 버튼으로 비밀번호를 재설정해 주세요.`,
     heading: "비밀번호 재설정",
     subheading: "계정 보안 안내",
     greet: (name) => `안녕하세요, <span style="color:${COLORS.textPrimary};font-weight:500;">${name}</span> 님.`,
-    intro: "KL Group Management Portal 계정의 비밀번호 재설정 요청이 접수되었습니다.<br/>아래 버튼을 눌러 새로운 비밀번호를 설정해 주세요.",
+    intro: "KL Entertainment Management Portal 계정의 비밀번호 재설정 요청이 접수되었습니다.<br/>아래 버튼을 눌러 새로운 비밀번호를 설정해 주세요.",
     cta: "비밀번호 재설정하기",
     validityLabel: "유효 시간",
     validity: (m) => `이 링크는 발송 후 ${m}분 동안만 사용 가능합니다.`,
     notRequestedLabel: "요청한 적이 없으신가요?",
     notRequested: "본 메일을 무시하셔도 됩니다. 비밀번호는 변경되지 않습니다.",
     fallback: "버튼이 동작하지 않으면 아래 링크를 복사해 브라우저 주소창에 붙여넣어 주세요.",
-    footerNote: "본 메일은 KL Group Management Portal 시스템에서 발송된 자동 메일입니다.",
+    footerNote: "본 메일은 KL Entertainment Management Portal 시스템에서 발송된 자동 메일입니다.",
     footerSupport: (email) => `문의: <a href="mailto:${email}" style="color:${COLORS.gold};text-decoration:none;">${email}</a>`,
-    brandTag: "KL Group",
+    brandTag: "KL Entertainment",
     portalTag: "Management Portal",
   },
   zh: {
-    subject: "[KL Group] 密码重置请求",
+    subject: "[KL Entertainment] 密码重置请求",
     preheader: (m) => `请在 ${m} 分钟内重置您的密码。`,
     heading: "密码重置",
     subheading: "账户安全提醒",
     greet: (name) => `您好，<span style="color:${COLORS.textPrimary};font-weight:500;">${name}</span>。`,
-    intro: "我们收到了重置您 KL Group Management Portal 账户密码的请求。<br/>点击下方按钮以设置新密码。",
+    intro: "我们收到了重置您 KL Entertainment Management Portal 账户密码的请求。<br/>点击下方按钮以设置新密码。",
     cta: "重置密码",
     validityLabel: "有效时间",
     validity: (m) => `此链接将在邮件发送后 ${m} 分钟内有效。`,
     notRequestedLabel: "并非您本人请求？",
     notRequested: "请忽略此邮件，您的密码不会发生变更。",
     fallback: "如按钮无法点击，请复制以下链接并粘贴到浏览器地址栏。",
-    footerNote: "此邮件由 KL Group Management Portal 系统自动发送。",
+    footerNote: "此邮件由 KL Entertainment Management Portal 系统自动发送。",
     footerSupport: (email) => `如需帮助，请联系 <a href="mailto:${email}" style="color:${COLORS.gold};text-decoration:none;">${email}</a>。`,
-    brandTag: "KL Group",
+    brandTag: "KL Entertainment",
     portalTag: "Management Portal",
   },
   ms: {
-    subject: "[KL Group] Permintaan tetap semula kata laluan",
+    subject: "[KL Entertainment] Permintaan tetap semula kata laluan",
     preheader: (m) => `Tetap semula kata laluan anda dalam ${m} minit.`,
     heading: "Tetapan Semula Kata Laluan",
     subheading: "Keselamatan Akaun",
     greet: (name) => `Salam, <span style="color:${COLORS.textPrimary};font-weight:500;">${name}</span>.`,
-    intro: "Kami menerima permintaan untuk menetapkan semula kata laluan akaun KL Group Management Portal anda.<br/>Klik butang di bawah untuk menetapkan kata laluan baharu.",
+    intro: "Kami menerima permintaan untuk menetapkan semula kata laluan akaun KL Entertainment Management Portal anda.<br/>Klik butang di bawah untuk menetapkan kata laluan baharu.",
     cta: "Tetap Semula Kata Laluan",
     validityLabel: "Sah selama",
     validity: (m) => `Pautan ini akan tamat tempoh ${m} minit selepas e-mel ini dihantar.`,
     notRequestedLabel: "Bukan anda yang meminta?",
     notRequested: "Sila abaikan e-mel ini. Kata laluan anda tidak akan berubah.",
     fallback: "Jika butang tidak berfungsi, sila salin dan tampal pautan di bawah ke pelayar anda.",
-    footerNote: "Ini adalah mesej automatik daripada KL Group Management Portal.",
+    footerNote: "Ini adalah mesej automatik daripada KL Entertainment Management Portal.",
     footerSupport: (email) => `Untuk bantuan, sila hubungi <a href="mailto:${email}" style="color:${COLORS.gold};text-decoration:none;">${email}</a>.`,
-    brandTag: "KL Group",
+    brandTag: "KL Entertainment",
     portalTag: "Management Portal",
   },
   ja: {
-    subject: "[KL Group] パスワード再設定のご案内",
+    subject: "[KL Entertainment] パスワード再設定のご案内",
     preheader: (m) => `${m}分以内にパスワードを再設定してください。`,
     heading: "パスワードを再設定",
     subheading: "アカウントセキュリティ",
     greet: (name) => `<span style="color:${COLORS.textPrimary};font-weight:500;">${name}</span> 様`,
-    intro: "KL Group Management Portal アカウントのパスワード再設定リクエストを受け付けました。<br/>下のボタンから新しいパスワードを設定してください。",
+    intro: "KL Entertainment Management Portal アカウントのパスワード再設定リクエストを受け付けました。<br/>下のボタンから新しいパスワードを設定してください。",
     cta: "パスワードを再設定",
     validityLabel: "有効期限",
     validity: (m) => `このリンクはメール送信から${m}分間のみ有効です。`,
     notRequestedLabel: "お心当たりがない場合",
     notRequested: "本メールは破棄してください。パスワードは変更されません。",
     fallback: "ボタンが動作しない場合は、下記のリンクをコピーしてブラウザに貼り付けてください。",
-    footerNote: "本メールは KL Group Management Portal から自動送信されています。",
+    footerNote: "本メールは KL Entertainment Management Portal から自動送信されています。",
     footerSupport: (email) => `お問い合わせは <a href="mailto:${email}" style="color:${COLORS.gold};text-decoration:none;">${email}</a> までお願いいたします。`,
-    brandTag: "KL Group",
+    brandTag: "KL Entertainment",
     portalTag: "Management Portal",
   },
   th: {
-    subject: "[KL Group] คำขอรีเซ็ตรหัสผ่าน",
+    subject: "[KL Entertainment] คำขอรีเซ็ตรหัสผ่าน",
     preheader: (m) => `รีเซ็ตรหัสผ่านของคุณภายใน ${m} นาที`,
     heading: "รีเซ็ตรหัสผ่าน",
     subheading: "ความปลอดภัยของบัญชี",
     greet: (name) => `เรียนคุณ <span style="color:${COLORS.textPrimary};font-weight:500;">${name}</span>`,
-    intro: "เราได้รับคำขอรีเซ็ตรหัสผ่านสำหรับบัญชี KL Group Management Portal ของคุณ<br/>กรุณาคลิกปุ่มด้านล่างเพื่อตั้งรหัสผ่านใหม่",
+    intro: "เราได้รับคำขอรีเซ็ตรหัสผ่านสำหรับบัญชี KL Entertainment Management Portal ของคุณ<br/>กรุณาคลิกปุ่มด้านล่างเพื่อตั้งรหัสผ่านใหม่",
     cta: "รีเซ็ตรหัสผ่าน",
     validityLabel: "ระยะเวลาที่ใช้ได้",
     validity: (m) => `ลิงก์นี้จะหมดอายุใน ${m} นาทีหลังจากส่งอีเมลฉบับนี้`,
     notRequestedLabel: "ไม่ได้เป็นผู้ร้องขอ?",
     notRequested: "คุณสามารถเพิกเฉยต่ออีเมลฉบับนี้ได้ รหัสผ่านของคุณจะไม่ถูกเปลี่ยน",
     fallback: "หากปุ่มใช้งานไม่ได้ กรุณาคัดลอกลิงก์ด้านล่างไปวางในเบราว์เซอร์ของคุณ",
-    footerNote: "อีเมลนี้ส่งโดยอัตโนมัติจากระบบ KL Group Management Portal",
+    footerNote: "อีเมลนี้ส่งโดยอัตโนมัติจากระบบ KL Entertainment Management Portal",
     footerSupport: (email) => `หากต้องการความช่วยเหลือ กรุณาติดต่อ <a href="mailto:${email}" style="color:${COLORS.gold};text-decoration:none;">${email}</a>`,
-    brandTag: "KL Group",
+    brandTag: "KL Entertainment",
     portalTag: "Management Portal",
   },
 };
@@ -172,7 +172,7 @@ function shell(content: string, preheader: string, locale: EmailLocale, brandTag
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="color-scheme" content="dark only" />
 <meta name="supported-color-schemes" content="dark only" />
-<title>KL Group</title>
+<title>KL Entertainment</title>
 </head>
 <body style="margin:0;padding:0;background:${COLORS.bg};color:${COLORS.textPrimary};font-family:'Inter','Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased;">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:${COLORS.bg};">${preheader}</div>
@@ -194,7 +194,7 @@ function shell(content: string, preheader: string, locale: EmailLocale, brandTag
           ${RESET[locale].footerSupport(SUPPORT_EMAIL)}
         </div>
         <div style="font-family:'Inter',Arial,sans-serif;font-size:10px;letter-spacing:0.18em;color:${COLORS.textTertiary};text-transform:uppercase;margin-top:14px;">
-          &copy; KL Group · Premium Karaoke Lounges
+          &copy; KL Entertainment · Premium Karaoke Lounges
         </div>
       </td></tr>
     </table>
@@ -258,7 +258,7 @@ export function passwordResetEmail(params: {
     s.validity(params.expiresInMinutes),
     s.notRequested,
     "",
-    "— KL Group · Management Portal",
+    "— KL Entertainment · Management Portal",
   ].join("\n");
 
   return {
