@@ -30,7 +30,10 @@
     "driver_dashboard": "Papan Pemuka Pemandu",
     "kitchen_dashboard": "Papan Pemuka Dapur",
     "hall_dashboard": "Papan Pemuka Dewan",
-    "general_dashboard": "Papan Pemuka Saya"
+    "general_dashboard": "Papan Pemuka Saya",
+    "user_management": "Pengurusan Pengguna",
+    "my_profile": "Profil Saya",
+    "my_ledger": "Lejar Akaun"
   },
   "auth": {
     "sign_in": "Log Masuk",
@@ -38,8 +41,24 @@
     "email": "Alamat E-mel",
     "password": "Kata Laluan",
     "invalid_credentials": "Kelayakan tidak sah. Sila cuba lagi.",
-    "demo_accounts": "Akaun Demo",
-    "management_portal": "Portal Pengurusan"
+    "management_portal": "Portal Pengurusan",
+    "forgot_password": "Lupa kata laluan?",
+    "forgot_password_title": "Tetap semula kata laluan",
+    "forgot_password_subtitle": "Masukkan e-mel akaun anda dan kami akan menghantar pautan tetapan semula.",
+    "forgot_password_submit": "Hantar pautan tetapan semula",
+    "forgot_password_sent": "Jika akaun wujud untuk e-mel ini, pautan tetapan semula telah dihantar. Sila semak peti masuk anda.",
+    "reset_password_title": "Tetapkan kata laluan baharu",
+    "reset_password_subtitle": "Masukkan kata laluan baharu anda di bawah.",
+    "new_password": "Kata laluan baharu",
+    "confirm_password": "Sahkan kata laluan",
+    "reset_password_submit": "Kemas kini kata laluan",
+    "reset_success": "Kata laluan dikemas kini. Anda kini boleh log masuk dengan kata laluan baharu.",
+    "reset_invalid_token": "Pautan ini tidak sah atau telah tamat tempoh. Sila minta pautan tetapan semula yang baharu.",
+    "password_mismatch": "Kata laluan tidak sepadan.",
+    "password_too_short": "Kata laluan mesti sekurang-kurangnya 8 aksara.",
+    "back_to_login": "Kembali ke log masuk",
+    "show_password": "Tunjukkan kata laluan",
+    "hide_password": "Sembunyikan kata laluan"
   },
   "booking": {
     "new": "Tempahan Baru",

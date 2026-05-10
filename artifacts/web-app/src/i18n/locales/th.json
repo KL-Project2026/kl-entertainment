@@ -26,7 +26,14 @@
     "driver_dashboard": "แดชบอร์ดคนขับ",
     "kitchen_dashboard": "แดชบอร์ดครัว",
     "hall_dashboard": "แดชบอร์ดฮอลล์",
-    "general_dashboard": "แดชบอร์ดของฉัน"
+    "general_dashboard": "แดชบอร์ดของฉัน",
+    "investor_reports": "รายงานนักลงทุน",
+    "hostess_dashboard": "ตารางงานของฉัน",
+    "hostess_profiles": "โปรไฟล์โฮสเตส",
+    "agencies": "เอเจนซี่",
+    "user_management": "การจัดการผู้ใช้",
+    "my_profile": "โปรไฟล์ของฉัน",
+    "my_ledger": "บัญชีแยกประเภท"
   },
   "auth": {
     "sign_in": "เข้าสู่ระบบ",
@@ -34,8 +41,24 @@
     "email": "อีเมล",
     "password": "รหัสผ่าน",
     "invalid_credentials": "อีเมลหรือรหัสผ่านไม่ถูกต้อง",
-    "demo_accounts": "บัญชีสาธิต",
-    "management_portal": "พอร์ทัลจัดการ"
+    "management_portal": "พอร์ทัลจัดการ",
+    "forgot_password": "ลืมรหัสผ่าน?",
+    "forgot_password_title": "รีเซ็ตรหัสผ่าน",
+    "forgot_password_subtitle": "กรอกอีเมลบัญชีของคุณ เราจะส่งลิงก์รีเซ็ตให้",
+    "forgot_password_submit": "ส่งลิงก์รีเซ็ต",
+    "forgot_password_sent": "หากบัญชีนี้มีอยู่ ลิงก์รีเซ็ตได้ถูกส่งไปแล้ว กรุณาตรวจสอบกล่องจดหมายของคุณ",
+    "reset_password_title": "ตั้งรหัสผ่านใหม่",
+    "reset_password_subtitle": "กรอกรหัสผ่านใหม่ด้านล่าง",
+    "new_password": "รหัสผ่านใหม่",
+    "confirm_password": "ยืนยันรหัสผ่าน",
+    "reset_password_submit": "อัปเดตรหัสผ่าน",
+    "reset_success": "อัปเดตรหัสผ่านเรียบร้อย คุณสามารถเข้าสู่ระบบด้วยรหัสผ่านใหม่ได้แล้ว",
+    "reset_invalid_token": "ลิงก์นี้ไม่ถูกต้องหรือหมดอายุ กรุณาขอลิงก์รีเซ็ตใหม่",
+    "password_mismatch": "รหัสผ่านไม่ตรงกัน",
+    "password_too_short": "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร",
+    "back_to_login": "กลับไปหน้าเข้าสู่ระบบ",
+    "show_password": "แสดงรหัสผ่าน",
+    "hide_password": "ซ่อนรหัสผ่าน"
   },
   "booking": {
     "new": "การจองใหม่",

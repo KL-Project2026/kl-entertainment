@@ -12,7 +12,7 @@ const router: IRouter = Router();
 const RESET_TOKEN_TTL_MINUTES = 60;
 
 type UserScope = "staff" | "customers" | "shareholders";
-type ResetUser = { id: string; name: string; email: string; scope: UserScope };
+type ResetUser = { id: string; name: string; email: string; scope: UserScope; language_pref: string | null };
 
 function hashToken(raw: string): string {
   return crypto.createHash("sha256").update(raw).digest("hex");
@@ -20,13 +20,13 @@ function hashToken(raw: string): string {
 
 async function findUserByEmail(email: string): Promise<ResetUser | null> {
   const { rows } = await pool.query(
-    `SELECT id, full_name AS name, email, 'staff' AS scope
+    `SELECT id, full_name AS name, email, 'staff' AS scope, language_pref
        FROM staff WHERE email = $1 AND is_active = true AND deleted_at IS NULL
      UNION ALL
-     SELECT id, full_name AS name, email, 'customers' AS scope
+     SELECT id, full_name AS name, email, 'customers' AS scope, language_pref
        FROM customers WHERE email = $1 AND is_active = true AND deleted_at IS NULL
      UNION ALL
-     SELECT id, name, email, 'shareholders' AS scope
+     SELECT id, name, email, 'shareholders' AS scope, NULL::text AS language_pref
        FROM shareholders WHERE email = $1 AND is_active = true
      LIMIT 1`,
     [email]
@@ -215,7 +215,7 @@ router.get("/auth/me", authenticate, async (req: Request, res: Response): Promis
 // Always returns 200 to avoid email enumeration. Sends reset email if user exists.
 router.post("/auth/forgot-password", async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email } = req.body as { email?: string };
+    const { email, locale: requestedLocale } = req.body as { email?: string; locale?: string };
     if (!email || typeof email !== "string") {
       res.status(400).json({ error: "MISSING_EMAIL" });
       return;
@@ -237,10 +237,14 @@ router.post("/auth/forgot-password", async (req: Request, res: Response): Promis
       const appUrl = process.env.APP_PUBLIC_URL || "http://localhost:5173";
       const resetUrl = `${appUrl}/reset-password?token=${rawToken}`;
 
+      // Locale priority: user's stored language_pref > request body locale > "en"
+      const locale = user.language_pref || (typeof requestedLocale === "string" ? requestedLocale : "en");
+
       const tpl = passwordResetEmail({
         name: user.name || user.email,
         resetUrl,
         expiresInMinutes: RESET_TOKEN_TTL_MINUTES,
+        locale,
       });
 
       const result = await sendEmail({

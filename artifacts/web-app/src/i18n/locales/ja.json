@@ -26,7 +26,14 @@
     "driver_dashboard": "ドライバーダッシュボード",
     "kitchen_dashboard": "キッチンダッシュボード",
     "hall_dashboard": "ホールダッシュボード",
-    "general_dashboard": "マイダッシュボード"
+    "general_dashboard": "マイダッシュボード",
+    "investor_reports": "投資家レポート",
+    "hostess_dashboard": "勤務表",
+    "hostess_profiles": "ホステスプロフィール",
+    "agencies": "エージェンシー",
+    "user_management": "ユーザー管理",
+    "my_profile": "マイプロフィール",
+    "my_ledger": "アカウント元帳"
   },
   "auth": {
     "sign_in": "サインイン",
@@ -34,8 +41,24 @@
     "email": "メールアドレス",
     "password": "パスワード",
     "invalid_credentials": "メールアドレスまたはパスワードが間違っています。",
-    "demo_accounts": "デモアカウント",
-    "management_portal": "管理ポータル"
+    "management_portal": "管理ポータル",
+    "forgot_password": "パスワードをお忘れですか？",
+    "forgot_password_title": "パスワードを再設定",
+    "forgot_password_subtitle": "アカウントのメールアドレスを入力してください。再設定リンクをお送りします。",
+    "forgot_password_submit": "再設定リンクを送信",
+    "forgot_password_sent": "該当アカウントが存在する場合、再設定リンクをお送りしました。受信トレイをご確認ください。",
+    "reset_password_title": "新しいパスワードを設定",
+    "reset_password_subtitle": "新しいパスワードをご入力ください。",
+    "new_password": "新しいパスワード",
+    "confirm_password": "パスワード確認",
+    "reset_password_submit": "パスワードを更新",
+    "reset_success": "パスワードが更新されました。新しいパスワードでログインできます。",
+    "reset_invalid_token": "このリンクは無効か期限切れです。再度リンクをご請求ください。",
+    "password_mismatch": "パスワードが一致しません。",
+    "password_too_short": "パスワードは8文字以上で入力してください。",
+    "back_to_login": "ログインに戻る",
+    "show_password": "パスワードを表示",
+    "hide_password": "パスワードを非表示"
   },
   "booking": {
     "new": "新規予約",

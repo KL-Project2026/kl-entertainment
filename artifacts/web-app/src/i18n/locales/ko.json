@@ -27,7 +27,13 @@
     "driver_dashboard": "드라이버 대시보드",
     "kitchen_dashboard": "주방 대시보드",
     "hall_dashboard": "홀 대시보드",
-    "general_dashboard": "내 대시보드"
+    "general_dashboard": "내 대시보드",
+    "investor_reports": "투자자 리포트",
+    "hostess_dashboard": "내 근무 시트",
+    "hostess_profiles": "호스티스 프로필",
+    "agencies": "에이전시",
+    "my_profile": "내 프로필",
+    "my_ledger": "내 장부"
   },
   "auth": {
     "sign_in": "로그인",
