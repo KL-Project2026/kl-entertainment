@@ -199,5 +199,204 @@
     "daily_revenue": "今日营收",
     "availability_view": "可用情况",
     "no_pricing_rules": "未配置价格规则。添加规则以启用计费。"
+  },
+  "dashboards": {
+    "common": {
+      "live": "实时",
+      "on_duty": "在岗",
+      "standby": "待命",
+      "urgent": "紧急",
+      "done": "已完成",
+      "room": "房间",
+      "unknown_room": "未知房间",
+      "not_assigned": "未分配",
+      "no_records": "暂无记录。",
+      "no_orders_today": "今日暂无订单。",
+      "no_pending_orders": "暂无待处理订单。",
+      "no_jobs_assigned": "暂无分派任务。",
+      "no_hostesses_scheduled": "暂无公关排班。",
+      "no_attendance_today": "今日暂无考勤记录。",
+      "no_reservations_today": "今日暂无预约。",
+      "no_assignments_yet": "尚未分派任务",
+      "all_clear": "全部处理完毕！",
+      "all_clear_sub": "暂无待处理任务，辛苦了。",
+      "ago_minutes": "{{n}} 分钟前",
+      "ago_hm": "{{h}} 小时 {{m}} 分钟前",
+      "hours_short": "{{n}} 小时",
+      "hours_worked": "已工作 {{n}} 小时",
+      "priority": {
+        "high": "高",
+        "normal": "普通",
+        "low": "低"
+      },
+      "room_status": {
+        "available": "可用",
+        "occupied": "使用中",
+        "cleaning": "清洁中",
+        "maintenance": "维护中",
+        "blocked": "封闭"
+      },
+      "attendance": {
+        "present": "出勤",
+        "late": "迟到",
+        "absent": "缺勤",
+        "day_off": "休息",
+        "sick": "病假",
+        "no_show": "未出勤",
+        "early_leave": "早退"
+      },
+      "order_status": {
+        "pending": "待处理",
+        "preparing": "准备中",
+        "ready": "已完成",
+        "done": "结束",
+        "paid": "已付款",
+        "partial": "部分付款"
+      },
+      "delivery_status": {
+        "scheduled": "已安排",
+        "en_route": "途中",
+        "arrived": "已到达",
+        "completed": "已完成",
+        "issue": "异常"
+      },
+      "actions": {
+        "start_prep": "开始准备",
+        "mark_ready": "标记完成",
+        "complete": "结束订单",
+        "mark_done": "标记完成"
+      }
+    },
+    "hostess": {
+      "title": "我的考勤",
+      "todays_attendance": "今日考勤",
+      "clocked_in": "上班打卡",
+      "clocked_out": "下班打卡",
+      "gps_label": "GPS",
+      "attendance_completed": "今日考勤已完成",
+      "clock_in": "上班打卡",
+      "clock_out": "下班打卡",
+      "clock_in_failed": "上班打卡失败",
+      "clock_out_failed": "下班打卡失败",
+      "clocked_in_at": "{{time}} 已上班打卡",
+      "clocked_out_at": "{{time}} 已下班打卡",
+      "gps_captured": "已记录 GPS 位置",
+      "my_commission": "我的佣金",
+      "last_3_months": "（近 3 个月）",
+      "sessions_count": "{{n}} 次场次",
+      "recent_assignments": "近期分派",
+      "primary": "主要"
+    },
+    "branch_manager": {
+      "title": "分行经理仪表板",
+      "live_branch_ops": "分行实时运营",
+      "all_branches": "全部分行",
+      "kpi": {
+        "revenue_today": "今日营业额",
+        "occupied_rooms": "占用房间",
+        "staff_on_duty": "在岗员工",
+        "sessions_today": "今日场次",
+        "occupancy_pct": "入住率 {{pct}}%",
+        "clocked_in_sub": "已打卡",
+        "all_reservation_statuses": "全部预约状态"
+      },
+      "live_room_board": "实时房态板",
+      "staff_on_duty": "在岗员工",
+      "todays_reservations": "今日预约"
+    },
+    "manager": {
+      "title": "经理仪表板",
+      "subtitle": "餐饮与公关实时运营",
+      "kpi": {
+        "open_folios": "未结账单",
+        "pending_orders": "待处理订单",
+        "active_hostesses": "在岗公关",
+        "in_session": "进行时长",
+        "unpaid_or_partial": "未付款或部分付款",
+        "of_n_on_duty": "在岗共 {{n}} 人",
+        "oldest_session": "最长进行场次"
+      },
+      "open_orders": "未完成订单",
+      "hostess_board": "公关板",
+      "table": {
+        "room": "房间",
+        "reservation_no": "预约号",
+        "items": "数量",
+        "total": "合计",
+        "status": "状态"
+      },
+      "rate_per_hour": "RM{{rate}}/小时"
+    },
+    "driver": {
+      "title": "司机仪表板",
+      "subtitle": "您今日的接送行程",
+      "kpi": {
+        "trips_today": "今日行程",
+        "pending": "待出发",
+        "active": "进行中",
+        "completed": "已完成",
+        "scheduled_jobs": "已安排行程",
+        "en_route_arrived": "途中 / 已到达",
+        "today": "今日"
+      },
+      "next_job": "下一行程",
+      "pickup_label": "接载",
+      "return_to": "返回",
+      "address_not_specified": "未指定地址",
+      "job_queue": "行程队列"
+    },
+    "kitchen": {
+      "title": "厨房仪表板",
+      "subtitle": "实时订单队列 — 每 15 秒自动刷新",
+      "kpi": {
+        "pending": "待处理",
+        "preparing": "准备中",
+        "ready_to_serve": "可上菜",
+        "completed_today": "今日完成"
+      },
+      "active_orders": "进行中订单"
+    },
+    "hall": {
+      "title": "服务员仪表板",
+      "subtitle": "您所在区域的服务任务队列",
+      "kpi": {
+        "open_tasks": "待处理任务",
+        "high_priority": "高优先级",
+        "completed_today": "今日完成",
+        "total_orders": "全部订单"
+      },
+      "task_queue": "任务队列"
+    },
+    "general": {
+      "default_name": "员工",
+      "default_role": "通用",
+      "kpi": {
+        "attendance_rate": "出勤率",
+        "hours_this_month": "本月工时",
+        "penalty_deduction": "罚款扣减",
+        "est_net_pay": "预估净薪",
+        "days_present": "出勤 {{n}} 天",
+        "late_days": "迟到 {{n}} 天",
+        "base_minus_penalties": "基本工资减扣款"
+      },
+      "attendance_14": "近 14 日考勤",
+      "table": {
+        "date": "日期",
+        "clock_in": "上班打卡",
+        "clock_out": "下班打卡",
+        "hours": "工时",
+        "status": "状态"
+      },
+      "pay_estimate": "预估薪资",
+      "base_salary": "基本工资",
+      "penalty_deductions": "罚款扣减",
+      "est_net_pay_label": "预估净薪",
+      "currency_note": "币种：{{ccy}} · 仅为预估，最终以审批为准。",
+      "this_month": "本月",
+      "present": "出勤",
+      "late": "迟到",
+      "absent": "缺勤",
+      "days_short": "{{n}} 天"
+    }
   }
 }

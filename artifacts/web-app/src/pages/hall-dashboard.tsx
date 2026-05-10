@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
 import { useAuthStore } from "@/lib/auth";
@@ -48,6 +49,7 @@ async function fetchJson(url: string, token?: string | null) {
 }
 
 export default function HallDashboard() {
+  const { t } = useTranslation();
   const { user, token } = useAuthStore();
   const qc = useQueryClient();
   const branchId = user?.branchId;
@@ -90,29 +92,29 @@ export default function HallDashboard() {
         <div className="flex items-center gap-3">
           <div className="w-2 h-8 rounded-full" style={{ backgroundColor: ROLE_COLOR }} />
           <div>
-            <h1 className="text-xl font-bold font-display">Hall Staff Dashboard</h1>
-            <p className="text-sm text-muted-foreground">Service task queue for your zone</p>
+            <h1 className="text-xl font-bold font-display">{t("dashboards.hall.title")}</h1>
+            <p className="text-sm text-muted-foreground">{t("dashboards.hall.subtitle")}</p>
           </div>
         </div>
 
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <KpiCard label="Open Tasks" value={tasks.length} icon={ListTodo} color={ROLE_COLOR} />
-          <KpiCard label="High Priority" value={high} icon={AlertCircle} color="#ef4444" />
-          <KpiCard label="Completed Today" value={completedToday} icon={CheckCircle2} color="#4ade80" />
-          <KpiCard label="Total Orders" value={summary.open ?? allTasks.length} icon={BedDouble} color="#f5c842" />
+          <KpiCard label={t("dashboards.hall.kpi.open_tasks")} value={tasks.length} icon={ListTodo} color={ROLE_COLOR} />
+          <KpiCard label={t("dashboards.hall.kpi.high_priority")} value={high} icon={AlertCircle} color="#ef4444" />
+          <KpiCard label={t("dashboards.hall.kpi.completed_today")} value={completedToday} icon={CheckCircle2} color="#4ade80" />
+          <KpiCard label={t("dashboards.hall.kpi.total_orders")} value={summary.open ?? allTasks.length} icon={BedDouble} color="#f5c842" />
         </div>
 
         {/* Task Queue */}
         <Card className="p-6">
-          <h3 className="font-display text-lg font-semibold mb-4">Task Queue</h3>
+          <h3 className="font-display text-lg font-semibold mb-4">{t("dashboards.hall.task_queue")}</h3>
           {isLoading ? (
             <div className="space-y-3 animate-pulse">{[1,2,3,4].map(i => <div key={i} className="h-16 bg-muted/40 rounded-xl" />)}</div>
           ) : tasks.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <CheckCircle2 className="w-12 h-12 text-emerald-400 mb-3" />
-              <p className="font-semibold text-emerald-400">All clear!</p>
-              <p className="text-sm text-muted-foreground mt-1">No open tasks. Great work.</p>
+              <p className="font-semibold text-emerald-400">{t("dashboards.common.all_clear")}</p>
+              <p className="text-sm text-muted-foreground mt-1">{t("dashboards.common.all_clear_sub")}</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -126,14 +128,14 @@ export default function HallDashboard() {
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-sm">{task.description}</p>
                       <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
-                        <span>{task.room_name ?? "Unknown Room"}</span>
+                        <span>{task.room_name ?? t("dashboards.common.unknown_room")}</span>
                         {task.reservation_no && <span className="font-mono">{task.reservation_no}</span>}
                         <span>×{Number(task.quantity)}</span>
                       </div>
                     </div>
                     <div className="shrink-0 flex items-center gap-2">
                       <span className={`text-xs px-2 py-0.5 rounded-full ${ps.bg} ${ps.text} border ${ps.border} capitalize`}>
-                        {task.priority}
+                        {t(`dashboards.common.priority.${task.priority}`, { defaultValue: task.priority })}
                       </span>
                       <button
                         onClick={() => { setLoadingId(task.id); markDone.mutate(task.id); }}
@@ -143,7 +145,7 @@ export default function HallDashboard() {
                         {loadingId === task.id
                           ? <Loader2 className="w-3 h-3 animate-spin" />
                           : <Check className="w-3 h-3" />}
-                        Done
+                        {t("dashboards.common.actions.mark_done")}
                       </button>
                     </div>
                   </div>

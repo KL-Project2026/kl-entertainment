@@ -199,5 +199,204 @@
     "daily_revenue": "Today's Revenue",
     "availability_view": "Availability",
     "no_pricing_rules": "No pricing rules configured. Add a rule to enable billing."
+  },
+  "dashboards": {
+    "common": {
+      "live": "LIVE",
+      "on_duty": "On duty",
+      "standby": "Standby",
+      "urgent": "URGENT",
+      "done": "Done",
+      "room": "Room",
+      "unknown_room": "Unknown Room",
+      "not_assigned": "Not assigned",
+      "no_records": "No records found.",
+      "no_orders_today": "No orders today.",
+      "no_pending_orders": "No pending orders.",
+      "no_jobs_assigned": "No jobs assigned.",
+      "no_hostesses_scheduled": "No hostesses scheduled.",
+      "no_attendance_today": "No attendance records today.",
+      "no_reservations_today": "No reservations today.",
+      "no_assignments_yet": "No assignments yet",
+      "all_clear": "All clear!",
+      "all_clear_sub": "No open tasks. Great work.",
+      "ago_minutes": "{{n}}m ago",
+      "ago_hm": "{{h}}h {{m}}m ago",
+      "hours_short": "{{n}}h",
+      "hours_worked": "{{n}}h worked",
+      "priority": {
+        "high": "High",
+        "normal": "Normal",
+        "low": "Low"
+      },
+      "room_status": {
+        "available": "Available",
+        "occupied": "Occupied",
+        "cleaning": "Cleaning",
+        "maintenance": "Maintenance",
+        "blocked": "Blocked"
+      },
+      "attendance": {
+        "present": "Present",
+        "late": "Late",
+        "absent": "Absent",
+        "day_off": "Day off",
+        "sick": "Sick",
+        "no_show": "No show",
+        "early_leave": "Early leave"
+      },
+      "order_status": {
+        "pending": "Pending",
+        "preparing": "Preparing",
+        "ready": "Ready",
+        "done": "Done",
+        "paid": "Paid",
+        "partial": "Partial"
+      },
+      "delivery_status": {
+        "scheduled": "Scheduled",
+        "en_route": "En Route",
+        "arrived": "Arrived",
+        "completed": "Completed",
+        "issue": "Issue"
+      },
+      "actions": {
+        "start_prep": "Start Prep",
+        "mark_ready": "Mark Ready",
+        "complete": "Complete",
+        "mark_done": "Done"
+      }
+    },
+    "hostess": {
+      "title": "My Timesheet",
+      "todays_attendance": "Today's Attendance",
+      "clocked_in": "Clocked In",
+      "clocked_out": "Clocked Out",
+      "gps_label": "GPS",
+      "attendance_completed": "Attendance completed for today",
+      "clock_in": "Clock In",
+      "clock_out": "Clock Out",
+      "clock_in_failed": "Clock-in failed",
+      "clock_out_failed": "Clock-out failed",
+      "clocked_in_at": "Clocked in at {{time}}",
+      "clocked_out_at": "Clocked out at {{time}}",
+      "gps_captured": "GPS captured",
+      "my_commission": "My Commission",
+      "last_3_months": "(last 3 months)",
+      "sessions_count": "{{n}} sessions",
+      "recent_assignments": "Recent Assignments",
+      "primary": "Primary"
+    },
+    "branch_manager": {
+      "title": "Branch Manager Dashboard",
+      "live_branch_ops": "Live branch operations",
+      "all_branches": "All branches",
+      "kpi": {
+        "revenue_today": "Today's Revenue",
+        "occupied_rooms": "Occupied Rooms",
+        "staff_on_duty": "Staff On Duty",
+        "sessions_today": "Sessions Today",
+        "occupancy_pct": "{{pct}}% occupancy",
+        "clocked_in_sub": "Clocked in",
+        "all_reservation_statuses": "All reservation statuses"
+      },
+      "live_room_board": "Live Room Board",
+      "staff_on_duty": "Staff On Duty",
+      "todays_reservations": "Today's Reservations"
+    },
+    "manager": {
+      "title": "Manager Dashboard",
+      "subtitle": "Live F&B and hostess operations",
+      "kpi": {
+        "open_folios": "Open Folios",
+        "pending_orders": "Pending Orders",
+        "active_hostesses": "Active Hostesses",
+        "in_session": "In Session",
+        "unpaid_or_partial": "Unpaid or partial",
+        "of_n_on_duty": "of {{n}} on duty",
+        "oldest_session": "Oldest session"
+      },
+      "open_orders": "Open Orders",
+      "hostess_board": "Hostess Board",
+      "table": {
+        "room": "Room",
+        "reservation_no": "Res#",
+        "items": "Items",
+        "total": "Total",
+        "status": "Status"
+      },
+      "rate_per_hour": "RM{{rate}}/hr"
+    },
+    "driver": {
+      "title": "Driver Dashboard",
+      "subtitle": "Your pickup & delivery schedule",
+      "kpi": {
+        "trips_today": "Trips Today",
+        "pending": "Pending",
+        "active": "Active",
+        "completed": "Completed",
+        "scheduled_jobs": "Scheduled jobs",
+        "en_route_arrived": "En route / Arrived",
+        "today": "Today"
+      },
+      "next_job": "Next Job",
+      "pickup_label": "Pickup",
+      "return_to": "Return to",
+      "address_not_specified": "Address not specified",
+      "job_queue": "Job Queue"
+    },
+    "kitchen": {
+      "title": "Kitchen Dashboard",
+      "subtitle": "Live order queue — auto-refreshes every 15s",
+      "kpi": {
+        "pending": "Pending",
+        "preparing": "Preparing",
+        "ready_to_serve": "Ready to Serve",
+        "completed_today": "Completed Today"
+      },
+      "active_orders": "Active Orders"
+    },
+    "hall": {
+      "title": "Hall Staff Dashboard",
+      "subtitle": "Service task queue for your zone",
+      "kpi": {
+        "open_tasks": "Open Tasks",
+        "high_priority": "High Priority",
+        "completed_today": "Completed Today",
+        "total_orders": "Total Orders"
+      },
+      "task_queue": "Task Queue"
+    },
+    "general": {
+      "default_name": "Staff",
+      "default_role": "General",
+      "kpi": {
+        "attendance_rate": "Attendance Rate",
+        "hours_this_month": "Hours This Month",
+        "penalty_deduction": "Penalty Deduction",
+        "est_net_pay": "Est. Net Pay",
+        "days_present": "{{n}} days present",
+        "late_days": "{{n}} late days",
+        "base_minus_penalties": "Base minus penalties"
+      },
+      "attendance_14": "Attendance (Last 14 Days)",
+      "table": {
+        "date": "Date",
+        "clock_in": "Clock In",
+        "clock_out": "Clock Out",
+        "hours": "Hours",
+        "status": "Status"
+      },
+      "pay_estimate": "Pay Estimate",
+      "base_salary": "Base Salary",
+      "penalty_deductions": "Penalty Deductions",
+      "est_net_pay_label": "Est. Net Pay",
+      "currency_note": "Currency: {{ccy}} · Estimate only, subject to final approval.",
+      "this_month": "This Month",
+      "present": "Present",
+      "late": "Late",
+      "absent": "Absent",
+      "days_short": "{{n}} days"
+    }
   }
 }

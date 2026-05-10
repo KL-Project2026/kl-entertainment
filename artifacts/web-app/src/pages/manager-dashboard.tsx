@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
 import { useAuthStore } from "@/lib/auth";
@@ -42,6 +43,7 @@ async function fetchJson(url: string, token?: string | null) {
 }
 
 export default function ManagerDashboard() {
+  const { t } = useTranslation();
   const { user, token } = useAuthStore();
   const branchId = user?.branchId;
   const qs = branchId ? `?branch_id=${branchId}` : "";
@@ -70,37 +72,37 @@ export default function ManagerDashboard() {
         <div className="flex items-center gap-3">
           <div className="w-2 h-8 rounded-full" style={{ backgroundColor: ROLE_COLOR }} />
           <div>
-            <h1 className="text-xl font-bold font-display">Manager Dashboard</h1>
-            <p className="text-sm text-muted-foreground">Live F&B and hostess operations</p>
+            <h1 className="text-xl font-bold font-display">{t("dashboards.manager.title")}</h1>
+            <p className="text-sm text-muted-foreground">{t("dashboards.manager.subtitle")}</p>
           </div>
         </div>
 
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <KpiCard label="Open Folios" value={String(openFolios)} icon={Receipt} color={ROLE_COLOR} />
-          <KpiCard label="Pending Orders" value={String(orders.length)} sub="Unpaid or partial" icon={ClipboardList} color="#fb923c" />
-          <KpiCard label="Active Hostesses" value={String(activeHostesses.length)} sub={`of ${hostesses.length} on duty`} icon={Users} color="#e8407a" />
-          <KpiCard label="In Session" value={activeHostesses.length > 0 ? elapsed(activeHostesses[0]?.start_at ?? null) : "—"} sub="Oldest session" icon={Clock} color="#a78bfa" />
+          <KpiCard label={t("dashboards.manager.kpi.open_folios")} value={String(openFolios)} icon={Receipt} color={ROLE_COLOR} />
+          <KpiCard label={t("dashboards.manager.kpi.pending_orders")} value={String(orders.length)} sub={t("dashboards.manager.kpi.unpaid_or_partial")} icon={ClipboardList} color="#fb923c" />
+          <KpiCard label={t("dashboards.manager.kpi.active_hostesses")} value={String(activeHostesses.length)} sub={t("dashboards.manager.kpi.of_n_on_duty", { n: hostesses.length })} icon={Users} color="#e8407a" />
+          <KpiCard label={t("dashboards.manager.kpi.in_session")} value={activeHostesses.length > 0 ? elapsed(activeHostesses[0]?.start_at ?? null) : "—"} sub={t("dashboards.manager.kpi.oldest_session")} icon={Clock} color="#a78bfa" />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
           {/* F&B Order Table */}
           <Card className="lg:col-span-3 p-6">
-            <h3 className="font-display text-lg font-semibold mb-4">Open Orders</h3>
+            <h3 className="font-display text-lg font-semibold mb-4">{t("dashboards.manager.open_orders")}</h3>
             {ordersLoading ? (
               <div className="space-y-2 animate-pulse">{[1,2,3].map(i => <div key={i} className="h-10 bg-muted/40 rounded" />)}</div>
             ) : orders.length === 0 ? (
-              <p className="text-muted-foreground text-sm">No pending orders.</p>
+              <p className="text-muted-foreground text-sm">{t("dashboards.common.no_pending_orders")}</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-xs text-muted-foreground border-b border-white/5">
-                      <th className="text-left pb-2 font-medium">Room</th>
-                      <th className="text-left pb-2 font-medium">Res#</th>
-                      <th className="text-right pb-2 font-medium">Items</th>
-                      <th className="text-right pb-2 font-medium">Total</th>
-                      <th className="text-left pb-2 font-medium pl-4">Status</th>
+                      <th className="text-left pb-2 font-medium">{t("dashboards.manager.table.room")}</th>
+                      <th className="text-left pb-2 font-medium">{t("dashboards.manager.table.reservation_no")}</th>
+                      <th className="text-right pb-2 font-medium">{t("dashboards.manager.table.items")}</th>
+                      <th className="text-right pb-2 font-medium">{t("dashboards.manager.table.total")}</th>
+                      <th className="text-left pb-2 font-medium pl-4">{t("dashboards.manager.table.status")}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
@@ -114,7 +116,7 @@ export default function ManagerDashboard() {
                           <span className={`text-xs px-2 py-0.5 rounded-full ${
                             o.payment_status === "pending" ? "bg-amber-500/15 text-amber-400" :
                             "bg-blue-500/15 text-blue-400"
-                          }`}>{o.payment_status}</span>
+                          }`}>{t(`dashboards.common.order_status.${o.payment_status}`, { defaultValue: o.payment_status })}</span>
                         </td>
                       </tr>
                     ))}
@@ -126,11 +128,11 @@ export default function ManagerDashboard() {
 
           {/* Hostess Board */}
           <Card className="lg:col-span-2 p-6">
-            <h3 className="font-display text-lg font-semibold mb-4" style={{ color: "#e8407a" }}>Hostess Board</h3>
+            <h3 className="font-display text-lg font-semibold mb-4" style={{ color: "#e8407a" }}>{t("dashboards.manager.hostess_board")}</h3>
             {hostLoading ? (
               <div className="space-y-3 animate-pulse">{[1,2,3].map(i => <div key={i} className="h-14 bg-muted/40 rounded-lg" />)}</div>
             ) : hostesses.length === 0 ? (
-              <p className="text-muted-foreground text-sm">No hostesses scheduled.</p>
+              <p className="text-muted-foreground text-sm">{t("dashboards.common.no_hostesses_scheduled")}</p>
             ) : (
               <div className="space-y-3 max-h-[360px] overflow-y-auto">
                 {hostesses.map(h => (
@@ -141,16 +143,16 @@ export default function ManagerDashboard() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold truncate">{h.full_name}</p>
-                      <p className="text-xs text-muted-foreground">{h.room_name ?? "Not assigned"}</p>
+                      <p className="text-xs text-muted-foreground">{h.room_name ?? t("dashboards.common.not_assigned")}</p>
                     </div>
                     <div className="text-right shrink-0">
                       {h.start_at ? (
                         <>
                           <p className="text-xs font-mono text-emerald-400">{elapsed(h.start_at)}</p>
-                          <p className="text-xs text-muted-foreground">RM{parseFloat(h.rate_per_hour ?? "0").toFixed(0)}/hr</p>
+                          <p className="text-xs text-muted-foreground">{t("dashboards.manager.rate_per_hour", { rate: parseFloat(h.rate_per_hour ?? "0").toFixed(0) })}</p>
                         </>
                       ) : (
-                        <span className="text-xs text-muted-foreground">Standby</span>
+                        <span className="text-xs text-muted-foreground">{t("dashboards.common.standby")}</span>
                       )}
                     </div>
                   </div>

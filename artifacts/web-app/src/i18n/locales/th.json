@@ -199,5 +199,204 @@
     "daily_revenue": "รายได้วันนี้",
     "availability_view": "ความพร้อมใช้งาน",
     "no_pricing_rules": "ไม่มีกฎราคาที่กำหนดไว้ เพิ่มกฎเพื่อเปิดใช้งานการเรียกเก็บเงิน"
+  },
+  "dashboards": {
+    "common": {
+      "live": "สด",
+      "on_duty": "ปฏิบัติงาน",
+      "standby": "เตรียมพร้อม",
+      "urgent": "ด่วน",
+      "done": "เสร็จสิ้น",
+      "room": "ห้อง",
+      "unknown_room": "ห้องไม่ระบุ",
+      "not_assigned": "ยังไม่ได้มอบหมาย",
+      "no_records": "ไม่พบข้อมูล",
+      "no_orders_today": "ยังไม่มีออเดอร์วันนี้",
+      "no_pending_orders": "ไม่มีออเดอร์รอดำเนินการ",
+      "no_jobs_assigned": "ยังไม่มีงานที่มอบหมาย",
+      "no_hostesses_scheduled": "ยังไม่มีโฮสเตสในตาราง",
+      "no_attendance_today": "ยังไม่มีบันทึกการเข้างานวันนี้",
+      "no_reservations_today": "ยังไม่มีการจองวันนี้",
+      "no_assignments_yet": "ยังไม่มีงานที่มอบหมาย",
+      "all_clear": "เคลียร์ทั้งหมดแล้ว!",
+      "all_clear_sub": "ไม่มีงานค้าง ยอดเยี่ยมมาก",
+      "ago_minutes": "{{n}} นาทีที่แล้ว",
+      "ago_hm": "{{h}} ชม. {{m}} น. ที่แล้ว",
+      "hours_short": "{{n}} ชม.",
+      "hours_worked": "ทำงาน {{n}} ชม.",
+      "priority": {
+        "high": "สูง",
+        "normal": "ปกติ",
+        "low": "ต่ำ"
+      },
+      "room_status": {
+        "available": "ว่าง",
+        "occupied": "ใช้งานอยู่",
+        "cleaning": "กำลังทำความสะอาด",
+        "maintenance": "กำลังบำรุงรักษา",
+        "blocked": "ปิดใช้งาน"
+      },
+      "attendance": {
+        "present": "มาทำงาน",
+        "late": "มาสาย",
+        "absent": "ขาดงาน",
+        "day_off": "วันหยุด",
+        "sick": "ลาป่วย",
+        "no_show": "ไม่มาทำงาน",
+        "early_leave": "กลับก่อนเวลา"
+      },
+      "order_status": {
+        "pending": "รอดำเนินการ",
+        "preparing": "กำลังเตรียม",
+        "ready": "พร้อมแล้ว",
+        "done": "เสร็จสิ้น",
+        "paid": "ชำระแล้ว",
+        "partial": "ชำระบางส่วน"
+      },
+      "delivery_status": {
+        "scheduled": "ตามตาราง",
+        "en_route": "อยู่ระหว่างทาง",
+        "arrived": "ถึงแล้ว",
+        "completed": "เสร็จสิ้น",
+        "issue": "มีปัญหา"
+      },
+      "actions": {
+        "start_prep": "เริ่มเตรียม",
+        "mark_ready": "ทำเครื่องหมายพร้อม",
+        "complete": "ปิดออเดอร์",
+        "mark_done": "เสร็จสิ้น"
+      }
+    },
+    "hostess": {
+      "title": "ตารางงานของฉัน",
+      "todays_attendance": "การเข้างานวันนี้",
+      "clocked_in": "เข้างาน",
+      "clocked_out": "ออกงาน",
+      "gps_label": "GPS",
+      "attendance_completed": "การเข้างานวันนี้เสร็จสิ้นแล้ว",
+      "clock_in": "เข้างาน",
+      "clock_out": "ออกงาน",
+      "clock_in_failed": "บันทึกเข้างานไม่สำเร็จ",
+      "clock_out_failed": "บันทึกออกงานไม่สำเร็จ",
+      "clocked_in_at": "เข้างานเมื่อ {{time}}",
+      "clocked_out_at": "ออกงานเมื่อ {{time}}",
+      "gps_captured": "บันทึกตำแหน่ง GPS แล้ว",
+      "my_commission": "ค่าคอมของฉัน",
+      "last_3_months": "(3 เดือนล่าสุด)",
+      "sessions_count": "{{n}} เซสชัน",
+      "recent_assignments": "งานล่าสุด",
+      "primary": "หลัก"
+    },
+    "branch_manager": {
+      "title": "แดชบอร์ดผู้จัดการสาขา",
+      "live_branch_ops": "การดำเนินงานสาขาแบบเรียลไทม์",
+      "all_branches": "ทุกสาขา",
+      "kpi": {
+        "revenue_today": "รายได้วันนี้",
+        "occupied_rooms": "ห้องที่ใช้งาน",
+        "staff_on_duty": "พนักงานปฏิบัติงาน",
+        "sessions_today": "เซสชันวันนี้",
+        "occupancy_pct": "อัตราการเข้าพัก {{pct}}%",
+        "clocked_in_sub": "เข้างานแล้ว",
+        "all_reservation_statuses": "ทุกสถานะการจอง"
+      },
+      "live_room_board": "บอร์ดสถานะห้องเรียลไทม์",
+      "staff_on_duty": "พนักงานปฏิบัติงาน",
+      "todays_reservations": "การจองวันนี้"
+    },
+    "manager": {
+      "title": "แดชบอร์ดผู้จัดการ",
+      "subtitle": "การดำเนินงาน F&B และโฮสเตสแบบเรียลไทม์",
+      "kpi": {
+        "open_folios": "บิลที่ยังไม่ปิด",
+        "pending_orders": "ออเดอร์รอดำเนินการ",
+        "active_hostesses": "โฮสเตสที่กำลังทำงาน",
+        "in_session": "อยู่ระหว่างเซสชัน",
+        "unpaid_or_partial": "ยังไม่ชำระหรือชำระบางส่วน",
+        "of_n_on_duty": "จาก {{n}} คนที่ปฏิบัติงาน",
+        "oldest_session": "เซสชันที่ยาวที่สุด"
+      },
+      "open_orders": "ออเดอร์ที่เปิดอยู่",
+      "hostess_board": "บอร์ดโฮสเตส",
+      "table": {
+        "room": "ห้อง",
+        "reservation_no": "เลขที่จอง",
+        "items": "รายการ",
+        "total": "รวม",
+        "status": "สถานะ"
+      },
+      "rate_per_hour": "RM{{rate}}/ชม."
+    },
+    "driver": {
+      "title": "แดชบอร์ดคนขับ",
+      "subtitle": "ตารางรับ-ส่งของคุณ",
+      "kpi": {
+        "trips_today": "เที่ยววันนี้",
+        "pending": "รอดำเนินการ",
+        "active": "กำลังดำเนินการ",
+        "completed": "เสร็จสิ้น",
+        "scheduled_jobs": "งานตามตาราง",
+        "en_route_arrived": "อยู่ระหว่างทาง / ถึงแล้ว",
+        "today": "วันนี้"
+      },
+      "next_job": "งานถัดไป",
+      "pickup_label": "รับ",
+      "return_to": "กลับไปยัง",
+      "address_not_specified": "ไม่ระบุที่อยู่",
+      "job_queue": "คิวงาน"
+    },
+    "kitchen": {
+      "title": "แดชบอร์ดครัว",
+      "subtitle": "คิวออเดอร์เรียลไทม์ — รีเฟรชอัตโนมัติทุก 15 วินาที",
+      "kpi": {
+        "pending": "รอดำเนินการ",
+        "preparing": "กำลังเตรียม",
+        "ready_to_serve": "พร้อมเสิร์ฟ",
+        "completed_today": "เสร็จสิ้นวันนี้"
+      },
+      "active_orders": "ออเดอร์ที่ดำเนินการอยู่"
+    },
+    "hall": {
+      "title": "แดชบอร์ดพนักงานฮอลล์",
+      "subtitle": "คิวงานบริการในโซนของคุณ",
+      "kpi": {
+        "open_tasks": "งานที่เปิดอยู่",
+        "high_priority": "ความสำคัญสูง",
+        "completed_today": "เสร็จสิ้นวันนี้",
+        "total_orders": "ออเดอร์ทั้งหมด"
+      },
+      "task_queue": "คิวงาน"
+    },
+    "general": {
+      "default_name": "พนักงาน",
+      "default_role": "ทั่วไป",
+      "kpi": {
+        "attendance_rate": "อัตราการเข้างาน",
+        "hours_this_month": "ชั่วโมงเดือนนี้",
+        "penalty_deduction": "หักค่าปรับ",
+        "est_net_pay": "ค่าจ้างสุทธิประมาณการ",
+        "days_present": "เข้างาน {{n}} วัน",
+        "late_days": "สาย {{n}} วัน",
+        "base_minus_penalties": "เงินเดือนพื้นฐานลบค่าปรับ"
+      },
+      "attendance_14": "การเข้างาน (14 วันล่าสุด)",
+      "table": {
+        "date": "วันที่",
+        "clock_in": "เข้างาน",
+        "clock_out": "ออกงาน",
+        "hours": "ชั่วโมง",
+        "status": "สถานะ"
+      },
+      "pay_estimate": "ประมาณการเงินเดือน",
+      "base_salary": "เงินเดือนพื้นฐาน",
+      "penalty_deductions": "หักค่าปรับ",
+      "est_net_pay_label": "ค่าจ้างสุทธิประมาณการ",
+      "currency_note": "สกุลเงิน: {{ccy}} · เป็นเพียงประมาณการ ขึ้นอยู่กับการอนุมัติขั้นสุดท้าย",
+      "this_month": "เดือนนี้",
+      "present": "มาทำงาน",
+      "late": "สาย",
+      "absent": "ขาด",
+      "days_short": "{{n}} วัน"
+    }
   }
 }

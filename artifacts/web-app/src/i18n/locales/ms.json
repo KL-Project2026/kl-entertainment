@@ -199,5 +199,204 @@
     "daily_revenue": "Pendapatan Hari Ini",
     "availability_view": "Ketersediaan",
     "no_pricing_rules": "Tiada peraturan harga dikonfigurasi. Tambah peraturan untuk mengaktifkan pengebilan."
+  },
+  "dashboards": {
+    "common": {
+      "live": "LANGSUNG",
+      "on_duty": "Bertugas",
+      "standby": "Bersedia",
+      "urgent": "SEGERA",
+      "done": "Selesai",
+      "room": "Bilik",
+      "unknown_room": "Bilik Tidak Dikenali",
+      "not_assigned": "Tidak ditugaskan",
+      "no_records": "Tiada rekod ditemui.",
+      "no_orders_today": "Tiada pesanan hari ini.",
+      "no_pending_orders": "Tiada pesanan tertunggak.",
+      "no_jobs_assigned": "Tiada tugasan diberikan.",
+      "no_hostesses_scheduled": "Tiada hostess dijadualkan.",
+      "no_attendance_today": "Tiada rekod kehadiran hari ini.",
+      "no_reservations_today": "Tiada tempahan hari ini.",
+      "no_assignments_yet": "Belum ada tugasan",
+      "all_clear": "Semua selesai!",
+      "all_clear_sub": "Tiada tugas tertunggak. Syabas.",
+      "ago_minutes": "{{n}}m lalu",
+      "ago_hm": "{{h}}j {{m}}m lalu",
+      "hours_short": "{{n}}j",
+      "hours_worked": "{{n}}j bekerja",
+      "priority": {
+        "high": "Tinggi",
+        "normal": "Biasa",
+        "low": "Rendah"
+      },
+      "room_status": {
+        "available": "Tersedia",
+        "occupied": "Diduduki",
+        "cleaning": "Pembersihan",
+        "maintenance": "Penyelenggaraan",
+        "blocked": "Disekat"
+      },
+      "attendance": {
+        "present": "Hadir",
+        "late": "Lewat",
+        "absent": "Tidak Hadir",
+        "day_off": "Cuti",
+        "sick": "Sakit",
+        "no_show": "Tidak Muncul",
+        "early_leave": "Balik Awal"
+      },
+      "order_status": {
+        "pending": "Menunggu",
+        "preparing": "Sedang Disiapkan",
+        "ready": "Sedia",
+        "done": "Selesai",
+        "paid": "Dibayar",
+        "partial": "Sebahagian"
+      },
+      "delivery_status": {
+        "scheduled": "Dijadualkan",
+        "en_route": "Dalam Perjalanan",
+        "arrived": "Tiba",
+        "completed": "Selesai",
+        "issue": "Masalah"
+      },
+      "actions": {
+        "start_prep": "Mula Penyediaan",
+        "mark_ready": "Tandakan Sedia",
+        "complete": "Lengkapkan",
+        "mark_done": "Selesai"
+      }
+    },
+    "hostess": {
+      "title": "Helaian Masa Saya",
+      "todays_attendance": "Kehadiran Hari Ini",
+      "clocked_in": "Masuk Kerja",
+      "clocked_out": "Habis Kerja",
+      "gps_label": "GPS",
+      "attendance_completed": "Kehadiran hari ini telah dilengkapkan",
+      "clock_in": "Masuk Kerja",
+      "clock_out": "Habis Kerja",
+      "clock_in_failed": "Masuk kerja gagal",
+      "clock_out_failed": "Habis kerja gagal",
+      "clocked_in_at": "Masuk kerja pada {{time}}",
+      "clocked_out_at": "Habis kerja pada {{time}}",
+      "gps_captured": "GPS direkodkan",
+      "my_commission": "Komisen Saya",
+      "last_3_months": "(3 bulan lepas)",
+      "sessions_count": "{{n}} sesi",
+      "recent_assignments": "Tugasan Terkini",
+      "primary": "Utama"
+    },
+    "branch_manager": {
+      "title": "Papan Pemuka Pengurus Cawangan",
+      "live_branch_ops": "Operasi cawangan langsung",
+      "all_branches": "Semua cawangan",
+      "kpi": {
+        "revenue_today": "Hasil Hari Ini",
+        "occupied_rooms": "Bilik Diduduki",
+        "staff_on_duty": "Kakitangan Bertugas",
+        "sessions_today": "Sesi Hari Ini",
+        "occupancy_pct": "{{pct}}% pengisian",
+        "clocked_in_sub": "Telah masuk kerja",
+        "all_reservation_statuses": "Semua status tempahan"
+      },
+      "live_room_board": "Papan Bilik Langsung",
+      "staff_on_duty": "Kakitangan Bertugas",
+      "todays_reservations": "Tempahan Hari Ini"
+    },
+    "manager": {
+      "title": "Papan Pemuka Pengurus",
+      "subtitle": "Operasi F&B dan hostess langsung",
+      "kpi": {
+        "open_folios": "Folio Terbuka",
+        "pending_orders": "Pesanan Tertunggak",
+        "active_hostesses": "Hostess Aktif",
+        "in_session": "Dalam Sesi",
+        "unpaid_or_partial": "Belum bayar atau separa",
+        "of_n_on_duty": "daripada {{n}} bertugas",
+        "oldest_session": "Sesi terlama"
+      },
+      "open_orders": "Pesanan Terbuka",
+      "hostess_board": "Papan Hostess",
+      "table": {
+        "room": "Bilik",
+        "reservation_no": "No. Tempahan",
+        "items": "Item",
+        "total": "Jumlah",
+        "status": "Status"
+      },
+      "rate_per_hour": "RM{{rate}}/jam"
+    },
+    "driver": {
+      "title": "Papan Pemuka Pemandu",
+      "subtitle": "Jadual ambil & hantar anda",
+      "kpi": {
+        "trips_today": "Perjalanan Hari Ini",
+        "pending": "Menunggu",
+        "active": "Aktif",
+        "completed": "Selesai",
+        "scheduled_jobs": "Tugasan dijadualkan",
+        "en_route_arrived": "Dalam perjalanan / Tiba",
+        "today": "Hari ini"
+      },
+      "next_job": "Tugasan Seterusnya",
+      "pickup_label": "Ambil",
+      "return_to": "Kembali ke",
+      "address_not_specified": "Alamat tidak dinyatakan",
+      "job_queue": "Senarai Tugasan"
+    },
+    "kitchen": {
+      "title": "Papan Pemuka Dapur",
+      "subtitle": "Senarai pesanan langsung — kemas kini setiap 15s",
+      "kpi": {
+        "pending": "Menunggu",
+        "preparing": "Sedang Disiapkan",
+        "ready_to_serve": "Sedia Dihidang",
+        "completed_today": "Selesai Hari Ini"
+      },
+      "active_orders": "Pesanan Aktif"
+    },
+    "hall": {
+      "title": "Papan Pemuka Kakitangan Dewan",
+      "subtitle": "Senarai tugas servis untuk zon anda",
+      "kpi": {
+        "open_tasks": "Tugas Terbuka",
+        "high_priority": "Keutamaan Tinggi",
+        "completed_today": "Selesai Hari Ini",
+        "total_orders": "Jumlah Pesanan"
+      },
+      "task_queue": "Senarai Tugas"
+    },
+    "general": {
+      "default_name": "Kakitangan",
+      "default_role": "Umum",
+      "kpi": {
+        "attendance_rate": "Kadar Kehadiran",
+        "hours_this_month": "Jam Bulan Ini",
+        "penalty_deduction": "Potongan Penalti",
+        "est_net_pay": "Anggaran Gaji Bersih",
+        "days_present": "{{n}} hari hadir",
+        "late_days": "{{n}} hari lewat",
+        "base_minus_penalties": "Asas tolak penalti"
+      },
+      "attendance_14": "Kehadiran (14 Hari Lepas)",
+      "table": {
+        "date": "Tarikh",
+        "clock_in": "Masuk",
+        "clock_out": "Keluar",
+        "hours": "Jam",
+        "status": "Status"
+      },
+      "pay_estimate": "Anggaran Gaji",
+      "base_salary": "Gaji Asas",
+      "penalty_deductions": "Potongan Penalti",
+      "est_net_pay_label": "Anggaran Gaji Bersih",
+      "currency_note": "Mata wang: {{ccy}} · Anggaran sahaja, tertakluk kepada kelulusan akhir.",
+      "this_month": "Bulan Ini",
+      "present": "Hadir",
+      "late": "Lewat",
+      "absent": "Tidak Hadir",
+      "days_short": "{{n}} hari"
+    }
   }
 }

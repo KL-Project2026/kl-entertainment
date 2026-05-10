@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
 import { useAuthStore } from "@/lib/auth";
@@ -25,19 +26,12 @@ function getKitchenStatus(status: string) {
   return "done";
 }
 
-const KS_STYLES: Record<string, { bg: string; text: string; label: string; next: string; nextLabel: string }> = {
-  pending:  { bg: "bg-amber-500/10",   text: "text-amber-400",   label: "Pending",   next: "preparing", nextLabel: "Start Prep" },
-  preparing:{ bg: "bg-blue-500/10",    text: "text-blue-400",    label: "Preparing", next: "ready",     nextLabel: "Mark Ready" },
-  ready:    { bg: "bg-emerald-500/10", text: "text-emerald-400", label: "Ready",     next: "done",      nextLabel: "Complete" },
-  done:     { bg: "bg-gray-500/10",    text: "text-gray-400",    label: "Done",      next: "",          nextLabel: "" },
+const KS_STYLES: Record<string, { bg: string; text: string; next: string; nextKey: string }> = {
+  pending:  { bg: "bg-amber-500/10",   text: "text-amber-400",   next: "preparing", nextKey: "start_prep" },
+  preparing:{ bg: "bg-blue-500/10",    text: "text-blue-400",    next: "ready",     nextKey: "mark_ready" },
+  ready:    { bg: "bg-emerald-500/10", text: "text-emerald-400", next: "done",      nextKey: "complete" },
+  done:     { bg: "bg-gray-500/10",    text: "text-gray-400",    next: "",          nextKey: "" },
 };
-
-function elapsed(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(ms / 60_000);
-  if (m < 60) return `${m}m ago`;
-  return `${Math.floor(m / 60)}h ${m % 60}m ago`;
-}
 
 function KpiCard({ label, value, icon: Icon, color }: { label: string; value: number; icon: React.ComponentType<{ className?: string }>; color: string }) {
   return (
@@ -62,8 +56,15 @@ async function fetchJson(url: string, token?: string | null) {
 }
 
 export default function KitchenDashboard() {
+  const { t } = useTranslation();
   const { user, token } = useAuthStore();
   const qc = useQueryClient();
+  const elapsed = (iso: string): string => {
+    const ms = Date.now() - new Date(iso).getTime();
+    const m = Math.floor(ms / 60_000);
+    if (m < 60) return t("dashboards.common.ago_minutes", { n: m });
+    return t("dashboards.common.ago_hm", { h: Math.floor(m / 60), m: m % 60 });
+  };
   const branchId = user?.branchId;
   const qs = branchId ? `?branch_id=${branchId}` : "";
 
@@ -108,26 +109,26 @@ export default function KitchenDashboard() {
         <div className="flex items-center gap-3">
           <div className="w-2 h-8 rounded-full" style={{ backgroundColor: ROLE_COLOR }} />
           <div>
-            <h1 className="text-xl font-bold font-display">Kitchen Dashboard</h1>
-            <p className="text-sm text-muted-foreground">Live order queue — auto-refreshes every 15s</p>
+            <h1 className="text-xl font-bold font-display">{t("dashboards.kitchen.title")}</h1>
+            <p className="text-sm text-muted-foreground">{t("dashboards.kitchen.subtitle")}</p>
           </div>
         </div>
 
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <KpiCard label="Pending" value={pending} icon={Clock} color="#f5c842" />
-          <KpiCard label="Preparing" value={preparing} icon={ChefHat} color={ROLE_COLOR} />
-          <KpiCard label="Ready to Serve" value={ready} icon={UtensilsCrossed} color="#2dd4bf" />
-          <KpiCard label="Completed Today" value={done} icon={CheckCircle} color="#9a9baa" />
+          <KpiCard label={t("dashboards.kitchen.kpi.pending")} value={pending} icon={Clock} color="#f5c842" />
+          <KpiCard label={t("dashboards.kitchen.kpi.preparing")} value={preparing} icon={ChefHat} color={ROLE_COLOR} />
+          <KpiCard label={t("dashboards.kitchen.kpi.ready_to_serve")} value={ready} icon={UtensilsCrossed} color="#2dd4bf" />
+          <KpiCard label={t("dashboards.kitchen.kpi.completed_today")} value={done} icon={CheckCircle} color="#9a9baa" />
         </div>
 
         {/* Active Orders */}
         <Card className="p-6">
-          <h3 className="font-display text-lg font-semibold mb-4">Active Orders</h3>
+          <h3 className="font-display text-lg font-semibold mb-4">{t("dashboards.kitchen.active_orders")}</h3>
           {isLoading ? (
             <div className="space-y-4 animate-pulse">{[1,2,3].map(i => <div key={i} className="h-24 bg-muted/40 rounded-xl" />)}</div>
           ) : orders.length === 0 ? (
-            <p className="text-muted-foreground text-sm">No orders today.</p>
+            <p className="text-muted-foreground text-sm">{t("dashboards.common.no_orders_today")}</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {orders.map(order => {
@@ -140,12 +141,12 @@ export default function KitchenDashboard() {
                     className={`rounded-xl border p-4 flex flex-col gap-3 ${urgent ? "border-red-500/50 bg-red-500/5" : "border-white/10 bg-white/3"}`}>
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <p className="font-semibold text-sm">{order.room_name ?? "Unknown Room"}</p>
+                        <p className="font-semibold text-sm">{order.room_name ?? t("dashboards.common.unknown_room")}</p>
                         <p className="text-xs text-muted-foreground font-mono">{order.reservation_no ?? order.id.slice(0, 8)}</p>
                       </div>
                       <div className="flex flex-col items-end gap-1">
-                        {urgent && <span className="text-xs px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 font-semibold">URGENT</span>}
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${ss.bg} ${ss.text}`}>{ss.label}</span>
+                        {urgent && <span className="text-xs px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 font-semibold">{t("dashboards.common.urgent")}</span>}
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${ss.bg} ${ss.text}`}>{t(`dashboards.common.order_status.${ks}`, { defaultValue: ks })}</span>
                       </div>
                     </div>
                     <div className="space-y-1">
@@ -168,7 +169,7 @@ export default function KitchenDashboard() {
                           className="text-xs px-3 py-1.5 rounded-lg font-semibold disabled:opacity-50 flex items-center gap-1"
                           style={{ backgroundColor: ROLE_COLOR + "22", color: ROLE_COLOR }}>
                           {updating === order.id ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
-                          {ss.nextLabel}
+                          {t(`dashboards.common.actions.${ss.nextKey}`, { defaultValue: ss.nextKey })}
                         </button>
                       )}
                     </div>

@@ -199,5 +199,204 @@
     "daily_revenue": "오늘의 매출",
     "availability_view": "가용성",
     "no_pricing_rules": "요금 규칙이 없습니다. 규칙을 추가하여 요금 청구를 활성화하세요."
+  },
+  "dashboards": {
+    "common": {
+      "live": "실시간",
+      "on_duty": "근무 중",
+      "standby": "대기",
+      "urgent": "긴급",
+      "done": "완료",
+      "room": "룸",
+      "unknown_room": "미지정 룸",
+      "not_assigned": "미배정",
+      "no_records": "기록이 없습니다.",
+      "no_orders_today": "오늘 주문이 없습니다.",
+      "no_pending_orders": "대기 중인 주문이 없습니다.",
+      "no_jobs_assigned": "배정된 운행이 없습니다.",
+      "no_hostesses_scheduled": "예정된 호스티스가 없습니다.",
+      "no_attendance_today": "오늘의 출근 기록이 없습니다.",
+      "no_reservations_today": "오늘 예약이 없습니다.",
+      "no_assignments_yet": "아직 배정된 일이 없습니다",
+      "all_clear": "모두 처리되었습니다!",
+      "all_clear_sub": "처리할 작업이 없습니다. 수고하셨습니다.",
+      "ago_minutes": "{{n}}분 전",
+      "ago_hm": "{{h}}시간 {{m}}분 전",
+      "hours_short": "{{n}}시간",
+      "hours_worked": "{{n}}시간 근무",
+      "priority": {
+        "high": "높음",
+        "normal": "보통",
+        "low": "낮음"
+      },
+      "room_status": {
+        "available": "이용 가능",
+        "occupied": "이용 중",
+        "cleaning": "청소 중",
+        "maintenance": "점검 중",
+        "blocked": "차단"
+      },
+      "attendance": {
+        "present": "정상 출근",
+        "late": "지각",
+        "absent": "결근",
+        "day_off": "휴무",
+        "sick": "병가",
+        "no_show": "노쇼",
+        "early_leave": "조퇴"
+      },
+      "order_status": {
+        "pending": "대기",
+        "preparing": "준비 중",
+        "ready": "준비 완료",
+        "done": "완료",
+        "paid": "결제 완료",
+        "partial": "부분 결제"
+      },
+      "delivery_status": {
+        "scheduled": "예정",
+        "en_route": "이동 중",
+        "arrived": "도착",
+        "completed": "완료",
+        "issue": "문제 발생"
+      },
+      "actions": {
+        "start_prep": "준비 시작",
+        "mark_ready": "준비 완료",
+        "complete": "완료 처리",
+        "mark_done": "완료"
+      }
+    },
+    "hostess": {
+      "title": "내 근무 시트",
+      "todays_attendance": "오늘의 출근",
+      "clocked_in": "출근 시각",
+      "clocked_out": "퇴근 시각",
+      "gps_label": "GPS",
+      "attendance_completed": "오늘 출퇴근이 완료되었습니다",
+      "clock_in": "출근",
+      "clock_out": "퇴근",
+      "clock_in_failed": "출근 처리 실패",
+      "clock_out_failed": "퇴근 처리 실패",
+      "clocked_in_at": "{{time}}에 출근",
+      "clocked_out_at": "{{time}}에 퇴근",
+      "gps_captured": "GPS 위치 기록됨",
+      "my_commission": "내 커미션",
+      "last_3_months": "(최근 3개월)",
+      "sessions_count": "{{n}}회 세션",
+      "recent_assignments": "최근 배정 내역",
+      "primary": "메인"
+    },
+    "branch_manager": {
+      "title": "지점장 대시보드",
+      "live_branch_ops": "지점 실시간 운영 현황",
+      "all_branches": "전체 지점",
+      "kpi": {
+        "revenue_today": "오늘의 매출",
+        "occupied_rooms": "사용 중인 룸",
+        "staff_on_duty": "근무 중인 직원",
+        "sessions_today": "오늘의 세션",
+        "occupancy_pct": "객실 가동률 {{pct}}%",
+        "clocked_in_sub": "출근 완료",
+        "all_reservation_statuses": "전체 예약 상태"
+      },
+      "live_room_board": "실시간 룸 현황판",
+      "staff_on_duty": "근무 중인 직원",
+      "todays_reservations": "오늘의 예약"
+    },
+    "manager": {
+      "title": "매니저 대시보드",
+      "subtitle": "F&B · 호스티스 실시간 운영",
+      "kpi": {
+        "open_folios": "오픈 폴리오",
+        "pending_orders": "대기 중 주문",
+        "active_hostesses": "활동 중 호스티스",
+        "in_session": "진행 시간",
+        "unpaid_or_partial": "미결제 또는 부분 결제",
+        "of_n_on_duty": "근무 {{n}}명 중",
+        "oldest_session": "최장 진행 세션"
+      },
+      "open_orders": "진행 중 주문",
+      "hostess_board": "호스티스 보드",
+      "table": {
+        "room": "룸",
+        "reservation_no": "예약 번호",
+        "items": "수량",
+        "total": "합계",
+        "status": "상태"
+      },
+      "rate_per_hour": "시급 RM{{rate}}"
+    },
+    "driver": {
+      "title": "드라이버 대시보드",
+      "subtitle": "오늘의 픽업·배송 일정",
+      "kpi": {
+        "trips_today": "오늘의 운행",
+        "pending": "대기",
+        "active": "진행 중",
+        "completed": "완료",
+        "scheduled_jobs": "예정된 운행",
+        "en_route_arrived": "이동 중 / 도착",
+        "today": "오늘"
+      },
+      "next_job": "다음 운행",
+      "pickup_label": "픽업",
+      "return_to": "복귀 지점",
+      "address_not_specified": "주소가 지정되지 않았습니다",
+      "job_queue": "운행 대기열"
+    },
+    "kitchen": {
+      "title": "주방 대시보드",
+      "subtitle": "실시간 주문 큐 — 15초마다 자동 갱신",
+      "kpi": {
+        "pending": "대기",
+        "preparing": "준비 중",
+        "ready_to_serve": "서빙 준비 완료",
+        "completed_today": "오늘 완료"
+      },
+      "active_orders": "진행 중 주문"
+    },
+    "hall": {
+      "title": "홀 직원 대시보드",
+      "subtitle": "담당 구역의 서비스 작업 큐",
+      "kpi": {
+        "open_tasks": "처리 대기 작업",
+        "high_priority": "긴급 작업",
+        "completed_today": "오늘 완료",
+        "total_orders": "전체 주문"
+      },
+      "task_queue": "작업 대기열"
+    },
+    "general": {
+      "default_name": "직원",
+      "default_role": "일반",
+      "kpi": {
+        "attendance_rate": "출근율",
+        "hours_this_month": "이번 달 근무 시간",
+        "penalty_deduction": "벌점 공제",
+        "est_net_pay": "예상 실수령액",
+        "days_present": "정상 출근 {{n}}일",
+        "late_days": "지각 {{n}}일",
+        "base_minus_penalties": "기본급 - 공제액"
+      },
+      "attendance_14": "출근 기록 (최근 14일)",
+      "table": {
+        "date": "날짜",
+        "clock_in": "출근 시각",
+        "clock_out": "퇴근 시각",
+        "hours": "근무 시간",
+        "status": "상태"
+      },
+      "pay_estimate": "예상 급여",
+      "base_salary": "기본급",
+      "penalty_deductions": "벌점 공제",
+      "est_net_pay_label": "예상 실수령액",
+      "currency_note": "통화: {{ccy}} · 예상 금액이며 최종 승인에 따라 변경될 수 있습니다.",
+      "this_month": "이번 달",
+      "present": "정상 출근",
+      "late": "지각",
+      "absent": "결근",
+      "days_short": "{{n}}일"
+    }
   }
 }

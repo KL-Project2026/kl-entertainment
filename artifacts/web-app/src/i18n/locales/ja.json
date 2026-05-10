@@ -199,5 +199,204 @@
     "daily_revenue": "本日の売上",
     "availability_view": "空き状況",
     "no_pricing_rules": "料金ルールが設定されていません。料金請求を有効にするにはルールを追加してください。"
+  },
+  "dashboards": {
+    "common": {
+      "live": "ライブ",
+      "on_duty": "勤務中",
+      "standby": "待機",
+      "urgent": "緊急",
+      "done": "完了",
+      "room": "ルーム",
+      "unknown_room": "不明なルーム",
+      "not_assigned": "未割当",
+      "no_records": "記録がありません。",
+      "no_orders_today": "本日の注文はありません。",
+      "no_pending_orders": "未処理の注文はありません。",
+      "no_jobs_assigned": "割り当てられた業務はありません。",
+      "no_hostesses_scheduled": "予定されたホステスはいません。",
+      "no_attendance_today": "本日の勤怠記録はありません。",
+      "no_reservations_today": "本日の予約はありません。",
+      "no_assignments_yet": "まだ割当はありません",
+      "all_clear": "すべて完了しました！",
+      "all_clear_sub": "未処理のタスクはありません。お疲れさまでした。",
+      "ago_minutes": "{{n}}分前",
+      "ago_hm": "{{h}}時間{{m}}分前",
+      "hours_short": "{{n}}時間",
+      "hours_worked": "{{n}}時間勤務",
+      "priority": {
+        "high": "高",
+        "normal": "普通",
+        "low": "低"
+      },
+      "room_status": {
+        "available": "利用可",
+        "occupied": "使用中",
+        "cleaning": "清掃中",
+        "maintenance": "整備中",
+        "blocked": "停止中"
+      },
+      "attendance": {
+        "present": "出勤",
+        "late": "遅刻",
+        "absent": "欠勤",
+        "day_off": "休日",
+        "sick": "病欠",
+        "no_show": "無断欠勤",
+        "early_leave": "早退"
+      },
+      "order_status": {
+        "pending": "待機",
+        "preparing": "調理中",
+        "ready": "提供可",
+        "done": "終了",
+        "paid": "支払済",
+        "partial": "一部支払"
+      },
+      "delivery_status": {
+        "scheduled": "予定",
+        "en_route": "移動中",
+        "arrived": "到着",
+        "completed": "完了",
+        "issue": "問題発生"
+      },
+      "actions": {
+        "start_prep": "調理開始",
+        "mark_ready": "準備完了",
+        "complete": "完了",
+        "mark_done": "完了"
+      }
+    },
+    "hostess": {
+      "title": "勤務表",
+      "todays_attendance": "本日の勤怠",
+      "clocked_in": "出勤時刻",
+      "clocked_out": "退勤時刻",
+      "gps_label": "GPS",
+      "attendance_completed": "本日の勤怠は完了しました",
+      "clock_in": "出勤",
+      "clock_out": "退勤",
+      "clock_in_failed": "出勤打刻に失敗しました",
+      "clock_out_failed": "退勤打刻に失敗しました",
+      "clocked_in_at": "{{time}}に出勤",
+      "clocked_out_at": "{{time}}に退勤",
+      "gps_captured": "GPS位置を記録",
+      "my_commission": "マイ・コミッション",
+      "last_3_months": "（直近3ヶ月）",
+      "sessions_count": "{{n}}セッション",
+      "recent_assignments": "最近の割当",
+      "primary": "メイン"
+    },
+    "branch_manager": {
+      "title": "支店長ダッシュボード",
+      "live_branch_ops": "支店のライブ運用状況",
+      "all_branches": "全支店",
+      "kpi": {
+        "revenue_today": "本日の売上",
+        "occupied_rooms": "使用中ルーム",
+        "staff_on_duty": "勤務中スタッフ",
+        "sessions_today": "本日のセッション",
+        "occupancy_pct": "稼働率 {{pct}}%",
+        "clocked_in_sub": "出勤済",
+        "all_reservation_statuses": "全予約ステータス"
+      },
+      "live_room_board": "ライブ・ルームボード",
+      "staff_on_duty": "勤務中スタッフ",
+      "todays_reservations": "本日の予約"
+    },
+    "manager": {
+      "title": "マネージャー・ダッシュボード",
+      "subtitle": "F&Bおよびホステスのライブ運用",
+      "kpi": {
+        "open_folios": "未会計フォリオ",
+        "pending_orders": "未処理オーダー",
+        "active_hostesses": "稼働中ホステス",
+        "in_session": "進行時間",
+        "unpaid_or_partial": "未払いまたは一部支払",
+        "of_n_on_duty": "勤務中{{n}}名",
+        "oldest_session": "最長進行セッション"
+      },
+      "open_orders": "進行中オーダー",
+      "hostess_board": "ホステスボード",
+      "table": {
+        "room": "ルーム",
+        "reservation_no": "予約番号",
+        "items": "数量",
+        "total": "合計",
+        "status": "ステータス"
+      },
+      "rate_per_hour": "時給RM{{rate}}"
+    },
+    "driver": {
+      "title": "ドライバー・ダッシュボード",
+      "subtitle": "本日の送迎スケジュール",
+      "kpi": {
+        "trips_today": "本日の運行",
+        "pending": "予定",
+        "active": "進行中",
+        "completed": "完了",
+        "scheduled_jobs": "予定された運行",
+        "en_route_arrived": "移動中 / 到着",
+        "today": "本日"
+      },
+      "next_job": "次の運行",
+      "pickup_label": "ピックアップ",
+      "return_to": "復帰先",
+      "address_not_specified": "住所未指定",
+      "job_queue": "運行キュー"
+    },
+    "kitchen": {
+      "title": "キッチン・ダッシュボード",
+      "subtitle": "ライブ・オーダーキュー — 15秒ごとに更新",
+      "kpi": {
+        "pending": "待機",
+        "preparing": "調理中",
+        "ready_to_serve": "提供可",
+        "completed_today": "本日完了"
+      },
+      "active_orders": "進行中オーダー"
+    },
+    "hall": {
+      "title": "ホールスタッフ・ダッシュボード",
+      "subtitle": "担当エリアのサービスタスクキュー",
+      "kpi": {
+        "open_tasks": "未処理タスク",
+        "high_priority": "緊急タスク",
+        "completed_today": "本日完了",
+        "total_orders": "全オーダー"
+      },
+      "task_queue": "タスクキュー"
+    },
+    "general": {
+      "default_name": "スタッフ",
+      "default_role": "一般",
+      "kpi": {
+        "attendance_rate": "出勤率",
+        "hours_this_month": "今月の労働時間",
+        "penalty_deduction": "ペナルティ控除",
+        "est_net_pay": "予想手取り",
+        "days_present": "出勤{{n}}日",
+        "late_days": "遅刻{{n}}日",
+        "base_minus_penalties": "基本給から控除を除いた額"
+      },
+      "attendance_14": "出勤記録（直近14日）",
+      "table": {
+        "date": "日付",
+        "clock_in": "出勤",
+        "clock_out": "退勤",
+        "hours": "時間",
+        "status": "ステータス"
+      },
+      "pay_estimate": "給与見込み",
+      "base_salary": "基本給",
+      "penalty_deductions": "ペナルティ控除",
+      "est_net_pay_label": "予想手取り",
+      "currency_note": "通貨：{{ccy}} · 概算で、最終承認により変動します。",
+      "this_month": "今月",
+      "present": "出勤",
+      "late": "遅刻",
+      "absent": "欠勤",
+      "days_short": "{{n}}日"
+    }
   }
 }

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
 import { useAuthStore } from "@/lib/auth";
@@ -11,20 +12,21 @@ const ROLE_COLOR = "#2dd4bf"; // Teal
 type RoomRow = { id: string; name: string; room_type: string; status: string; floor_level: string | null; capacity_min: number | null; capacity_max: number | null };
 type StaffRow = { full_name: string; role: string; employee_code: string; clock_in: string | null; attendance_status: string; late_minutes: number };
 
-const STATUS_STYLES: Record<string, { border: string; bg: string; label: string }> = {
-  available:   { border: "border-emerald-500", bg: "bg-emerald-500/10", label: "Available" },
-  occupied:    { border: "border-red-500",     bg: "bg-red-500/10",     label: "Occupied" },
-  cleaning:    { border: "border-amber-500",   bg: "bg-amber-500/10",   label: "Cleaning" },
-  maintenance: { border: "border-gray-500",    bg: "bg-gray-500/10",    label: "Maintenance" },
-  blocked:     { border: "border-gray-700",    bg: "bg-gray-700/10",    label: "Blocked" },
+const STATUS_STYLES: Record<string, { border: string; bg: string }> = {
+  available:   { border: "border-emerald-500", bg: "bg-emerald-500/10" },
+  occupied:    { border: "border-red-500",     bg: "bg-red-500/10" },
+  cleaning:    { border: "border-amber-500",   bg: "bg-amber-500/10" },
+  maintenance: { border: "border-gray-500",    bg: "bg-gray-500/10" },
+  blocked:     { border: "border-gray-700",    bg: "bg-gray-700/10" },
 };
 
 function RoomChip({ room }: { room: RoomRow }) {
+  const { t } = useTranslation();
   const s = STATUS_STYLES[room.status] ?? STATUS_STYLES.blocked;
   return (
     <div className={`rounded-xl border-2 ${s.border} ${s.bg} p-3 flex flex-col gap-1`}>
       <span className="font-semibold text-sm text-foreground truncate">{room.name}</span>
-      <span className={`text-xs font-medium`} style={{ color: ROLE_COLOR }}>{s.label}</span>
+      <span className={`text-xs font-medium`} style={{ color: ROLE_COLOR }}>{t(`dashboards.common.room_status.${room.status}`, { defaultValue: room.status })}</span>
       <span className="text-xs text-muted-foreground capitalize">{room.room_type.replace("_", " ")}</span>
     </div>
   );
@@ -54,6 +56,7 @@ async function fetchJson(url: string, token?: string | null) {
 }
 
 export default function BranchManagerDashboard() {
+  const { t } = useTranslation();
   const { user, token } = useAuthStore();
   const branchId = user?.branchId;
   const qs = branchId ? `?branch_id=${branchId}` : "";
@@ -84,11 +87,11 @@ export default function BranchManagerDashboard() {
         <div className="flex items-center gap-3">
           <div className="w-2 h-8 rounded-full" style={{ backgroundColor: ROLE_COLOR }} />
           <div>
-            <h1 className="text-xl font-bold font-display">Branch Manager Dashboard</h1>
+            <h1 className="text-xl font-bold font-display">{t("dashboards.branch_manager.title")}</h1>
             <p className="text-sm text-muted-foreground">
-              {user?.branchId ? "Live branch operations" : "All branches"}
+              {user?.branchId ? t("dashboards.branch_manager.live_branch_ops") : t("dashboards.branch_manager.all_branches")}
               <span className="ml-2 inline-flex items-center gap-1 text-emerald-400">
-                <Wifi className="w-3 h-3" /> LIVE
+                <Wifi className="w-3 h-3" /> {t("dashboards.common.live")}
               </span>
             </p>
           </div>
@@ -101,10 +104,10 @@ export default function BranchManagerDashboard() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <KpiCard label="Today's Revenue" value={formatCurrency(live.revenue_today ?? 0)} icon={TrendingUp} color={ROLE_COLOR} />
-            <KpiCard label="Occupied Rooms" value={`${roomSummary.occupied} / ${rooms.length}`} sub={`${Math.round((roomSummary.occupied / (rooms.length || 1)) * 100)}% occupancy`} icon={BedDouble} color="#f5c842" />
-            <KpiCard label="Staff On Duty" value={String(live.staff_on_duty ?? 0)} sub="Clocked in" icon={Users} color="#60a5fa" />
-            <KpiCard label="Sessions Today" value={String(totalRes)} sub="All reservation statuses" icon={CalendarCheck} color="#4ade80" />
+            <KpiCard label={t("dashboards.branch_manager.kpi.revenue_today")} value={formatCurrency(live.revenue_today ?? 0)} icon={TrendingUp} color={ROLE_COLOR} />
+            <KpiCard label={t("dashboards.branch_manager.kpi.occupied_rooms")} value={`${roomSummary.occupied} / ${rooms.length}`} sub={t("dashboards.branch_manager.kpi.occupancy_pct", { pct: Math.round((roomSummary.occupied / (rooms.length || 1)) * 100) })} icon={BedDouble} color="#f5c842" />
+            <KpiCard label={t("dashboards.branch_manager.kpi.staff_on_duty")} value={String(live.staff_on_duty ?? 0)} sub={t("dashboards.branch_manager.kpi.clocked_in_sub")} icon={Users} color="#60a5fa" />
+            <KpiCard label={t("dashboards.branch_manager.kpi.sessions_today")} value={String(totalRes)} sub={t("dashboards.branch_manager.kpi.all_reservation_statuses")} icon={CalendarCheck} color="#4ade80" />
           </div>
         )}
 
@@ -112,9 +115,9 @@ export default function BranchManagerDashboard() {
           {/* Live Room Board */}
           <Card className="lg:col-span-2 p-6">
             <h3 className="font-display text-lg font-semibold mb-4 flex items-center gap-2">
-              Live Room Board
+              {t("dashboards.branch_manager.live_room_board")}
               <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" /> LIVE
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" /> {t("dashboards.common.live")}
               </span>
             </h3>
             {liveLoading ? (
@@ -131,7 +134,7 @@ export default function BranchManagerDashboard() {
               {Object.entries(STATUS_STYLES).map(([k, v]) => (
                 <div key={k} className="flex items-center gap-2 text-xs text-muted-foreground">
                   <div className={`w-2.5 h-2.5 rounded-full border-2 ${v.border}`} />
-                  {v.label}: {(roomSummary as Record<string, number>)[k] ?? 0}
+                  {t(`dashboards.common.room_status.${k}`, { defaultValue: k })}: {(roomSummary as Record<string, number>)[k] ?? 0}
                 </div>
               ))}
             </div>
@@ -139,13 +142,13 @@ export default function BranchManagerDashboard() {
 
           {/* Staff On Duty */}
           <Card className="p-6">
-            <h3 className="font-display text-lg font-semibold mb-4">Staff On Duty</h3>
+            <h3 className="font-display text-lg font-semibold mb-4">{t("dashboards.branch_manager.staff_on_duty")}</h3>
             {staffLoading ? (
               <div className="space-y-3 animate-pulse">
                 {[1,2,3].map(i => <div key={i} className="h-12 bg-muted/40 rounded-lg" />)}
               </div>
             ) : staff.length === 0 ? (
-              <p className="text-muted-foreground text-sm">No attendance records today.</p>
+              <p className="text-muted-foreground text-sm">{t("dashboards.common.no_attendance_today")}</p>
             ) : (
               <div className="space-y-2.5 max-h-[360px] overflow-y-auto">
                 {staff.map((s, i) => (
@@ -156,14 +159,14 @@ export default function BranchManagerDashboard() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{s.full_name}</p>
-                      <p className="text-xs text-muted-foreground capitalize">{s.role.replace("_", " ")}</p>
+                      <p className="text-xs text-muted-foreground capitalize">{t(`staff.role.${s.role}`, { defaultValue: s.role.replace("_", " ") })}</p>
                     </div>
                     <span className={`text-xs px-2 py-0.5 rounded-full ${
                       s.clock_in && !s.clock_out ? "bg-emerald-500/15 text-emerald-400" :
                       s.attendance_status === "late" ? "bg-amber-500/15 text-amber-400" :
                       "bg-white/5 text-muted-foreground"
                     }`}>
-                      {s.clock_in && !s.clock_out ? "On duty" : s.attendance_status}
+                      {s.clock_in && !s.clock_out ? t("dashboards.common.on_duty") : t(`dashboards.common.attendance.${s.attendance_status}`, { defaultValue: s.attendance_status })}
                     </span>
                   </div>
                 ))}
@@ -174,15 +177,15 @@ export default function BranchManagerDashboard() {
 
         {/* Reservation Status Breakdown */}
         <Card className="p-6">
-          <h3 className="font-display text-lg font-semibold mb-4">Today's Reservations</h3>
+          <h3 className="font-display text-lg font-semibold mb-4">{t("dashboards.branch_manager.todays_reservations")}</h3>
           <div className="flex flex-wrap gap-3">
             {resvToday.map(r => (
               <div key={r.status} className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-center">
                 <p className="text-lg font-bold font-mono">{r.count}</p>
-                <p className="text-xs text-muted-foreground capitalize">{r.status.replace("_", " ")}</p>
+                <p className="text-xs text-muted-foreground capitalize">{t(`booking.status.${r.status}`, { defaultValue: r.status.replace("_", " ") })}</p>
               </div>
             ))}
-            {resvToday.length === 0 && <p className="text-muted-foreground text-sm">No reservations today.</p>}
+            {resvToday.length === 0 && <p className="text-muted-foreground text-sm">{t("dashboards.common.no_reservations_today")}</p>}
           </div>
         </Card>
       </div>
