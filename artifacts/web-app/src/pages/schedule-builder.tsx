@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -125,6 +126,7 @@ interface DragState {
 }
 
 export default function ScheduleBuilder() {
+  const { t } = useTranslation();
   const { token, user } = useAuthStore();
   const [branchId, setBranchId] = useState(user?.branchId ?? "");
   const [effectiveFrom, setEffectiveFrom] = useState(() => {
@@ -467,7 +469,7 @@ export default function ScheduleBuilder() {
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-2xl font-display font-bold">Schedule Builder</h1>
+            <h1 className="text-2xl font-display font-bold">{t("pages.schedule_builder.title")}</h1>
             <p className="text-muted-foreground text-sm mt-1">
               Drag to move &middot;{" "}
               <kbd className="text-[10px] bg-white/10 px-1 py-0.5 rounded border border-white/20">Alt</kbd>

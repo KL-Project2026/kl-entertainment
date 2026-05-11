@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { useAuthStore } from "@/lib/auth";
@@ -313,6 +314,7 @@ function AgencyModal({
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function AgencyManagement() {
+  const { t } = useTranslation();
   const { token } = useAuthStore();
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -352,7 +354,7 @@ export default function AgencyManagement() {
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
-              <Briefcase className="w-6 h-6" /> Agencies Management
+              <Briefcase className="w-6 h-6" /> {t("pages.agency_management.title")}
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">Agency &amp; Hostess Commission Management</p>
           </div>

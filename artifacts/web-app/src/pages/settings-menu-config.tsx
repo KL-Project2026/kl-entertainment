@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
@@ -882,6 +883,7 @@ function BranchOverridesView({ authH, isAdmin, userBranchId, userRole }: BranchO
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function SettingsMenuConfig() {
+  const { t } = useTranslation();
   const { token, user } = useAuthStore();
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -1059,7 +1061,7 @@ export default function SettingsMenuConfig() {
         {/* ── Page Header ──────────────────────────────────────────────────── */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="font-display text-2xl font-bold text-foreground">Menu Configuration</h1>
+            <h1 className="font-display text-2xl font-bold text-foreground">{t("pages.settings_menu_config.title")}</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
               Manage categories, sub-types, tax overrides and branch visibility
             </p>

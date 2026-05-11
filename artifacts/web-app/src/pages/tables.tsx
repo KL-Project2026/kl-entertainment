@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout";
@@ -141,10 +142,10 @@ function AvailabilityTimeline({
           <DateInput value={date} onChange={e => setDate(e.target.value)} wrapperClassName="w-44" />
         </div>
         <div>
-          <Label className="text-xs mb-1 block">Branch</Label>
+          <Label className="text-xs mb-1 block">{t("common.branch")}</Label>
           <Select value={branchFilter} onValueChange={setBranchFilter}>
             <SelectTrigger className="w-[200px] h-9">
-              <SelectValue placeholder="Select branch…" />
+              <SelectValue placeholder={t("common.select_branch")} />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__none__">Select a branch…</SelectItem>
@@ -235,14 +236,14 @@ function AvailabilityTimeline({
 
                     {rt.reservations.length === 0 && (
                       <div className="absolute inset-0 flex items-center px-3">
-                        <span className="text-[10px] text-muted-foreground/50">Available all day</span>
+                        <span className="text-[10px] text-muted-foreground/50">{t("pages.tables.available_all_day")}</span>
                       </div>
                     )}
                   </div>
 
                   {/* Daily revenue */}
                   <div className="shrink-0 w-24 px-2 flex flex-col justify-center items-end border-l border-white/10">
-                    <div className="text-[10px] text-muted-foreground">Revenue</div>
+                    <div className="text-[10px] text-muted-foreground">{t("common.revenue")}</div>
                     <div className="text-xs font-semibold text-green-400">
                       {rt.daily_revenue > 0 ? `MYR ${rt.daily_revenue.toLocaleString("en-MY", { minimumFractionDigits: 0 })}` : "—"}
                     </div>
@@ -268,15 +269,15 @@ function AvailabilityTimeline({
               </div>
               <div className="grid grid-cols-3 gap-4 text-center">
                 <div>
-                  <div className="text-xs text-muted-foreground">Rooms</div>
+                  <div className="text-xs text-muted-foreground">{t("pages.tables.rooms")}</div>
                   <div className="font-semibold">{data.room_tables.filter(r => r.type === "ROOM").length}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-muted-foreground">Bookings</div>
+                  <div className="text-xs text-muted-foreground">{t("common.bookings")}</div>
                   <div className="font-semibold">{data.room_tables.reduce((s, r) => s + r.reservations.length, 0)}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-muted-foreground">Active</div>
+                  <div className="text-xs text-muted-foreground">{t("pages.tables.active_label")}</div>
                   <div className="font-semibold text-green-400">{data.room_tables.filter(r => r.status === "ACTIVE").length}</div>
                 </div>
               </div>
@@ -285,7 +286,7 @@ function AvailabilityTimeline({
             {/* Per-room revenue breakdown */}
             {data.room_tables.filter(r => r.daily_revenue > 0).length > 0 && (
               <div className="mt-3 pt-3 border-t border-white/10">
-                <div className="text-xs text-muted-foreground mb-2">Revenue by room:</div>
+                <div className="text-xs text-muted-foreground mb-2">{t("pages.tables.revenue_by_room")}</div>
                 <div className="flex flex-wrap gap-2">
                   {data.room_tables.filter(r => r.daily_revenue > 0).map(r => (
                     <div key={r.id} className="flex items-center gap-1.5 text-xs bg-white/5 rounded-full px-2.5 py-1">
@@ -450,6 +451,7 @@ function RoomModal({
 
 // ── Main Page ──────────────────────────────────────────────────────────────
 export default function Tables() {
+  const { t } = useTranslation();
   const [, navigate] = useLocation();
   const { token } = useAuthStore();
   const authH = token ? { Authorization: `Bearer ${token}` } : {};

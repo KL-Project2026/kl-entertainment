@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -175,6 +176,7 @@ function ReportRow({ report, onExport }: { report: InvestorReport; onExport: (pe
 }
 
 export default function InvestorReports() {
+  const { t } = useTranslation();
   const { token } = useAuthStore();
   const qc = useQueryClient();
   const [period, setPeriod] = useState("");
@@ -221,7 +223,7 @@ export default function InvestorReports() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-display font-bold flex items-center gap-2">
-              <PieChart className="w-6 h-6 text-primary" /> Investor Reports
+              <PieChart className="w-6 h-6 text-primary" /> {t("pages.investor_reports.title")}
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">
               Monthly aggregated performance reports — CONFIDENTIAL

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
@@ -629,6 +630,7 @@ function HostessCard({
 
 // ─── Main Page ────────────────────────────────────────────────────
 export default function HostessProfiles() {
+  const { t } = useTranslation();
   const { token } = useAuthStore();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -686,7 +688,7 @@ export default function HostessProfiles() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-primary">Hostess Profiles</h1>
+          <h1 className="text-2xl font-bold text-primary">{t("pages.hostess_profiles.title")}</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             {profiles.length} profiles · {available} available today
           </p>

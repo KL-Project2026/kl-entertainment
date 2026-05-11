@@ -1,4 +1,5 @@
 import { useAuthStore } from "@/lib/auth";
+import { useTranslation } from "react-i18next";
 import { useListBranches, useGetBranchDashboard } from "@workspace/api-client-react";
 import { Card, Tabs } from "@/components/ui";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -23,6 +24,7 @@ const ROOM_STATUS_TONE: Record<string, string> = {
 };
 
 export default function Dashboard() {
+  const { t } = useTranslation();
   const { user } = useAuthStore();
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(user?.branchId || null);
 
@@ -53,8 +55,8 @@ export default function Dashboard() {
   return (
     <div className="space-y-8">
       <PageHeader
-        eyebrow="Operations"
-        title="Overview"
+        eyebrow={t("nav.dashboard")}
+        title={t("pages.dashboard.title")}
         description="Today's revenue, occupancy, and room status at a glance."
       />
 

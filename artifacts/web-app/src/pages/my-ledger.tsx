@@ -1,4 +1,5 @@
 import { DashboardLayout } from "@/components/layout";
+import { useTranslation } from "react-i18next";
 import { useAuthStore } from "@/lib/auth";
 import { useEffect, useState } from "react";
 import {
@@ -148,6 +149,7 @@ function EntryRow({ entry }: { entry: LedgerEntry }) {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function MyLedger() {
+  const { t } = useTranslation();
   const { token } = useAuthStore();
   const { toast } = useToast();
 
@@ -197,7 +199,7 @@ export default function MyLedger() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-foreground">Account Ledger</h1>
+            <h1 className="text-xl font-bold text-foreground">{t("pages.my_ledger.title")}</h1>
             <p className="text-xs text-muted-foreground mt-0.5">Your earnings, deductions &amp; transactions</p>
           </div>
           <Button

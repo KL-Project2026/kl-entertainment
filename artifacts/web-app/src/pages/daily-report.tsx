@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
 import { DateInput } from "@/components/ui/date-input";
@@ -23,6 +24,7 @@ interface DailyData {
 }
 
 export default function DailyReport() {
+  const { t } = useTranslation();
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [data, setData] = useState<DailyData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -57,7 +59,7 @@ export default function DailyReport() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-display font-bold flex items-center gap-2">
-              <BarChart3 className="w-6 h-6 text-primary" /> Daily Sales Report
+              <BarChart3 className="w-6 h-6 text-primary" /> {t("pages.daily_report.title")}
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">Daily revenue &amp; payment overview</p>
           </div>

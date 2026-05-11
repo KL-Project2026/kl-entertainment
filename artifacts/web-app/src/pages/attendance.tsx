@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -56,6 +57,7 @@ function formatTime(ts: string | null) {
 }
 
 export default function Attendance() {
+  const { t } = useTranslation();
   const { token, user } = useAuthStore();
   const queryClient = useQueryClient();
   const today = new Date().toISOString().split("T")[0];
@@ -142,7 +144,7 @@ export default function Attendance() {
       <div className="p-6 space-y-6">
         {/* Header */}
         <div>
-          <h1 className="text-2xl font-display font-bold">Attendance</h1>
+          <h1 className="text-2xl font-display font-bold">{t("pages.attendance.title")}</h1>
           <p className="text-muted-foreground text-sm mt-1">Clock-in/out and lateness tracking</p>
         </div>
 

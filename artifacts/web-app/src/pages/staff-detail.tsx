@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useParams, useLocation } from "wouter";
 import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
@@ -34,6 +35,7 @@ function DetailRow({ label, value }: { label: string; value?: string | null | nu
 }
 
 export default function StaffDetail() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
@@ -122,9 +124,9 @@ export default function StaffDetail() {
     return (
       <DashboardLayout>
         <div className="p-6 text-center py-20 text-muted-foreground">
-          <p>Staff member not found.</p>
+          <p>{t("staff_detail.not_found")}</p>
           <Button variant="ghost" onClick={() => navigate("/staff")} className="mt-4 gap-2">
-            <ArrowLeft className="w-4 h-4" /> Back to Staff
+            <ArrowLeft className="w-4 h-4" /> {t("staff_detail.back_to_staff")}
           </Button>
         </div>
       </DashboardLayout>
@@ -148,7 +150,7 @@ export default function StaffDetail() {
                   {staff.role?.replace(/_/g, " ")}
                 </Badge>
                 {!staff.isActive && (
-                  <Badge className="border text-xs bg-red-500/10 text-red-400 border-red-500/30">Inactive</Badge>
+                  <Badge className="border text-xs bg-red-500/10 text-red-400 border-red-500/30">{t("staff_detail.inactive")}</Badge>
                 )}
               </div>
               {staff.employeeCode && (
@@ -159,30 +161,30 @@ export default function StaffDetail() {
           <div className="flex gap-2">
             {!editing ? (
               <Button size="sm" variant="outline" onClick={startEditing} className="gap-1.5">
-                <Edit2 className="w-3.5 h-3.5" /> Edit
+                <Edit2 className="w-3.5 h-3.5" /> {t("common.edit")}
               </Button>
             ) : (
               <>
                 <Button size="sm" variant="ghost" onClick={() => setEditing(false)} className="gap-1.5">
-                  <X className="w-3.5 h-3.5" /> Cancel
+                  <X className="w-3.5 h-3.5" /> {t("common.cancel")}
                 </Button>
                 <Button size="sm" onClick={() => updateMut.mutate()} disabled={updateMut.isPending} className="gap-1.5">
-                  <Save className="w-3.5 h-3.5" /> {updateMut.isPending ? "Saving…" : "Save"}
+                  <Save className="w-3.5 h-3.5" /> {updateMut.isPending ? t("staff_detail.saving") : t("common.save")}
                 </Button>
               </>
             )}
             <Button size="sm" variant="outline" onClick={() => clockInMut.mutate()} disabled={clockInMut.isPending} className="gap-1.5 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10">
-              <LogIn className="w-3.5 h-3.5" /> Clock In
+              <LogIn className="w-3.5 h-3.5" /> {t("staff_detail.clock_in")}
             </Button>
             <Button size="sm" variant="outline" onClick={() => clockOutMut.mutate()} disabled={clockOutMut.isPending} className="gap-1.5 text-amber-400 border-amber-500/30 hover:bg-amber-500/10">
-              <LogOut className="w-3.5 h-3.5" /> Clock Out
+              <LogOut className="w-3.5 h-3.5" /> {t("staff_detail.clock_out")}
             </Button>
           </div>
         </div>
 
         {/* ── Tabs ── */}
         <div style={{ display: "flex", gap: 4, borderBottom: "2px solid #e5e7eb", marginBottom: 24, flexWrap: "wrap" }}>
-          {([ ["info", "Profile"], ["attendance", "Attendance"], ["account", "Account"] ] as const).map(([key, label]) => (
+          {([ ["info", t("staff_detail.tab_profile")], ["attendance", t("staff_detail.tab_attendance")], ["account", t("staff_detail.tab_account")] ] as const).map(([key, label]) => (
             <button key={key} onClick={() => setActiveTab(key)} style={{
               padding: "10px 18px", background: "none", border: "none",
               borderBottom: `2px solid ${activeTab === key ? "#D1AE38" : "transparent"}`,
@@ -199,44 +201,44 @@ export default function StaffDetail() {
           {/* Profile */}
           <Card className="p-5 bg-black/40 border-white/5">
             <h3 className="font-display font-semibold mb-4 flex items-center gap-2">
-              <User className="w-4 h-4 text-primary" /> Profile
+              <User className="w-4 h-4 text-primary" /> {t("staff_detail.profile")}
             </h3>
             {editing ? (
               <div className="space-y-3">
                 <div>
-                  <label className="text-xs text-muted-foreground block mb-1">Full Name</label>
+                  <label className="text-xs text-muted-foreground block mb-1">{t("staff_detail.full_name")}</label>
                   <Input value={editForm.fullName} onChange={e => setEditForm(f => ({ ...f, fullName: e.target.value }))} />
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground block mb-1">Phone</label>
+                  <label className="text-xs text-muted-foreground block mb-1">{t("staff_detail.phone")}</label>
                   <Input value={editForm.phone} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} />
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground block mb-1">Email</label>
+                  <label className="text-xs text-muted-foreground block mb-1">{t("staff_detail.email")}</label>
                   <Input value={editForm.email} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} />
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground block mb-1">Employment Type</label>
+                  <label className="text-xs text-muted-foreground block mb-1">{t("staff_detail.employment_type")}</label>
                   <Select value={editForm.employmentType} onValueChange={v => setEditForm(f => ({ ...f, employmentType: v }))}>
                     <SelectTrigger className="bg-black/30">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="full_time">Full Time</SelectItem>
-                      <SelectItem value="part_time">Part Time</SelectItem>
-                      <SelectItem value="freelance">Freelance</SelectItem>
+                      <SelectItem value="full_time">{t("staff_detail.full_time")}</SelectItem>
+                      <SelectItem value="part_time">{t("staff_detail.part_time")}</SelectItem>
+                      <SelectItem value="freelance">{t("staff_detail.freelance")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
             ) : (
               <>
-                <DetailRow label="Full Name" value={staff.fullName} />
-                <DetailRow label="Legal Name" value={staff.legalName} />
-                <DetailRow label="Nationality" value={staff.nationality} />
-                <DetailRow label="Employment Type" value={staff.employmentType?.replace(/_/g, " ")} />
-                <DetailRow label="Hire Date" value={staff.hireDate ? formatDate(staff.hireDate) : null} />
-                <DetailRow label="Agent" value={staff.agentName} />
+                <DetailRow label={t("staff_detail.full_name")} value={staff.fullName} />
+                <DetailRow label={t("staff_detail.legal_name")} value={staff.legalName} />
+                <DetailRow label={t("staff_detail.nationality")} value={staff.nationality} />
+                <DetailRow label={t("staff_detail.employment_type")} value={staff.employmentType?.replace(/_/g, " ")} />
+                <DetailRow label={t("staff_detail.hire_date")} value={staff.hireDate ? formatDate(staff.hireDate) : null} />
+                <DetailRow label={t("staff_detail.agent")} value={staff.agentName} />
               </>
             )}
           </Card>
@@ -244,21 +246,21 @@ export default function StaffDetail() {
           {/* Contact & Pay */}
           <Card className="p-5 bg-black/40 border-white/5">
             <h3 className="font-display font-semibold mb-4 flex items-center gap-2">
-              <Phone className="w-4 h-4 text-primary" /> Contact & Pay
+              <Phone className="w-4 h-4 text-primary" /> {t("staff_detail.contact_pay")}
             </h3>
-            <DetailRow label="Phone" value={staff.phone} />
-            <DetailRow label="WhatsApp" value={staff.whatsapp} />
-            <DetailRow label="Email" value={staff.email} />
+            <DetailRow label={t("staff_detail.phone")} value={staff.phone} />
+            <DetailRow label={t("staff_detail.whatsapp")} value={staff.whatsapp} />
+            <DetailRow label={t("staff_detail.email")} value={staff.email} />
 
             <h3 className="font-display font-semibold mt-5 mb-4 flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-primary" /> Compensation
+              <TrendingUp className="w-4 h-4 text-primary" /> {t("staff_detail.compensation")}
             </h3>
-            <DetailRow label="Base Salary" value={staff.baseSalary ? formatCurrency(staff.baseSalary) : null} />
-            <DetailRow label="Currency" value={staff.salaryCurrency} />
+            <DetailRow label={t("staff_detail.base_salary")} value={staff.baseSalary ? formatCurrency(staff.baseSalary) : null} />
+            <DetailRow label={t("staff_detail.currency")} value={staff.salaryCurrency} />
             {earningsData && (
               <>
-                <DetailRow label="This Month Earnings" value={formatCurrency(earningsData.totalEarnings ?? 0)} />
-                <DetailRow label="Sessions" value={earningsData.sessions} />
+                <DetailRow label={t("staff_detail.this_month_earnings")} value={formatCurrency(earningsData.totalEarnings ?? 0)} />
+                <DetailRow label={t("staff_detail.sessions")} value={earningsData.sessions} />
               </>
             )}
           </Card>
@@ -268,16 +270,16 @@ export default function StaffDetail() {
         {attendanceData && attendanceData.length > 0 && (
           <Card className="p-5 bg-black/40 border-white/5">
             <h3 className="font-display font-semibold mb-4 flex items-center gap-2">
-              <Clock className="w-4 h-4 text-primary" /> Attendance (This Month)
+              <Clock className="w-4 h-4 text-primary" /> {t("staff_detail.attendance_this_month")}
             </h3>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="text-left text-xs text-muted-foreground border-b border-white/10">
-                    <th className="pb-2 pr-4">Date</th>
-                    <th className="pb-2 pr-4">Status</th>
-                    <th className="pb-2 pr-4">Clock In</th>
-                    <th className="pb-2">Clock Out</th>
+                    <th className="pb-2 pr-4">{t("staff_detail.col_date")}</th>
+                    <th className="pb-2 pr-4">{t("staff_detail.col_status")}</th>
+                    <th className="pb-2 pr-4">{t("staff_detail.col_clock_in")}</th>
+                    <th className="pb-2">{t("staff_detail.col_clock_out")}</th>
                   </tr>
                 </thead>
                 <tbody>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useParams, useLocation } from "wouter";
 import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
@@ -29,6 +30,7 @@ function DetailRow({ label, value }: { label: string; value?: string | null | nu
 }
 
 export default function ShareholderDetail() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
@@ -93,9 +95,9 @@ export default function ShareholderDetail() {
     return (
       <DashboardLayout>
         <div className="p-6 text-center py-20 text-muted-foreground">
-          <p>Shareholder not found.</p>
+          <p>{t("shareholder_detail.not_found")}</p>
           <Button variant="ghost" onClick={() => navigate("/shareholders")} className="mt-4 gap-2">
-            <ArrowLeft className="w-4 h-4" /> Back to Shareholders
+            <ArrowLeft className="w-4 h-4" /> {t("shareholder_detail.back_to_shareholders")}
           </Button>
         </div>
       </DashboardLayout>
@@ -120,7 +122,7 @@ export default function ShareholderDetail() {
               <div className="flex items-center gap-3">
                 <h1 className="text-2xl font-display font-bold">{shareholder.name}</h1>
                 <Badge className={`border text-xs ${shareholder.isActive ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" : "bg-red-500/10 text-red-400 border-red-500/30"}`}>
-                  {shareholder.isActive ? "Active" : "Inactive"}
+                  {shareholder.isActive ? t("common_extra.active") : t("common_extra.inactive")}
                 </Badge>
               </div>
               {shareholder.nationality && (
@@ -131,15 +133,15 @@ export default function ShareholderDetail() {
           <div className="flex gap-2">
             {!editing ? (
               <Button size="sm" variant="outline" onClick={startEditing} className="gap-1.5">
-                <Edit2 className="w-3.5 h-3.5" /> Edit
+                <Edit2 className="w-3.5 h-3.5" /> {t("common.edit")}
               </Button>
             ) : (
               <>
                 <Button size="sm" variant="ghost" onClick={() => setEditing(false)} className="gap-1.5">
-                  <X className="w-3.5 h-3.5" /> Cancel
+                  <X className="w-3.5 h-3.5" /> {t("common.cancel")}
                 </Button>
                 <Button size="sm" onClick={() => updateMut.mutate()} disabled={updateMut.isPending} className="gap-1.5">
-                  <Save className="w-3.5 h-3.5" /> {updateMut.isPending ? "Saving…" : "Save"}
+                  <Save className="w-3.5 h-3.5" /> {updateMut.isPending ? t("shareholder_detail.saving") : t("common.save")}
                 </Button>
               </>
             )}
@@ -150,15 +152,15 @@ export default function ShareholderDetail() {
           {/* Profile */}
           <Card className="p-5 bg-black/40 border-white/5">
             <h3 className="font-display font-semibold mb-4 flex items-center gap-2">
-              <Users className="w-4 h-4 text-primary" /> Profile
+              <Users className="w-4 h-4 text-primary" /> {t("shareholder_detail.profile")}
             </h3>
             {editing ? (
               <div className="space-y-3">
                 {[
-                  { key: "name", label: "Name" },
-                  { key: "email", label: "Email" },
-                  { key: "phone", label: "Phone" },
-                  { key: "nationality", label: "Nationality" },
+                  { key: "name", label: t("shareholder_detail.name") },
+                  { key: "email", label: t("shareholder_detail.email") },
+                  { key: "phone", label: t("shareholder_detail.phone") },
+                  { key: "nationality", label: t("shareholder_detail.nationality") },
                 ].map(f => (
                   <div key={f.key}>
                     <label className="text-xs text-muted-foreground block mb-1">{f.label}</label>
@@ -168,12 +170,12 @@ export default function ShareholderDetail() {
               </div>
             ) : (
               <>
-                <DetailRow label="Email" value={shareholder.email} />
-                <DetailRow label="Phone" value={shareholder.phone} />
-                <DetailRow label="Nationality" value={shareholder.nationality} />
-                <DetailRow label="ID / Passport" value={shareholder.idNumber} />
-                <DetailRow label="Bank Account" value={shareholder.bankAccount} />
-                <DetailRow label="Bank Name" value={shareholder.bankName} />
+                <DetailRow label={t("shareholder_detail.email")} value={shareholder.email} />
+                <DetailRow label={t("shareholder_detail.phone")} value={shareholder.phone} />
+                <DetailRow label={t("shareholder_detail.nationality")} value={shareholder.nationality} />
+                <DetailRow label={t("shareholder_detail.id_passport")} value={shareholder.idNumber} />
+                <DetailRow label={t("shareholder_detail.bank_account")} value={shareholder.bankAccount} />
+                <DetailRow label={t("shareholder_detail.bank_name")} value={shareholder.bankName} />
               </>
             )}
           </Card>
@@ -181,10 +183,10 @@ export default function ShareholderDetail() {
           {/* Equity & Investment */}
           <Card className="p-5 bg-black/40 border-white/5">
             <h3 className="font-display font-semibold mb-4 flex items-center gap-2">
-              <Percent className="w-4 h-4 text-primary" /> Equity & Investment
+              <Percent className="w-4 h-4 text-primary" /> {t("shareholder_detail.equity_investment")}
             </h3>
             {equityList.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-6">No equity stakes recorded</p>
+              <p className="text-sm text-muted-foreground text-center py-6">{t("shareholder_detail.no_equity")}</p>
             ) : (
               <>
                 {equityList.map((e, i) => {
@@ -200,13 +202,13 @@ export default function ShareholderDetail() {
                             <span className="font-display font-bold text-primary text-base">{eqPct}%</span>
                             {ratePct && ratePct !== eqPct && (
                               <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400">
-                                {ratePct}% rate
+                                {t("shareholder_detail.pct_rate", { pct: ratePct })}
                               </span>
                             )}
                           </div>
                           {investment > 0 && (
                             <span className="text-xs text-emerald-400 font-medium">
-                              RM {investment.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} invested
+                              {t("shareholder_detail.rm_invested", { amount: investment.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) })}
                             </span>
                           )}
                         </div>
@@ -217,10 +219,10 @@ export default function ShareholderDetail() {
                 {equityList.length > 1 && (
                   <div className="flex justify-between items-center mt-3 pt-3 border-t border-white/10">
                     <div>
-                      <span className="text-sm text-muted-foreground">Total Equity</span>
+                      <span className="text-sm text-muted-foreground">{t("shareholder_detail.total_equity")}</span>
                       {totalInvestment > 0 && (
                         <p className="text-xs text-emerald-400 font-medium">
-                          RM {totalInvestment.toLocaleString("en-MY", { minimumFractionDigits: 2 })} total invested
+                          {t("shareholder_detail.total_invested", { amount: totalInvestment.toLocaleString("en-MY", { minimumFractionDigits: 2 }) })}
                         </p>
                       )}
                     </div>
@@ -236,16 +238,16 @@ export default function ShareholderDetail() {
         {settlements && settlements.length > 0 && (
           <Card className="p-5 bg-black/40 border-white/5">
             <h3 className="font-display font-semibold mb-4 flex items-center gap-2">
-              <FileText className="w-4 h-4 text-primary" /> Settlement History
+              <FileText className="w-4 h-4 text-primary" /> {t("shareholder_detail.settlement_history")}
             </h3>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="text-left text-xs text-muted-foreground border-b border-white/10">
-                    <th className="pb-2 pr-4">Period</th>
-                    <th className="pb-2 pr-4">Branch</th>
-                    <th className="pb-2 pr-4">Amount</th>
-                    <th className="pb-2">Status</th>
+                    <th className="pb-2 pr-4">{t("shareholder_detail.col_period")}</th>
+                    <th className="pb-2 pr-4">{t("shareholder_detail.col_branch")}</th>
+                    <th className="pb-2 pr-4">{t("shareholder_detail.col_amount")}</th>
+                    <th className="pb-2">{t("shareholder_detail.col_status")}</th>
                   </tr>
                 </thead>
                 <tbody>

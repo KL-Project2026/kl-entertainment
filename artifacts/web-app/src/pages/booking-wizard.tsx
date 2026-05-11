@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
 import {
   useListBranches,
@@ -79,7 +80,7 @@ function Step1({ form, onChange }: { form: FormData; onChange: (patch: Partial<F
           </Select>
         </div>
         <div className="space-y-1.5">
-          <label className="text-sm font-medium text-muted-foreground">Booking Channel</label>
+          <label className="text-sm font-medium text-muted-foreground">{t("pages.booking_wizard.booking_channel")}</label>
           <Select value={form.bookingChannel} onValueChange={(v) => onChange({ bookingChannel: v })}>
             <SelectTrigger className="bg-black/30">
               <SelectValue />
@@ -92,16 +93,16 @@ function Step1({ form, onChange }: { form: FormData; onChange: (patch: Partial<F
           </Select>
         </div>
         <div className="space-y-1.5">
-          <label className="text-sm font-medium text-muted-foreground">Customer Name</label>
+          <label className="text-sm font-medium text-muted-foreground">{t("pages.booking_wizard.customer_name")}</label>
           <Input
-            placeholder="Guest name (optional)"
+            placeholder={t("pages.booking_wizard.guest_name_placeholder")}
             value={form.customerName}
             onChange={(e) => onChange({ customerName: e.target.value })}
             icon={<User className="w-4 h-4" />}
           />
         </div>
         <div className="space-y-1.5">
-          <label className="text-sm font-medium text-muted-foreground">Phone</label>
+          <label className="text-sm font-medium text-muted-foreground">{t("common.phone")}</label>
           <Input
             placeholder="+60 1X-XXXXXXXX"
             value={form.customerPhone}
@@ -110,7 +111,7 @@ function Step1({ form, onChange }: { form: FormData; onChange: (patch: Partial<F
           />
         </div>
         <div className="space-y-1.5">
-          <label className="text-sm font-medium text-muted-foreground">Date *</label>
+          <label className="text-sm font-medium text-muted-foreground">{t("pages.booking_wizard.date")} *</label>
           <input
             type="date"
             value={form.reservationDate}
@@ -120,7 +121,7 @@ function Step1({ form, onChange }: { form: FormData; onChange: (patch: Partial<F
           />
         </div>
         <div className="space-y-1.5">
-          <label className="text-sm font-medium text-muted-foreground">Start Time *</label>
+          <label className="text-sm font-medium text-muted-foreground">{t("pages.booking_wizard.start_time")} *</label>
           <input
             type="time"
             value={form.startTime}
@@ -129,7 +130,7 @@ function Step1({ form, onChange }: { form: FormData; onChange: (patch: Partial<F
           />
         </div>
         <div className="space-y-1.5">
-          <label className="text-sm font-medium text-muted-foreground">Guest Count *</label>
+          <label className="text-sm font-medium text-muted-foreground">{t("pages.booking_wizard.guest_count")} *</label>
           <Input
             type="number"
             min={1}
@@ -140,7 +141,7 @@ function Step1({ form, onChange }: { form: FormData; onChange: (patch: Partial<F
           />
         </div>
         <div className="space-y-1.5">
-          <label className="text-sm font-medium text-muted-foreground">Duration (hours) *</label>
+          <label className="text-sm font-medium text-muted-foreground">{t("pages.booking_wizard.duration_hours")} *</label>
           <Input
             type="number"
             min={1}
@@ -154,9 +155,9 @@ function Step1({ form, onChange }: { form: FormData; onChange: (patch: Partial<F
       </div>
 
       <div className="space-y-1.5">
-        <label className="text-sm font-medium text-muted-foreground">Special Requests</label>
+        <label className="text-sm font-medium text-muted-foreground">{t("pages.booking_wizard.special_requests")}</label>
         <textarea
-          placeholder="Any special requests or notes..."
+          placeholder={t("pages.booking_wizard.special_requests_placeholder")}
           value={form.specialRequests}
           onChange={(e) => onChange({ specialRequests: e.target.value })}
           rows={3}
@@ -166,7 +167,7 @@ function Step1({ form, onChange }: { form: FormData; onChange: (patch: Partial<F
 
       <div className="grid grid-cols-3 gap-4 p-4 bg-black/20 rounded-xl border border-white/5">
         <div className="space-y-1.5 col-span-3 sm:col-span-1">
-          <label className="text-sm font-medium text-muted-foreground">Deposit Amount</label>
+          <label className="text-sm font-medium text-muted-foreground">{t("pages.booking_wizard.deposit_amount")}</label>
           <Input
             type="number"
             min={0}
@@ -175,7 +176,7 @@ function Step1({ form, onChange }: { form: FormData; onChange: (patch: Partial<F
           />
         </div>
         <div className="space-y-1.5">
-          <label className="text-sm font-medium text-muted-foreground">Deposit Paid</label>
+          <label className="text-sm font-medium text-muted-foreground">{t("pages.booking_wizard.deposit_paid")}</label>
           <div className="flex items-center h-10 gap-3">
             <button
               onClick={() => onChange({ depositPaid: !form.depositPaid })}
@@ -226,7 +227,7 @@ function Step2({ form, onChange }: { form: FormData; onChange: (patch: Partial<F
       <Card className="p-12 text-center bg-black/40">
         <DoorOpen className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
         <p className="text-muted-foreground">No rooms available for the selected time slot</p>
-        <p className="text-sm text-muted-foreground/60 mt-1">Try a different date, time, or duration</p>
+        <p className="text-sm text-muted-foreground/60 mt-1">{t("pages.booking_wizard.try_different")}</p>
       </Card>
     );
   }
@@ -284,10 +285,10 @@ function Step3({ form, onChange }: { form: FormData; onChange: (patch: Partial<F
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">Select hostesses to assign (optional)</p>
+      <p className="text-sm text-muted-foreground">{t("pages.booking_wizard.select_hostesses")}</p>
       {hostesses.length === 0 ? (
         <Card className="p-8 text-center bg-black/40">
-          <p className="text-muted-foreground">No hostesses available for this time slot</p>
+          <p className="text-muted-foreground">{t("pages.booking_wizard.no_hostesses_slot")}</p>
           <p className="text-sm text-muted-foreground/60 mt-1">You can proceed without assigning hostesses</p>
         </Card>
       ) : (
@@ -329,7 +330,7 @@ function Step4({ form }: { form: FormData }) {
       <p className="text-sm text-muted-foreground">Review your booking details before confirming</p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card className="p-4 bg-black/40 space-y-3">
-          <h4 className="font-semibold text-sm text-primary uppercase tracking-wider">Guest</h4>
+          <h4 className="font-semibold text-sm text-primary uppercase tracking-wider">{t("pages.booking_wizard.guest")}</h4>
           <div className="space-y-2 text-sm">
             <Row label="Name" value={form.customerName || "Walk-in"} />
             <Row label="Phone" value={form.customerPhone || "—"} />
@@ -337,7 +338,7 @@ function Step4({ form }: { form: FormData }) {
           </div>
         </Card>
         <Card className="p-4 bg-black/40 space-y-3">
-          <h4 className="font-semibold text-sm text-primary uppercase tracking-wider">Schedule</h4>
+          <h4 className="font-semibold text-sm text-primary uppercase tracking-wider">{t("pages.booking_wizard.schedule")}</h4>
           <div className="space-y-2 text-sm">
             <Row label="Branch" value={branch?.name || "—"} />
             <Row label="Date" value={form.reservationDate} />
@@ -347,7 +348,7 @@ function Step4({ form }: { form: FormData }) {
         </Card>
         {form.depositAmount > 0 && (
           <Card className="p-4 bg-black/40 space-y-3">
-            <h4 className="font-semibold text-sm text-primary uppercase tracking-wider">Deposit</h4>
+            <h4 className="font-semibold text-sm text-primary uppercase tracking-wider">{t("pages.booking_wizard.deposit")}</h4>
             <div className="space-y-2 text-sm">
               <Row label="Amount" value={`MYR ${form.depositAmount.toFixed(2)}`} />
               <Row label="Paid" value={form.depositPaid ? "Yes" : "No"} />
@@ -376,6 +377,7 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 export default function BookingWizard() {
+  const { t } = useTranslation();
   const [, navigate] = useLocation();
   const { user } = useAuthStore();
   const [step, setStep] = useState(0);
@@ -460,7 +462,7 @@ export default function BookingWizard() {
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div>
-          <h2 className="text-2xl font-display font-bold">New Booking</h2>
+          <h2 className="text-2xl font-display font-bold">{t("pages.booking_wizard.new_booking")}</h2>
           <p className="text-muted-foreground text-sm">Step {step + 1} of {STEPS.length}</p>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -64,6 +65,7 @@ function OccupancyBar({ pct }: { pct: number }) {
 }
 
 export default function InvestorDashboard() {
+  const { t } = useTranslation();
   const { token } = useAuthStore();
   const [selectedBranch, setSelectedBranch] = useState("__all__");
   const [activityFeed, setActivityFeed] = useState<ActivityItem[]>([]);
@@ -184,7 +186,7 @@ export default function InvestorDashboard() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-display font-bold">Investor Dashboard</h1>
+              <h1 className="text-2xl font-display font-bold">{t("pages.investor_dashboard.title")}</h1>
               <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border ${
                 socketConnected
                   ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"

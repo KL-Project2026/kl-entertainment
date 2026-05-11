@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useParams, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout";
@@ -16,8 +17,12 @@ const STATUS_COLORS: Record<string, string> = {
   void:          "bg-red-500/10 text-red-400 border-red-500/30",
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  paid: "Paid", partially_paid: "Partially Paid", issued: "Issued", draft: "Draft", void: "Void",
+const STATUS_KEY: Record<string, string> = {
+  paid: "invoice_detail.status_paid",
+  partially_paid: "invoice_detail.status_partially_paid",
+  issued: "invoice_detail.status_issued",
+  draft: "invoice_detail.status_draft",
+  void: "invoice_detail.status_void",
 };
 
 function InfoRow({ label, value, accent }: { label: string; value?: string | null; accent?: boolean }) {
@@ -51,6 +56,7 @@ interface PayData {
 }
 
 export default function InvoiceDetail() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
 
@@ -103,9 +109,9 @@ export default function InvoiceDetail() {
     return (
       <DashboardLayout>
         <div className="p-6 text-center py-20 text-muted-foreground">
-          <p>Invoice not found.</p>
+          <p>{t("invoice_detail.not_found")}</p>
           <Button variant="ghost" onClick={() => navigate("/invoices")} className="mt-4 gap-2">
-            <ArrowLeft className="w-4 h-4" /> Back to list
+            <ArrowLeft className="w-4 h-4" /> {t("invoice_detail.back_to_list")}
           </Button>
         </div>
       </DashboardLayout>
@@ -115,13 +121,13 @@ export default function InvoiceDetail() {
   const { inv, pays } = data;
   const status = inv.status;
   const statusColor = STATUS_COLORS[status] ?? "";
-  const statusLabel = STATUS_LABELS[status] ?? status;
+  const statusLabel = STATUS_KEY[status] ? t(STATUS_KEY[status]) : status;
 
   const summaryRows: { label: string; value: string; accent?: boolean }[] = [
-    { label: "Subtotal", value: formatCurrency(inv.subtotal) },
-    { label: "Tax",      value: formatCurrency(inv.tax_amount) },
-    { label: "Discount", value: `-${formatCurrency(inv.discount_amount)}` },
-    { label: "Total",    value: formatCurrency(inv.total_amount), accent: true },
+    { label: t("invoice_detail.subtotal"), value: formatCurrency(inv.subtotal) },
+    { label: t("invoice_detail.tax"),      value: formatCurrency(inv.tax_amount) },
+    { label: t("invoice_detail.discount"), value: `-${formatCurrency(inv.discount_amount)}` },
+    { label: t("invoice_detail.total"),    value: formatCurrency(inv.total_amount), accent: true },
   ];
 
   return (
@@ -140,7 +146,7 @@ export default function InvoiceDetail() {
                 <Badge className={`border text-xs ${statusColor}`}>{statusLabel}</Badge>
               </div>
               <p className="text-sm text-muted-foreground mt-0.5">
-                Booking: {inv.booking_ref} · Issued: {inv.issued_at ? formatDate(inv.issued_at) : "Not issued"}
+                {t("invoice_detail.booking_issued", { ref: inv.booking_ref, date: inv.issued_at ? formatDate(inv.issued_at) : t("invoice_detail.not_issued") })}
               </p>
             </div>
           </div>
@@ -160,22 +166,22 @@ export default function InvoiceDetail() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <Card className="p-5 bg-black/40 border-white/5">
             <h3 className="font-display font-semibold mb-4 flex items-center gap-2">
-              <FileText className="w-4 h-4 text-primary" /> Invoice Details
+              <FileText className="w-4 h-4 text-primary" /> {t("invoice_detail.invoice_details")}
             </h3>
-            <InfoRow label="Invoice No"       value={inv.invoice_no} />
-            <InfoRow label="Booking Ref"      value={inv.booking_ref} />
-            <InfoRow label="Issue Date"       value={inv.issued_at ? formatDate(inv.issued_at) : null} />
-            <InfoRow label="Currency"         value={inv.currency} />
-            <InfoRow label="Total"            value={formatCurrency(inv.total_amount)} accent />
+            <InfoRow label={t("invoice_detail.invoice_no")}       value={inv.invoice_no} />
+            <InfoRow label={t("invoice_detail.booking_ref")}      value={inv.booking_ref} />
+            <InfoRow label={t("invoice_detail.issue_date")}       value={inv.issued_at ? formatDate(inv.issued_at) : null} />
+            <InfoRow label={t("invoice_detail.currency")}         value={inv.currency} />
+            <InfoRow label={t("invoice_detail.total")}            value={formatCurrency(inv.total_amount)} accent />
           </Card>
 
           {/* Payment History */}
           <Card className="p-5 bg-black/40 border-white/5">
             <h3 className="font-display font-semibold mb-4 flex items-center gap-2">
-              <CreditCard className="w-4 h-4 text-primary" /> Payment History ({pays.length})
+              <CreditCard className="w-4 h-4 text-primary" /> {t("invoice_detail.payment_history", { n: pays.length })}
             </h3>
             {pays.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-6">No payment records</p>
+              <p className="text-sm text-muted-foreground text-center py-6">{t("invoice_detail.no_payments")}</p>
             ) : (
               pays.map((p) => (
                 <div key={p.id} className="flex justify-between items-center py-2.5 border-b border-white/5 last:border-0 text-sm">
@@ -199,7 +205,7 @@ export default function InvoiceDetail() {
         {inv.reservation_id && (
           <div>
             <h3 className="font-display font-semibold mb-3 flex items-center gap-2">
-              <Receipt className="w-4 h-4 text-primary" /> Folio Items
+              <Receipt className="w-4 h-4 text-primary" /> {t("invoice_detail.folio_items")}
             </h3>
             <FolioView
               reservationId={inv.reservation_id}

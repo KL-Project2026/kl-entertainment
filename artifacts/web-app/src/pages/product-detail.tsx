@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout";
@@ -40,6 +41,7 @@ interface Product {
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 export default function ProductDetail() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const { token } = useAuthStore();
@@ -103,11 +105,11 @@ export default function ProductDetail() {
       return r.json();
     },
     onSuccess: () => {
-      toast({ title: "Changes saved" });
+      toast({ title: t("product_detail.changes_saved") });
       void queryClient.invalidateQueries({ queryKey: ["product", id] });
       void queryClient.invalidateQueries({ queryKey: ["listProducts"] });
     },
-    onError: () => toast({ title: "Failed to save", variant: "destructive" }),
+    onError: () => toast({ title: t("product_detail.save_failed"), variant: "destructive" }),
   });
 
   // ── Toggle active mutation ─────────────────────────────────────────────────
@@ -121,18 +123,18 @@ export default function ProductDetail() {
       return r.json();
     },
     onSuccess: (data: { data: Product }) => {
-      toast({ title: data.data.isActive ? "Item set to Active" : "Item set to Hidden" });
+      toast({ title: data.data.isActive ? t("product_detail.set_active") : t("product_detail.set_hidden") });
       void queryClient.invalidateQueries({ queryKey: ["product", id] });
       void queryClient.invalidateQueries({ queryKey: ["listProducts"] });
     },
-    onError: () => toast({ title: "Failed to toggle status", variant: "destructive" }),
+    onError: () => toast({ title: t("product_detail.toggle_failed"), variant: "destructive" }),
   });
 
   // ── Render helpers ─────────────────────────────────────────────────────────
   if (isLoading) {
     return (
       <DashboardLayout>
-        <div className="flex items-center justify-center h-64 text-muted-foreground">Loading…</div>
+        <div className="flex items-center justify-center h-64 text-muted-foreground">{t("product_detail.loading")}</div>
       </DashboardLayout>
     );
   }
@@ -140,9 +142,9 @@ export default function ProductDetail() {
     return (
       <DashboardLayout>
         <div className="flex flex-col items-center justify-center h-64 gap-4">
-          <p className="text-muted-foreground">Menu item not found.</p>
+          <p className="text-muted-foreground">{t("product_detail.not_found")}</p>
           <Button variant="outline" onClick={() => navigate("/products")}>
-            <ArrowLeft className="w-4 h-4 mr-2" /> Back to Menu
+            <ArrowLeft className="w-4 h-4 mr-2" /> {t("product_detail.back_to_menu")}
           </Button>
         </div>
       </DashboardLayout>
@@ -195,7 +197,7 @@ export default function ProductDetail() {
                 ? "bg-green-500/15 text-green-400 border border-green-500/20"
                 : "bg-gray-500/15 text-gray-400 border border-gray-500/20"
             }`}>
-              {product.isActive ? "Active" : "Hidden"}
+              {product.isActive ? t("product_detail.active") : t("product_detail.hidden")}
             </span>
 
             {/* Toggle button */}
@@ -207,8 +209,8 @@ export default function ProductDetail() {
               className="gap-1.5"
             >
               {product.isActive
-                ? <><EyeOff className="w-4 h-4" /> Hide</>
-                : <><Eye className="w-4 h-4" /> Show</>
+                ? <><EyeOff className="w-4 h-4" /> {t("product_detail.hide")}</>
+                : <><Eye className="w-4 h-4" /> {t("product_detail.show")}</>
               }
             </Button>
           </div>
@@ -218,45 +220,45 @@ export default function ProductDetail() {
           {/* ── Left column: info chips ─────────────────────────────────── */}
           <div className="md:col-span-1 space-y-4">
             <Card className="p-5 space-y-4">
-              <h2 className="text-sm font-semibold text-foreground">Item Info</h2>
+              <h2 className="text-sm font-semibold text-foreground">{t("product_detail.item_info")}</h2>
 
-              <InfoRow icon={<Layers className="w-4 h-4 text-primary/70" />} label="Category">
+              <InfoRow icon={<Layers className="w-4 h-4 text-primary/70" />} label={t("product_detail.category")}>
                 {product.groupName ?? "—"}
               </InfoRow>
-              <InfoRow icon={<Tag className="w-4 h-4 text-primary/70" />} label="Type">
+              <InfoRow icon={<Tag className="w-4 h-4 text-primary/70" />} label={t("product_detail.type")}>
                 {product.typeName ?? "—"}
               </InfoRow>
-              <InfoRow icon={<Building2 className="w-4 h-4 text-primary/70" />} label="Branch">
-                {product.branchName ? String(product.branchName) : "All branches"}
+              <InfoRow icon={<Building2 className="w-4 h-4 text-primary/70" />} label={t("product_detail.branch")}>
+                {product.branchName ? String(product.branchName) : t("product_detail.all_branches")}
               </InfoRow>
-              <InfoRow icon={<Hash className="w-4 h-4 text-primary/70" />} label="SKU">
+              <InfoRow icon={<Hash className="w-4 h-4 text-primary/70" />} label={t("product_detail.sku")}>
                 {product.sku || "—"}
               </InfoRow>
 
               <div className="pt-2 border-t border-white/5">
-                <p className="text-xs text-muted-foreground">Current price</p>
+                <p className="text-xs text-muted-foreground">{t("product_detail.current_price")}</p>
                 <p className="text-2xl font-bold font-display text-primary mt-0.5">
                   {formatCurrency(product.unitPrice)}
                 </p>
-                <p className="text-xs text-muted-foreground">per {product.unit}</p>
+                <p className="text-xs text-muted-foreground">{t("product_detail.per_unit", { unit: product.unit })}</p>
               </div>
 
               <div className="text-xs text-muted-foreground pt-1 border-t border-white/5">
-                Added {new Date(product.createdAt).toLocaleDateString("en-MY", {
+                {t("product_detail.added_on", { date: new Date(product.createdAt).toLocaleDateString("en-MY", {
                   year: "numeric", month: "short", day: "numeric",
-                })}
+                }) })}
               </div>
             </Card>
           </div>
 
           {/* ── Right column: edit form ─────────────────────────────────── */}
           <Card className="md:col-span-2 p-5 space-y-5">
-            <h2 className="text-sm font-semibold text-foreground">Edit Details</h2>
+            <h2 className="text-sm font-semibold text-foreground">{t("product_detail.edit_details")}</h2>
 
             {/* Names */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label htmlFor="pd-name-en">Name (EN) <span className="text-destructive">*</span></Label>
+                <Label htmlFor="pd-name-en">{t("product_detail.name_en")} <span className="text-destructive">*</span></Label>
                 <Input
                   id="pd-name-en"
                   value={nameEn}
@@ -265,12 +267,12 @@ export default function ProductDetail() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="pd-name-zh">Name (ZH)</Label>
+                <Label htmlFor="pd-name-zh">{t("product_detail.name_zh")}</Label>
                 <Input
                   id="pd-name-zh"
                   value={nameZh}
                   onChange={(e) => setNameZh(e.target.value)}
-                  placeholder="Chinese name"
+                  placeholder={t("product_detail.chinese_name")}
                   className="bg-black/30 border-white/10"
                 />
               </div>
@@ -278,24 +280,24 @@ export default function ProductDetail() {
 
             {/* Description */}
             <div className="space-y-1.5">
-              <Label htmlFor="pd-desc">Description</Label>
+              <Label htmlFor="pd-desc">{t("product_detail.description")}</Label>
               <Input
                 id="pd-desc"
                 value={descEn}
                 onChange={(e) => setDescEn(e.target.value)}
-                placeholder="Short description (optional)"
+                placeholder={t("product_detail.short_description")}
                 className="bg-black/30 border-white/10"
               />
             </div>
 
             {/* SKU */}
             <div className="space-y-1.5">
-              <Label htmlFor="pd-sku">SKU</Label>
+              <Label htmlFor="pd-sku">{t("product_detail.sku")}</Label>
               <Input
                 id="pd-sku"
                 value={sku}
                 onChange={(e) => setSku(e.target.value)}
-                placeholder="e.g. BEV-BEER-01"
+                placeholder={t("product_detail.sku_placeholder")}
                 className="bg-black/30 border-white/10"
               />
             </div>
@@ -303,7 +305,7 @@ export default function ProductDetail() {
             {/* Price + Unit */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label htmlFor="pd-price">Unit Price (MYR) <span className="text-destructive">*</span></Label>
+                <Label htmlFor="pd-price">{t("product_detail.unit_price")} <span className="text-destructive">*</span></Label>
                 <Input
                   id="pd-price"
                   type="number"
@@ -315,7 +317,7 @@ export default function ProductDetail() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="pd-unit">Unit</Label>
+                <Label htmlFor="pd-unit">{t("product_detail.unit")}</Label>
                 <Input
                   id="pd-unit"
                   value={unit}
@@ -328,7 +330,7 @@ export default function ProductDetail() {
             {/* Tax + Sort */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label htmlFor="pd-tax">Tax Applicable</Label>
+                <Label htmlFor="pd-tax">{t("product_detail.tax_applicable")}</Label>
                 <Select
                   value={taxApplicable ? "true" : "false"}
                   onValueChange={(v) => setTaxApplicable(v === "true")}
@@ -337,13 +339,13 @@ export default function ProductDetail() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="true">Yes</SelectItem>
-                    <SelectItem value="false">No</SelectItem>
+                    <SelectItem value="true">{t("product_detail.yes")}</SelectItem>
+                    <SelectItem value="false">{t("product_detail.no")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="pd-sort">Sort Order</Label>
+                <Label htmlFor="pd-sort">{t("product_detail.sort_order")}</Label>
                 <Input
                   id="pd-sort"
                   type="number"
@@ -363,7 +365,7 @@ export default function ProductDetail() {
                 className="gap-2"
               >
                 <Save className="w-4 h-4" />
-                {saving ? "Saving…" : "Save Changes"}
+                {saving ? t("product_detail.saving") : t("product_detail.save_changes")}
               </Button>
             </div>
           </Card>

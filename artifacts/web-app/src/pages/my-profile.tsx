@@ -1,4 +1,5 @@
 import { DashboardLayout } from "@/components/layout";
+import { useTranslation } from "react-i18next";
 import { useAuthStore } from "@/lib/auth";
 import { useEffect, useState } from "react";
 import {
@@ -186,6 +187,7 @@ function fmtDate(d: string | null | undefined): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function MyProfile() {
+  const { t } = useTranslation();
   const { token, user } = useAuthStore();
   const { toast } = useToast();
   const [profile, setProfile]   = useState<Profile | null>(null);
@@ -268,7 +270,7 @@ export default function MyProfile() {
 
         {/* ── Header ─────────────────────────────────────────────────────── */}
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">My Profile</h1>
+          <h1 className="text-2xl font-bold">{t("pages.my_profile.title")}</h1>
           {!editing ? (
             <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
               <Edit2 size={14} className="mr-1" /> Edit

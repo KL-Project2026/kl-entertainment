@@ -1,4 +1,5 @@
 import { useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout";
 import { ListPageWrapper, type ColumnDef } from "@/components/shared/list-page-wrapper";
@@ -80,6 +81,7 @@ const COLUMNS: ColumnDef<Record<string, unknown>>[] = [
 ];
 
 export default function Invoices() {
+  const { t } = useTranslation();
   const [, navigate] = useLocation();
 
   const { data, isLoading } = useQuery({
@@ -98,7 +100,7 @@ export default function Invoices() {
     <DashboardLayout>
       <div className="p-6">
         <ListPageWrapper
-          title="Invoices"
+          title={t("pages.invoices.title")}
           subtitle="Reservation invoices & payment records"
           data={invoices}
           columns={COLUMNS}

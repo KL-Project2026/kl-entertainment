@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useAuthStore } from "@/lib/auth";
 import { useListBranches, getGetBranchRoomBoardQueryKey } from "@workspace/api-client-react";
 import { Tabs, Card, Badge } from "@/components/ui";
@@ -203,6 +204,7 @@ function shiftDate(dateStr: string, days: number) {
 }
 
 export default function RoomBoard() {
+  const { t } = useTranslation();
   const { user, token } = useAuthStore();
   const queryClient = useQueryClient();
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(user?.branchId || null);
@@ -286,7 +288,7 @@ export default function RoomBoard() {
             onChange={setSelectedBranchId}
           />
         ) : (
-          <h2 className="text-xl font-display font-semibold text-primary">Live Board</h2>
+          <h2 className="text-xl font-display font-semibold text-primary">{t("pages.room_board.title")}</h2>
         )}
 
         <div className="flex gap-3 text-xs font-medium bg-black/40 px-4 py-2 rounded-lg border border-white/5 backdrop-blur-md">
@@ -348,10 +350,10 @@ export default function RoomBoard() {
         {roomTypes.length > 1 && (
           <Select value={typeFilter} onValueChange={setTypeFilter}>
             <SelectTrigger className="w-44 bg-black/40 border-white/10 text-sm h-9">
-              <SelectValue placeholder="All types" />
+              <SelectValue placeholder={t("common.all_types")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="__all__">All types</SelectItem>
+              <SelectItem value="__all__">{t("common.all_types")}</SelectItem>
               {roomTypes.map((t) => (
                 <SelectItem key={t} value={t}>
                   {t.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
@@ -399,7 +401,7 @@ export default function RoomBoard() {
         ) : rooms.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-muted-foreground/40">
             <CalendarDays className="w-10 h-10 mb-3" />
-            <p className="text-sm">No rooms match the selected filter</p>
+            <p className="text-sm">{t("pages.room_board.no_rooms_filter")}</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">

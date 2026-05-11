@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useParams, useLocation } from "wouter";
 import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
@@ -56,6 +57,13 @@ function InfoRow({ icon: Icon, label, value, accent }: {
 }
 
 function StatusTimeline({ status }: { status: string }) {
+  const { t } = useTranslation();
+  const TIMELINE_LABELS: Record<string, string> = {
+    tentative: t("reservation_detail.timeline_tentative"),
+    confirmed: t("reservation_detail.timeline_confirmed"),
+    checked_in: t("reservation_detail.timeline_checked_in"),
+    checked_out: t("reservation_detail.timeline_checked_out"),
+  };
   const step = STATUS_STEP[status] ?? 0;
   const isCancelled = status === "cancelled" || status === "no_show";
 
@@ -86,7 +94,7 @@ function StatusTimeline({ status }: { status: string }) {
                 {done ? <BadgeCheck className="w-3.5 h-3.5" /> : i + 1}
               </div>
               <span className={`text-[10px] font-medium whitespace-nowrap ${active ? "text-primary" : done ? "text-primary/60" : "text-muted-foreground"}`}>
-                {s.label}
+                {TIMELINE_LABELS[s.key] ?? s.label}
               </span>
             </div>
             {i < TIMELINE_STEPS.length - 1 && (
@@ -122,6 +130,7 @@ function EditModal({
   onSave: (data: EditForm) => void;
   isPending: boolean;
 }) {
+  const { t } = useTranslation();
   const [form, setForm] = useState<EditForm>({
     customerName:    String(res.customerName   ?? ""),
     customerPhone:   String(res.customerPhone  ?? ""),
@@ -143,7 +152,7 @@ function EditModal({
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
           <div className="flex items-center gap-2">
             <Edit2 className="w-4 h-4 text-primary" />
-            <h3 className="font-display font-bold text-base">Edit Reservation</h3>
+            <h3 className="font-display font-bold text-base">{t("reservation_detail.edit_reservation")}</h3>
           </div>
           <button onClick={onClose} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors">
             <X className="w-4 h-4 text-muted-foreground" />
@@ -154,14 +163,14 @@ function EditModal({
         <div className="px-6 py-5 space-y-5 max-h-[70vh] overflow-y-auto">
           {/* Customer */}
           <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Customer</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">{t("reservation_detail.section_customer")}</p>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-muted-foreground block mb-1.5">Name</label>
-                <Input className="bg-black/30" placeholder="Walk-in" value={form.customerName} onChange={set("customerName")} />
+                <label className="text-xs text-muted-foreground block mb-1.5">{t("reservation_detail.name")}</label>
+                <Input className="bg-black/30" placeholder={t("reservation_detail.walk_in")} value={form.customerName} onChange={set("customerName")} />
               </div>
               <div>
-                <label className="text-xs text-muted-foreground block mb-1.5">Phone</label>
+                <label className="text-xs text-muted-foreground block mb-1.5">{t("reservation_detail.phone")}</label>
                 <Input className="bg-black/30" placeholder="+60..." value={form.customerPhone} onChange={set("customerPhone")} />
               </div>
             </div>
@@ -169,32 +178,32 @@ function EditModal({
 
           {/* Booking */}
           <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Booking</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">{t("reservation_detail.section_booking")}</p>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-muted-foreground block mb-1.5">Guest Count</label>
+                <label className="text-xs text-muted-foreground block mb-1.5">{t("reservation_detail.guest_count")}</label>
                 <Input className="bg-black/30" type="number" min="1" value={form.guestCount} onChange={set("guestCount")} />
               </div>
               <div>
-                <label className="text-xs text-muted-foreground block mb-1.5">Booking Channel</label>
+                <label className="text-xs text-muted-foreground block mb-1.5">{t("reservation_detail.booking_channel")}</label>
                 <Select value={form.bookingChannel} onValueChange={v => setForm(f => ({ ...f, bookingChannel: v }))}>
-                  <SelectTrigger className="bg-black/30"><SelectValue placeholder="Select..." /></SelectTrigger>
+                  <SelectTrigger className="bg-black/30"><SelectValue placeholder={t("reservation_detail.select_placeholder")} /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="walkin">Walk-in</SelectItem>
-                    <SelectItem value="phone">Phone</SelectItem>
-                    <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                    <SelectItem value="line">LINE</SelectItem>
-                    <SelectItem value="online">Online</SelectItem>
-                    <SelectItem value="agent">Agent</SelectItem>
+                    <SelectItem value="walkin">{t("reservation_detail.channel_walkin")}</SelectItem>
+                    <SelectItem value="phone">{t("reservation_detail.channel_phone")}</SelectItem>
+                    <SelectItem value="whatsapp">{t("reservation_detail.channel_whatsapp")}</SelectItem>
+                    <SelectItem value="line">{t("reservation_detail.channel_line")}</SelectItem>
+                    <SelectItem value="online">{t("reservation_detail.channel_online")}</SelectItem>
+                    <SelectItem value="agent">{t("reservation_detail.channel_agent")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <div className="mt-3">
-              <label className="text-xs text-muted-foreground block mb-1.5">Special Requests</label>
+              <label className="text-xs text-muted-foreground block mb-1.5">{t("reservation_detail.special_requests")}</label>
               <textarea
                 className="w-full bg-black/30 border border-white/10 rounded-md px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary/50 min-h-[72px]"
-                placeholder="Any special requests..."
+                placeholder={t("reservation_detail.special_requests_placeholder")}
                 value={form.specialRequests}
                 onChange={set("specialRequests")}
               />
@@ -203,32 +212,32 @@ function EditModal({
 
           {/* Deposit */}
           <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Deposit</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">{t("reservation_detail.section_deposit")}</p>
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="text-xs text-muted-foreground block mb-1.5">Amount (MYR)</label>
+                <label className="text-xs text-muted-foreground block mb-1.5">{t("reservation_detail.amount_myr")}</label>
                 <Input className="bg-black/30" type="number" min="0" step="0.01" value={form.depositAmount} onChange={set("depositAmount")} />
               </div>
               <div>
-                <label className="text-xs text-muted-foreground block mb-1.5">Paid</label>
+                <label className="text-xs text-muted-foreground block mb-1.5">{t("reservation_detail.deposit_paid")}</label>
                 <Select value={form.depositPaid} onValueChange={v => setForm(f => ({ ...f, depositPaid: v }))}>
                   <SelectTrigger className="bg-black/30"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="true">Paid</SelectItem>
-                    <SelectItem value="false">Not Paid</SelectItem>
+                    <SelectItem value="true">{t("reservation_detail.paid")}</SelectItem>
+                    <SelectItem value="false">{t("reservation_detail.not_paid")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div>
-                <label className="text-xs text-muted-foreground block mb-1.5">Method</label>
+                <label className="text-xs text-muted-foreground block mb-1.5">{t("reservation_detail.deposit_method_method")}</label>
                 <Select value={form.depositMethod || "__none__"} onValueChange={v => setForm(f => ({ ...f, depositMethod: v === "__none__" ? "" : v }))}>
                   <SelectTrigger className="bg-black/30"><SelectValue placeholder="—" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">—</SelectItem>
-                    <SelectItem value="cash">Cash</SelectItem>
-                    <SelectItem value="card">Card</SelectItem>
-                    <SelectItem value="transfer">Transfer</SelectItem>
-                    <SelectItem value="online">Online</SelectItem>
+                    <SelectItem value="cash">{t("reservation_detail.method_cash")}</SelectItem>
+                    <SelectItem value="card">{t("reservation_detail.method_card")}</SelectItem>
+                    <SelectItem value="transfer">{t("reservation_detail.method_transfer")}</SelectItem>
+                    <SelectItem value="online">{t("reservation_detail.method_online")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -238,10 +247,10 @@ function EditModal({
 
         {/* Footer */}
         <div className="px-6 py-4 border-t border-white/10 flex gap-3">
-          <Button variant="ghost" onClick={onClose} className="flex-1">Cancel</Button>
+          <Button variant="ghost" onClick={onClose} className="flex-1">{t("common.cancel")}</Button>
           <Button onClick={() => onSave(form)} disabled={isPending} className="flex-1 gap-1.5">
             <Save className="w-3.5 h-3.5" />
-            {isPending ? "Saving…" : "Save Changes"}
+            {isPending ? t("reservation_detail.saving") : t("reservation_detail.save_changes")}
           </Button>
         </div>
       </div>
@@ -251,6 +260,7 @@ function EditModal({
 
 // ─── Main component ────────────────────────────────────────────────────────────
 export default function ReservationDetail() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
@@ -335,9 +345,9 @@ export default function ReservationDetail() {
     return (
       <DashboardLayout>
         <div className="flex flex-col items-center justify-center py-24 gap-4 text-muted-foreground">
-          <p className="text-lg">Reservation not found.</p>
+          <p className="text-lg">{t("reservation_detail.not_found")}</p>
           <Button variant="ghost" onClick={() => navigate("/reservations")} className="gap-2">
-            <ArrowLeft className="w-4 h-4" /> Back to Reservations
+            <ArrowLeft className="w-4 h-4" /> {t("reservation_detail.back_to_reservations")}
           </Button>
         </div>
       </DashboardLayout>
@@ -373,9 +383,9 @@ export default function ReservationDetail() {
                 </Badge>
               </div>
               <p className="text-sm text-muted-foreground mt-1">
-                Created {formatDate(String(res.createdAt ?? ""))}
+                {t("reservation_detail.created", { date: formatDate(String(res.createdAt ?? "")) })}
                 {res.confirmedAt && (
-                  <span className="ml-3 text-blue-400/70">· Confirmed {formatDate(String(res.confirmedAt))}</span>
+                  <span className="ml-3 text-blue-400/70">{t("reservation_detail.confirmed_at", { date: formatDate(String(res.confirmedAt)) })}</span>
                 )}
               </p>
             </div>
@@ -385,26 +395,26 @@ export default function ReservationDetail() {
           <div className="flex gap-2 flex-wrap">
             {canEdit && (
               <Button size="sm" variant="outline" onClick={() => setShowEdit(true)} className="gap-1.5 border-white/15 hover:bg-white/10">
-                <Edit2 className="w-3.5 h-3.5" /> Edit
+                <Edit2 className="w-3.5 h-3.5" /> {t("reservation_detail.edit")}
               </Button>
             )}
             {status === "tentative" && (
               <Button size="sm" onClick={() => confirmMut.mutate()} disabled={isBusy} className="gap-1.5">
-                <CheckCircle className="w-3.5 h-3.5" /> Confirm
+                <CheckCircle className="w-3.5 h-3.5" /> {t("reservation_detail.confirm")}
               </Button>
             )}
             {status === "confirmed" && (
               <Button size="sm" onClick={() => checkInMut.mutate()} disabled={isBusy} className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white border-0">
-                <LogIn className="w-3.5 h-3.5" /> Check In
+                <LogIn className="w-3.5 h-3.5" /> {t("reservation_detail.check_in")}
               </Button>
             )}
             {status === "checked_in" && (
               <>
                 <Button size="sm" variant="outline" onClick={() => navigate(`/pos?reservationId=${String(id)}`)} className="gap-1.5 border-white/15">
-                  <ShoppingCart className="w-3.5 h-3.5" /> POS
+                  <ShoppingCart className="w-3.5 h-3.5" /> {t("reservation_detail.pos")}
                 </Button>
                 <Button size="sm" onClick={() => checkOutMut.mutate()} disabled={isBusy} className="gap-1.5">
-                  <LogOut className="w-3.5 h-3.5" /> Check Out
+                  <LogOut className="w-3.5 h-3.5" /> {t("reservation_detail.check_out")}
                 </Button>
               </>
             )}
@@ -414,7 +424,7 @@ export default function ReservationDetail() {
                 onClick={() => setShowCancel(true)}
                 className="gap-1.5 text-red-400 border-red-500/30 hover:bg-red-500/10"
               >
-                <X className="w-3.5 h-3.5" /> Cancel
+                <X className="w-3.5 h-3.5" /> {t("reservation_detail.cancel")}
               </Button>
             )}
           </div>
@@ -427,7 +437,7 @@ export default function ReservationDetail() {
 
         {/* ── Tabs ── */}
         <div style={{ display: "flex", gap: 2, borderBottom: "1px solid rgba(255,255,255,0.08)", flexWrap: "wrap" }}>
-          {([ ["info", "Reservation Info"], ["folio", "Order"] ] as const).map(([key, label]) => (
+          {([ ["info", t("reservation_detail.tab_info")], ["folio", t("reservation_detail.tab_folio")] ] as const).map(([key, label]) => (
             <button key={key} onClick={() => setActiveTab(key)} style={{
               padding: "10px 20px", background: "none", border: "none",
               borderBottom: `2px solid ${activeTab === key ? "#D1AE38" : "transparent"}`,
@@ -447,21 +457,21 @@ export default function ReservationDetail() {
           <Card className="bg-black/40 border-white/5 overflow-hidden">
             <div className="px-5 py-3.5 border-b border-white/5 flex items-center gap-2">
               <CalendarDays className="w-4 h-4 text-primary" />
-              <span className="font-display font-semibold text-sm">Booking Info</span>
+              <span className="font-display font-semibold text-sm">{t("reservation_detail.booking_info")}</span>
             </div>
             <div className="px-5 py-3">
-              <InfoRow icon={MapPin}  label="Room"         value={String(res.roomName ?? "—")} />
-              <InfoRow icon={Hash}    label="Room Type"    value={res.roomType ? String(res.roomType).replace(/_/g, " ") : null} />
-              <InfoRow icon={CalendarDays} label="Date"   value={formatDate(String(res.startTime ?? ""))} />
-              <InfoRow icon={Clock}   label="Start Time"  value={fmtTime(res.startTime)} />
-              <InfoRow icon={Clock}   label="End Time"    value={fmtTime(res.endTime)} />
+              <InfoRow icon={MapPin}  label={t("reservation_detail.room")}         value={String(res.roomName ?? "—")} />
+              <InfoRow icon={Hash}    label={t("reservation_detail.room_type")}    value={res.roomType ? String(res.roomType).replace(/_/g, " ") : null} />
+              <InfoRow icon={CalendarDays} label={t("reservation_detail.date")}   value={formatDate(String(res.startTime ?? ""))} />
+              <InfoRow icon={Clock}   label={t("reservation_detail.start_time")}  value={fmtTime(res.startTime)} />
+              <InfoRow icon={Clock}   label={t("reservation_detail.end_time")}    value={fmtTime(res.endTime)} />
               {res.durationHours && (
-                <InfoRow icon={Clock} label="Duration"    value={`${res.durationHours}h`} />
+                <InfoRow icon={Clock} label={t("reservation_detail.duration")}    value={t("reservation_detail.duration_h", { n: res.durationHours })} />
               )}
-              <InfoRow icon={Users}   label="Guests"      value={String(res.guestCount ?? "—")} />
-              <InfoRow icon={MessageSquare} label="Channel" value={String(res.bookingChannel ?? "—")} />
+              <InfoRow icon={Users}   label={t("reservation_detail.guests")}      value={String(res.guestCount ?? "—")} />
+              <InfoRow icon={MessageSquare} label={t("reservation_detail.channel")} value={String(res.bookingChannel ?? "—")} />
               {res.specialRequests && (
-                <InfoRow icon={MessageSquare} label="Requests" value={String(res.specialRequests)} />
+                <InfoRow icon={MessageSquare} label={t("reservation_detail.requests")} value={String(res.specialRequests)} />
               )}
             </div>
           </Card>
@@ -471,32 +481,32 @@ export default function ReservationDetail() {
             <Card className="bg-black/40 border-white/5 overflow-hidden">
               <div className="px-5 py-3.5 border-b border-white/5 flex items-center gap-2">
                 <User className="w-4 h-4 text-primary" />
-                <span className="font-display font-semibold text-sm">Customer</span>
+                <span className="font-display font-semibold text-sm">{t("reservation_detail.customer")}</span>
               </div>
               <div className="px-5 py-3">
-                <InfoRow icon={User}  label="Name"  value={String(res.customerName || "Walk-in")} />
-                <InfoRow icon={Phone} label="Phone" value={String(res.customerPhone ?? "—")} />
+                <InfoRow icon={User}  label={t("reservation_detail.name")}  value={res.customerName ? String(res.customerName) : t("reservation_detail.walk_in")} />
+                <InfoRow icon={Phone} label={t("reservation_detail.phone")} value={String(res.customerPhone ?? "—")} />
               </div>
             </Card>
 
             <Card className="bg-black/40 border-white/5 overflow-hidden">
               <div className="px-5 py-3.5 border-b border-white/5 flex items-center gap-2">
                 <CreditCard className="w-4 h-4 text-primary" />
-                <span className="font-display font-semibold text-sm">Deposit</span>
+                <span className="font-display font-semibold text-sm">{t("reservation_detail.deposit")}</span>
               </div>
               <div className="px-5 py-3">
                 <InfoRow
                   icon={CreditCard}
-                  label="Amount"
+                  label={t("reservation_detail.amount")}
                   value={formatCurrency(Number(res.depositAmount ?? 0))}
                   accent={Boolean(res.depositPaid) && Number(res.depositAmount) > 0}
                 />
                 <InfoRow
-                  label="Status"
-                  value={res.depositPaid ? "✓ Paid" : "Not Paid"}
+                  label={t("reservation_detail.status")}
+                  value={res.depositPaid ? t("reservation_detail.paid_check") : t("reservation_detail.not_paid")}
                 />
                 {res.depositMethod && (
-                  <InfoRow label="Method" value={String(res.depositMethod)} />
+                  <InfoRow label={t("reservation_detail.method")} value={String(res.depositMethod)} />
                 )}
               </div>
             </Card>
@@ -508,34 +518,34 @@ export default function ReservationDetail() {
           <Card className="bg-black/40 border-white/5 overflow-hidden">
             <div className="px-5 py-3.5 border-b border-white/5 flex items-center gap-2">
               <Clock className="w-4 h-4 text-primary" />
-              <span className="font-display font-semibold text-sm">Activity Log</span>
+              <span className="font-display font-semibold text-sm">{t("reservation_detail.activity_log")}</span>
             </div>
             <div className="px-5 py-3 space-y-2">
               {res.confirmedAt && (
                 <div className="flex items-center gap-3 text-sm">
                   <div className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
-                  <span className="text-muted-foreground">Confirmed</span>
+                  <span className="text-muted-foreground">{t("reservation_detail.activity_confirmed")}</span>
                   <span className="ml-auto text-xs">{new Date(String(res.confirmedAt)).toLocaleString()}</span>
                 </div>
               )}
               {res.checkedInAt && (
                 <div className="flex items-center gap-3 text-sm">
                   <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
-                  <span className="text-muted-foreground">Checked In</span>
+                  <span className="text-muted-foreground">{t("reservation_detail.activity_checked_in")}</span>
                   <span className="ml-auto text-xs">{new Date(String(res.checkedInAt)).toLocaleString()}</span>
                 </div>
               )}
               {res.checkedOutAt && (
                 <div className="flex items-center gap-3 text-sm">
                   <div className="w-2 h-2 rounded-full bg-gray-400 shrink-0" />
-                  <span className="text-muted-foreground">Checked Out</span>
+                  <span className="text-muted-foreground">{t("reservation_detail.activity_checked_out")}</span>
                   <span className="ml-auto text-xs">{new Date(String(res.checkedOutAt)).toLocaleString()}</span>
                 </div>
               )}
               {res.cancelledAt && (
                 <div className="flex items-center gap-3 text-sm">
                   <div className="w-2 h-2 rounded-full bg-red-400 shrink-0" />
-                  <span className="text-muted-foreground">Cancelled</span>
+                  <span className="text-muted-foreground">{t("reservation_detail.activity_cancelled")}</span>
                   <span className="ml-auto text-xs">{new Date(String(res.cancelledAt)).toLocaleString()}</span>
                 </div>
               )}
@@ -552,7 +562,7 @@ export default function ReservationDetail() {
             <div className="px-5 py-3.5 border-b border-white/5 flex items-center gap-2">
               <Users className="w-4 h-4 text-primary" />
               <span className="font-display font-semibold text-sm">
-                Assigned Hostesses ({res.hostesses.length})
+                {t("reservation_detail.assigned_hostesses", { n: res.hostesses.length })}
               </span>
             </div>
             <div className="px-5 py-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -597,36 +607,34 @@ export default function ReservationDetail() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
           <div className="w-full max-w-md bg-[#111] border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
-              <h3 className="font-display font-bold">Cancel Reservation</h3>
+              <h3 className="font-display font-bold">{t("reservation_detail.cancel_reservation")}</h3>
               <button onClick={() => setShowCancel(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors">
                 <X className="w-4 h-4 text-muted-foreground" />
               </button>
             </div>
             <div className="px-6 py-5 space-y-4">
               <p className="text-sm text-muted-foreground">
-                This will cancel{" "}
-                <span className="text-foreground font-semibold">{String(res.reservationNo ?? "")}</span>.
-                This action cannot be undone.
+                {t("reservation_detail.cancel_confirm_text", { ref: String(res.reservationNo ?? "") })}
               </p>
               <div>
-                <label className="text-xs text-muted-foreground block mb-1.5">Reason (optional)</label>
+                <label className="text-xs text-muted-foreground block mb-1.5">{t("reservation_detail.reason_optional")}</label>
                 <Input
                   className="bg-black/30"
-                  placeholder="Cancellation reason..."
+                  placeholder={t("reservation_detail.reason_placeholder")}
                   value={cancelReason}
                   onChange={e => setCancelReason(e.target.value)}
                 />
               </div>
             </div>
             <div className="px-6 py-4 border-t border-white/10 flex gap-3">
-              <Button variant="ghost" onClick={() => setShowCancel(false)} className="flex-1">Keep</Button>
+              <Button variant="ghost" onClick={() => setShowCancel(false)} className="flex-1">{t("reservation_detail.keep")}</Button>
               <Button
                 variant="destructive"
                 onClick={() => cancelMut.mutate()}
                 disabled={cancelMut.isPending}
                 className="flex-1"
               >
-                {cancelMut.isPending ? "Cancelling…" : "Confirm Cancel"}
+                {cancelMut.isPending ? t("reservation_detail.cancelling") : t("reservation_detail.confirm_cancel")}
               </Button>
             </div>
           </div>

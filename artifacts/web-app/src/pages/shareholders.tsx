@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
 import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
@@ -584,6 +585,7 @@ const SHAREHOLDER_STATUS_OPTIONS = [
 ];
 
 export default function Shareholders() {
+  const { t } = useTranslation();
   const { token } = useAuthStore();
   const [, navigate] = useLocation();
   const [showForm, setShowForm] = useState(false);
@@ -620,7 +622,7 @@ export default function Shareholders() {
     <DashboardLayout>
       <div className="p-6">
         <ListPageWrapper
-          title="Shareholders"
+          title={t("pages.shareholders.title")}
           subtitle="Equity management & profit settlements"
           data={shareholderRows}
           columns={SHAREHOLDER_COLUMNS}

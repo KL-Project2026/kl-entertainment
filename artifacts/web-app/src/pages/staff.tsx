@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
 import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
@@ -466,6 +467,7 @@ const STAFF_ROLE_OPTIONS = [
 ];
 
 export default function Staff() {
+  const { t } = useTranslation();
   const { token, user } = useAuthStore();
   const [, navigate] = useLocation();
   const [branchFilter, setBranchFilter] = useState(user?.branchId ?? "__all__");
@@ -518,7 +520,7 @@ export default function Staff() {
         </div>
 
         <ListPageWrapper
-          title="Staff Management"
+          title={t("pages.staff.title")}
           subtitle={`${allStaff.length} staff members`}
           data={staffRows}
           columns={STAFF_COLUMNS}

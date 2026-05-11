@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useParams, useLocation } from "wouter";
 import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
@@ -20,6 +21,7 @@ function DetailRow({ label, value }: { label: string; value?: string | null | nu
 }
 
 export default function AgentDetail() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
@@ -97,9 +99,9 @@ export default function AgentDetail() {
     return (
       <DashboardLayout>
         <div className="p-6 text-center py-20 text-muted-foreground">
-          <p>Agent not found.</p>
+          <p>{t("agent_detail.not_found")}</p>
           <Button variant="ghost" onClick={() => navigate("/agents")} className="mt-4 gap-2">
-            <ArrowLeft className="w-4 h-4" /> Back to Agents
+            <ArrowLeft className="w-4 h-4" /> {t("agent_detail.back_to_agents")}
           </Button>
         </div>
       </DashboardLayout>
@@ -125,29 +127,29 @@ export default function AgentDetail() {
                   </span>
                 )}
                 <Badge className={`border text-xs ${agent.isActive ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" : "bg-red-500/10 text-red-400 border-red-500/30"}`}>
-                  {agent.isActive ? "Active" : "Inactive"}
+                  {agent.isActive ? t("common_extra.active") : t("common_extra.inactive")}
                 </Badge>
                 <Badge className="border text-xs bg-purple-500/10 text-purple-300 border-purple-500/20">
-                  {isIndividual ? "Individual Agent" : "Agency"}
+                  {isIndividual ? t("agent_detail.individual_agent") : t("agent_detail.agency")}
                 </Badge>
               </div>
               {agent.contactPerson && (
-                <p className="text-sm text-muted-foreground mt-0.5">Contact: {agent.contactPerson}</p>
+                <p className="text-sm text-muted-foreground mt-0.5">{t("agent_detail.contact_label", { name: agent.contactPerson })}</p>
               )}
             </div>
           </div>
           <div className="flex gap-2">
             {!editing ? (
               <Button size="sm" variant="outline" onClick={startEditing} className="gap-1.5">
-                <Edit2 className="w-3.5 h-3.5" /> Edit
+                <Edit2 className="w-3.5 h-3.5" /> {t("common.edit")}
               </Button>
             ) : (
               <>
                 <Button size="sm" variant="ghost" onClick={() => setEditing(false)} className="gap-1.5">
-                  <X className="w-3.5 h-3.5" /> Cancel
+                  <X className="w-3.5 h-3.5" /> {t("common.cancel")}
                 </Button>
                 <Button size="sm" onClick={() => updateMut.mutate()} disabled={updateMut.isPending} className="gap-1.5">
-                  <Save className="w-3.5 h-3.5" /> {updateMut.isPending ? "Saving…" : "Save"}
+                  <Save className="w-3.5 h-3.5" /> {updateMut.isPending ? t("agent_detail.saving") : t("common.save")}
                 </Button>
               </>
             )}
@@ -156,7 +158,7 @@ export default function AgentDetail() {
 
         {/* ── Tabs ── */}
         <div style={{ display: "flex", gap: 4, borderBottom: "2px solid #e5e7eb", marginBottom: 24, flexWrap: "wrap" }}>
-          {([ ["info", "Profile"], ["account", "Account"] ] as const).map(([key, label]) => (
+          {([ ["info", t("agent_detail.tab_profile")], ["account", t("agent_detail.tab_account")] ] as const).map(([key, label]) => (
             <button key={key} onClick={() => setActiveTab(key)} style={{
               padding: "10px 18px", background: "none", border: "none",
               borderBottom: `2px solid ${activeTab === key ? "#D1AE38" : "transparent"}`,
@@ -176,41 +178,41 @@ export default function AgentDetail() {
               {isIndividual
                 ? <UserCheck className="w-4 h-4 text-primary" />
                 : <Handshake className="w-4 h-4 text-primary" />}
-              {isIndividual ? "Agent Info" : "Agency Info"}
+              {isIndividual ? t("agent_detail.agent_info") : t("agent_detail.agency_info")}
             </h3>
             {editing ? (
               <div className="space-y-3">
                 <div>
                   <label className="text-xs text-muted-foreground block mb-1">
-                    {isIndividual ? "Agent Name" : "Agency Name"}
+                    {isIndividual ? t("agent_detail.agent_name") : t("agent_detail.agency_name")}
                   </label>
                   <Input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} />
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground block mb-1">Contact Person</label>
+                  <label className="text-xs text-muted-foreground block mb-1">{t("agent_detail.contact_person")}</label>
                   <Input value={editForm.contactPerson} onChange={e => setEditForm(f => ({ ...f, contactPerson: e.target.value }))} />
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground block mb-1">Phone</label>
+                  <label className="text-xs text-muted-foreground block mb-1">{t("common_extra.phone")}</label>
                   <Input value={editForm.phone} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} />
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground block mb-1">Email</label>
+                  <label className="text-xs text-muted-foreground block mb-1">{t("common_extra.email")}</label>
                   <Input value={editForm.email} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} />
                 </div>
               </div>
             ) : (
               <>
-                {agent.agentCode && <DetailRow label="Agent Code" value={agent.agentCode} />}
-                <DetailRow label="Contact Person" value={agent.contactPerson} />
-                <DetailRow label="Phone" value={agent.phone} />
-                <DetailRow label="Email" value={agent.email} />
-                <DetailRow label="Commission Type" value={agent.commissionType} />
-                <DetailRow label="Commission Rate" value={`${(agent.commissionRate * 100).toFixed(0)}%`} />
+                {agent.agentCode && <DetailRow label={t("agent_detail.agent_code")} value={agent.agentCode} />}
+                <DetailRow label={t("agent_detail.contact_person")} value={agent.contactPerson} />
+                <DetailRow label={t("common_extra.phone")} value={agent.phone} />
+                <DetailRow label={t("common_extra.email")} value={agent.email} />
+                <DetailRow label={t("agent_detail.commission_type")} value={agent.commissionType} />
+                <DetailRow label={t("agent_detail.commission_rate")} value={`${(agent.commissionRate * 100).toFixed(0)}%`} />
                 {isIndividual && (
-                  <DetailRow label="Commission Base" value="Reservation Sales" />
+                  <DetailRow label={t("agent_detail.commission_base")} value={t("agent_detail.reservation_sales")} />
                 )}
-                <DetailRow label="Preferred Currency" value={agent.preferredCurrency} />
+                <DetailRow label={t("agent_detail.preferred_currency")} value={agent.preferredCurrency} />
               </>
             )}
           </Card>
@@ -218,25 +220,25 @@ export default function AgentDetail() {
           {/* Balance */}
           <Card className="p-5 bg-black/40 border-white/5">
             <h3 className="font-display font-semibold mb-4 flex items-center gap-2">
-              <CreditCard className="w-4 h-4 text-primary" /> Balance & Stats
+              <CreditCard className="w-4 h-4 text-primary" /> {t("agent_detail.balance_stats")}
             </h3>
             <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 mb-4 text-center">
-              <p className="text-xs text-muted-foreground mb-1">Outstanding Balance</p>
+              <p className="text-xs text-muted-foreground mb-1">{t("agent_detail.outstanding_balance")}</p>
               <p className={`text-3xl font-display font-bold ${agent.creditBalance > 0 ? "text-amber-400" : "text-muted-foreground"}`}>
                 {formatCurrency(agent.creditBalance)}
               </p>
             </div>
 
             {isIndividual ? (
-              <DetailRow label="Commission Rate" value={`${(agent.commissionRate * 100).toFixed(0)}% of reservation sales`} />
+              <DetailRow label={t("agent_detail.commission_rate")} value={t("agent_detail.pct_of_reservation_sales", { pct: Math.round(agent.commissionRate * 100) })} />
             ) : (
-              <DetailRow label="Active Hostesses" value={agent.hostessCount ?? (hostesses?.length ?? "—")} />
+              <DetailRow label={t("agent_detail.active_hostesses")} value={agent.hostessCount ?? (hostesses?.length ?? "—")} />
             )}
 
             {/* Recent Payouts — only for agencies shown here in profile */}
             {!isIndividual && payouts && payouts.length > 0 && (
               <div className="mt-4">
-                <p className="text-xs text-muted-foreground mb-2">Recent Payouts</p>
+                <p className="text-xs text-muted-foreground mb-2">{t("agent_detail.recent_payouts")}</p>
                 {payouts.slice(0, 3).map((p: Record<string, string>) => (
                   <div key={p.id} className="flex justify-between items-center py-1.5 border-b border-white/5 last:border-0 text-sm">
                     <span className="text-muted-foreground">{formatDate(p.paidAt)}</span>
@@ -252,7 +254,7 @@ export default function AgentDetail() {
         {!isIndividual && hostesses && hostesses.length > 0 && (
           <Card className="p-5 bg-black/40 border-white/5">
             <h3 className="font-display font-semibold mb-4 flex items-center gap-2">
-              <Users className="w-4 h-4 text-primary" /> Assigned Hostesses ({hostesses.length})
+              <Users className="w-4 h-4 text-primary" /> {t("agent_detail.assigned_hostesses", { count: hostesses.length })}
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               {hostesses.map((h: Record<string, string>) => (
@@ -262,7 +264,7 @@ export default function AgentDetail() {
                   </div>
                   <div>
                     <p className="text-sm font-medium">{h.fullName}</p>
-                    {h.isActive === "false" && <p className="text-xs text-red-400">Inactive</p>}
+                    {h.isActive === "false" && <p className="text-xs text-red-400">{t("common_extra.inactive")}</p>}
                   </div>
                 </div>
               ))}

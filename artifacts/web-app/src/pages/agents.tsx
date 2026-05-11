@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
 import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
@@ -440,6 +441,7 @@ const AGENT_STATUS_OPTIONS = [
 ];
 
 export default function Agents() {
+  const { t } = useTranslation();
   const { token } = useAuthStore();
   const [, navigate] = useLocation();
   const [showForm, setShowForm] = useState(false);
@@ -461,7 +463,7 @@ export default function Agents() {
     <DashboardLayout>
       <div className="p-6">
         <ListPageWrapper
-          title="Agents"
+          title={t("pages.agents.title")}
           subtitle="Talent agencies and hostess recruiters"
           data={agentRows}
           columns={AGENT_COLUMNS}

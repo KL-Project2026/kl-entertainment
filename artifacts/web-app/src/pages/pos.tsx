@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import { useLocation, useSearch } from "wouter";
 import ActiveSessionsList from "@/components/pos/ActiveSessionsList";
@@ -891,6 +892,7 @@ function AddItemModal({
 }
 
 export default function POS() {
+  const { t } = useTranslation();
   const [, navigate] = useLocation();
   const search = useSearch();
   const windowSearch = typeof window !== "undefined" ? window.location.search : "";
@@ -1113,7 +1115,7 @@ export default function POS() {
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div>
-          <h2 className="text-2xl font-display font-bold">Point of Sale</h2>
+          <h2 className="text-2xl font-display font-bold">{t("pages.pos.title")}</h2>
           {reservation && (
             <p className="text-sm text-muted-foreground">
               {reservation.reservationNo} · {reservation.customerName || "Walk-in"} · {reservation.roomName || "No room"}

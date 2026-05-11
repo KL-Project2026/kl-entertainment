@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/lib/auth";
@@ -68,6 +69,7 @@ interface UnassignedHostess {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function CommissionBar({ venue, agent }: { venue: number; agent: number }) {
+  const { t } = useTranslation();
   return (
     <div className="group relative">
       <div className="flex h-2 rounded-full overflow-hidden bg-white/10 w-full">
@@ -75,7 +77,7 @@ function CommissionBar({ venue, agent }: { venue: number; agent: number }) {
         <div className="bg-amber-500" style={{ width: `${agent}%` }} />
       </div>
       <div className="absolute -top-7 left-0 opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 text-xs px-2 py-1 rounded whitespace-nowrap z-10">
-        Hostess {venue}% · Agent {agent}%
+        {t("agency_detail.hostess_agent_tooltip", { venue, agent })}
       </div>
     </div>
   );
@@ -87,6 +89,7 @@ function fmtDate(d: string) {
 
 // ─── Assign Hostess Modal ─────────────────────────────────────────────────────
 function AssignModal({ agencyId, onClose, onSaved }: { agencyId: string; onClose: () => void; onSaved: () => void }) {
+  const { t } = useTranslation();
   const { token } = useAuthStore();
   const { toast } = useToast();
   const authH = token ? { Authorization: `Bearer ${token}` } : {};
@@ -107,8 +110,8 @@ function AssignModal({ agencyId, onClose, onSaved }: { agencyId: string; onClose
   const syncRates = (v: number) => { setVenue(v); setAgent(100 - v); };
 
   async function handleSave() {
-    if (!hostessId) { toast({ title: "Error", description: "Select a hostess first.", variant: "destructive" }); return; }
-    if (Math.abs(venue + agent - 100) > 0.01) { toast({ title: "Error", description: "Rates must sum to 100%.", variant: "destructive" }); return; }
+    if (!hostessId) { toast({ title: t("agency_detail.error"), description: t("agency_detail.select_hostess_first"), variant: "destructive" }); return; }
+    if (Math.abs(venue + agent - 100) > 0.01) { toast({ title: t("agency_detail.error"), description: t("agency_detail.rates_sum_100"), variant: "destructive" }); return; }
     setSaving(true);
     try {
       const r = await fetch(`/api/agencies/${agencyId}/hostesses`, {
@@ -121,43 +124,43 @@ function AssignModal({ agencyId, onClose, onSaved }: { agencyId: string; onClose
         }),
       });
       if (!r.ok) { const j = await r.json(); throw new Error(j.error || "Failed"); }
-      toast({ title: "Assigned", description: "Hostess contract created." });
+      toast({ title: t("agency_detail.assigned"), description: t("agency_detail.contract_created") });
       onSaved(); onClose();
     } catch (e: unknown) {
-      toast({ title: "Error", description: (e as Error).message, variant: "destructive" });
+      toast({ title: t("agency_detail.error"), description: (e as Error).message, variant: "destructive" });
     } finally { setSaving(false); }
   }
 
   return (
     <Dialog open onOpenChange={v => !v && onClose()}>
       <DialogContent className="max-w-lg">
-        <DialogHeader><DialogTitle>Assign Hostess to Agency</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{t("agency_detail.assign_hostess_title")}</DialogTitle></DialogHeader>
         <div className="space-y-4 py-2">
           <div>
-            <label className="text-xs text-muted-foreground">Select Hostess</label>
+            <label className="text-xs text-muted-foreground">{t("agency_detail.select_hostess")}</label>
             <Select value={hostessId} onValueChange={setHostessId}>
-              <SelectTrigger className="mt-1"><SelectValue placeholder="Choose unassigned hostess…" /></SelectTrigger>
+              <SelectTrigger className="mt-1"><SelectValue placeholder={t("agency_detail.choose_unassigned")} /></SelectTrigger>
               <SelectContent>
                 {unassigned.map(h => (
                   <SelectItem key={h.id} value={h.id}>{h.fullName} · {h.staffCode} ({h.branchName})</SelectItem>
                 ))}
-                {unassigned.length === 0 && <SelectItem value="__none__" disabled>No unassigned hostesses</SelectItem>}
+                {unassigned.length === 0 && <SelectItem value="__none__" disabled>{t("agency_detail.no_unassigned")}</SelectItem>}
               </SelectContent>
             </Select>
           </div>
 
           <div>
-            <label className="text-xs text-muted-foreground">Commission Split</label>
+            <label className="text-xs text-muted-foreground">{t("agency_detail.commission_split")}</label>
             <div className="mt-1 space-y-2">
               <div className="flex items-center gap-3">
-                <span className="text-xs text-muted-foreground w-20">Hostess %</span>
+                <span className="text-xs text-muted-foreground w-20">{t("agency_detail.hostess_pct")}</span>
                 <input type="range" min={30} max={80} step={1} value={venue}
                   onChange={e => syncRates(parseInt(e.target.value))}
                   className="flex-1 accent-green-500" />
                 <span className="text-sm font-mono w-12 text-right text-green-400">{venue}%</span>
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-xs text-muted-foreground w-20">Agent %</span>
+                <span className="text-xs text-muted-foreground w-20">{t("agency_detail.agent_pct")}</span>
                 <input type="range" min={20} max={70} step={1} value={agent}
                   onChange={e => { setAgent(parseInt(e.target.value)); setVenue(100 - parseInt(e.target.value)); }}
                   className="flex-1 accent-amber-500" />
@@ -165,25 +168,25 @@ function AssignModal({ agencyId, onClose, onSaved }: { agencyId: string; onClose
               </div>
               <CommissionBar venue={venue} agent={agent} />
               <p className={`text-xs ${Math.abs(venue + agent - 100) > 0.01 ? "text-red-400" : "text-muted-foreground"}`}>
-                Total: {venue + agent}% {Math.abs(venue + agent - 100) > 0.01 ? "(must equal 100%)" : "✓"}
+                {t("agency_detail.total_pct", { total: venue + agent })} {Math.abs(venue + agent - 100) > 0.01 ? t("agency_detail.must_equal_100") : "✓"}
               </p>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-muted-foreground">Contract Start</label>
+              <label className="text-xs text-muted-foreground">{t("agency_detail.contract_start")}</label>
               <DateInput value={contractStart} onChange={e => setContractStart(e.target.value)} wrapperClassName="mt-1" />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground">Contract End (optional)</label>
+              <label className="text-xs text-muted-foreground">{t("agency_detail.contract_end")}</label>
               <DateInput value={contractEnd} onChange={e => setContractEnd(e.target.value)} wrapperClassName="mt-1" />
             </div>
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSave} disabled={saving}>{saving ? "Saving…" : "Save Contract"}</Button>
+          <Button variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button onClick={handleSave} disabled={saving}>{saving ? t("agency_detail.saving") : t("agency_detail.save_contract")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -195,6 +198,7 @@ function RevenueModal({ agencyId, contractId, contractName, from, to, onClose }:
   agencyId: string; contractId: string; contractName: string;
   from: string; to: string; onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const { token, user } = useAuthStore();
   const authH = token ? { Authorization: `Bearer ${token}` } : {};
   const isAdmin = ["super_admin", "admin"].includes(user?.role ?? "");
@@ -225,30 +229,30 @@ function RevenueModal({ agencyId, contractId, contractName, from, to, onClose }:
     <Dialog open onOpenChange={v => !v && onClose()}>
       <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle>{contractName} — Revenue Detail ({from} → {to})</DialogTitle>
+          <DialogTitle>{t("agency_detail.revenue_detail_title", { name: contractName, from, to })}</DialogTitle>
         </DialogHeader>
 
         {!isAdmin ? (
           <div className="flex items-center gap-3 p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-300">
             <AlertCircle className="w-4 h-4 shrink-0" />
-            Access restricted. Contact Admin for full revenue detail.
+            {t("agency_detail.access_restricted")}
           </div>
         ) : isLoading ? (
-          <div className="py-8 text-center text-muted-foreground">Loading sessions…</div>
+          <div className="py-8 text-center text-muted-foreground">{t("agency_detail.loading_sessions")}</div>
         ) : !detail?.sessions || detail.sessions.length === 0 ? (
-          <div className="py-8 text-center text-muted-foreground">No sessions found for this period.</div>
+          <div className="py-8 text-center text-muted-foreground">{t("agency_detail.no_sessions")}</div>
         ) : (
           <>
             <div className="overflow-auto flex-1">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-background">
                   <tr className="border-b border-white/10 text-xs text-muted-foreground">
-                    <th className="text-left py-2 pr-3">Date</th>
-                    <th className="text-left py-2 pr-3">Room</th>
-                    <th className="text-right py-2 pr-3">Hours</th>
-                    <th className="text-right py-2 pr-3">Gross (MYR)</th>
-                    <th className="text-right py-2 pr-3">Agent Cut</th>
-                    <th className="text-right py-2">Hostess Earn.</th>
+                    <th className="text-left py-2 pr-3">{t("agency_detail.col_date")}</th>
+                    <th className="text-left py-2 pr-3">{t("agency_detail.col_room")}</th>
+                    <th className="text-right py-2 pr-3">{t("agency_detail.col_hours")}</th>
+                    <th className="text-right py-2 pr-3">{t("agency_detail.col_gross")}</th>
+                    <th className="text-right py-2 pr-3">{t("agency_detail.col_agent_cut")}</th>
+                    <th className="text-right py-2">{t("agency_detail.col_hostess_earn")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -265,7 +269,7 @@ function RevenueModal({ agencyId, contractId, contractName, from, to, onClose }:
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-white/20 font-bold">
-                    <td colSpan={3} className="py-2 pr-3">TOTAL ({detail.totals.sessions} sessions)</td>
+                    <td colSpan={3} className="py-2 pr-3">{t("agency_detail.total_sessions_n", { n: detail.totals.sessions })}</td>
                     <td className="text-right py-2 pr-3 font-mono">{detail.totals.grossRevenue.toFixed(2)}</td>
                     <td className="text-right py-2 pr-3 font-mono text-amber-400">{detail.totals.agentCut.toFixed(2)}</td>
                     <td className="text-right py-2 font-mono text-green-400">{detail.totals.hostessEarnings.toFixed(2)}</td>
@@ -275,7 +279,7 @@ function RevenueModal({ agencyId, contractId, contractName, from, to, onClose }:
             </div>
             <div className="pt-3 flex justify-end">
               <Button size="sm" variant="outline" className="gap-1.5" onClick={exportCsv}>
-                <Download className="w-3.5 h-3.5" /> Export CSV
+                <Download className="w-3.5 h-3.5" /> {t("agency_detail.export_csv")}
               </Button>
             </div>
           </>
@@ -287,6 +291,7 @@ function RevenueModal({ agencyId, contractId, contractName, from, to, onClose }:
 
 // ─── Main Detail Page ─────────────────────────────────────────────────────────
 export default function AgencyDetail() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const { token } = useAuthStore();
@@ -343,12 +348,12 @@ export default function AgencyDetail() {
       qc.invalidateQueries({ queryKey: ["agency-hostesses", id] });
       qc.invalidateQueries({ queryKey: ["agency", id] });
     },
-    onError: () => toast({ title: "Error", description: "Remove failed.", variant: "destructive" }),
+    onError: () => toast({ title: t("agency_detail.error"), description: t("agency_detail.remove_failed"), variant: "destructive" }),
   });
 
   if (!agency) return (
     <DashboardLayout>
-      <div className="p-8 text-muted-foreground">Loading agency…</div>
+      <div className="p-8 text-muted-foreground">{t("agency_detail.loading")}</div>
     </DashboardLayout>
   );
 
@@ -362,7 +367,7 @@ export default function AgencyDetail() {
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-4">
             <Button variant="ghost" size="sm" onClick={() => navigate("/agencies")}>
-              <ArrowLeft className="w-4 h-4 mr-1" /> Agencies
+              <ArrowLeft className="w-4 h-4 mr-1" /> {t("agency_detail.back_to_agencies")}
             </Button>
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-full overflow-hidden bg-white/5 border border-white/10 shrink-0">
@@ -379,7 +384,7 @@ export default function AgencyDetail() {
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <span className="text-xs text-muted-foreground border border-white/10 px-2.5 py-1 rounded-full">
-              <Users className="w-3 h-3 inline mr-1" />{agency.hostessCount} hostesses
+              <Users className="w-3 h-3 inline mr-1" />{t("agency_detail.hostess_count", { n: agency.hostessCount })}
             </span>
           </div>
         </div>
@@ -390,14 +395,14 @@ export default function AgencyDetail() {
             <DateInput value={from} onChange={e => setFrom(e.target.value)} wrapperClassName="w-40" />
             <span className="text-muted-foreground text-xs">→</span>
             <DateInput value={to} onChange={e => setTo(e.target.value)} wrapperClassName="w-40" />
-            <Button size="sm" className="h-8 text-xs" onClick={() => { setAppliedFrom(from); setAppliedTo(to); }}>Apply</Button>
+            <Button size="sm" className="h-8 text-xs" onClick={() => { setAppliedFrom(from); setAppliedTo(to); }}>{t("agency_detail.apply")}</Button>
           </div>
 
           <div className="flex gap-0 border border-white/10 rounded-lg overflow-hidden ml-auto">
-            {(["hostesses", "account"] as const).map(t => (
-              <button key={t} onClick={() => setTab(t)}
-                className={`px-5 py-1.5 text-sm font-medium transition-colors capitalize ${tab === t ? "bg-primary text-black" : "text-muted-foreground hover:text-white hover:bg-white/5"}`}>
-                {t === "hostesses" ? "Hostesses" : "Account"}
+            {(["hostesses", "account"] as const).map(tk => (
+              <button key={tk} onClick={() => setTab(tk)}
+                className={`px-5 py-1.5 text-sm font-medium transition-colors capitalize ${tab === tk ? "bg-primary text-black" : "text-muted-foreground hover:text-white hover:bg-white/5"}`}>
+                {tk === "hostesses" ? t("agency_detail.tab_hostesses") : t("agency_detail.tab_account")}
               </button>
             ))}
           </div>
@@ -409,10 +414,10 @@ export default function AgencyDetail() {
             <div className="flex items-center justify-between gap-3">
               <div className="relative flex-1 max-w-xs">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input placeholder="Search hostess…" className="pl-9 h-8 text-xs" value={hostessSearch} onChange={e => setHostessSearch(e.target.value)} />
+                <Input placeholder={t("agency_detail.search_hostess")} className="pl-9 h-8 text-xs" value={hostessSearch} onChange={e => setHostessSearch(e.target.value)} />
               </div>
               <Button size="sm" className="gap-1.5" onClick={() => setAssignOpen(true)}>
-                <Plus className="w-3.5 h-3.5" /> Assign Hostess
+                <Plus className="w-3.5 h-3.5" /> {t("agency_detail.assign_hostess")}
               </Button>
             </div>
 
@@ -420,14 +425,14 @@ export default function AgencyDetail() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-white/10 text-xs text-muted-foreground">
-                    <th className="text-left py-2 pr-4">Hostess</th>
-                    <th className="text-center py-2 pr-4">Status</th>
-                    <th className="text-left py-2 pr-4 w-40">Commission Split</th>
-                    <th className="text-left py-2 pr-4">Contract Period</th>
-                    <th className="text-right py-2 pr-4">Sessions</th>
-                    <th className="text-right py-2 pr-4">Revenue (MYR)</th>
-                    <th className="text-right py-2 pr-4">Agent Cut</th>
-                    <th className="text-center py-2">Actions</th>
+                    <th className="text-left py-2 pr-4">{t("agency_detail.col_hostess")}</th>
+                    <th className="text-center py-2 pr-4">{t("agency_detail.col_status")}</th>
+                    <th className="text-left py-2 pr-4 w-40">{t("agency_detail.col_commission_split")}</th>
+                    <th className="text-left py-2 pr-4">{t("agency_detail.col_contract_period")}</th>
+                    <th className="text-right py-2 pr-4">{t("agency_detail.col_sessions")}</th>
+                    <th className="text-right py-2 pr-4">{t("agency_detail.col_revenue")}</th>
+                    <th className="text-right py-2 pr-4">{t("agency_detail.col_agent_cut")}</th>
+                    <th className="text-center py-2">{t("agency_detail.col_actions")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -438,7 +443,7 @@ export default function AgencyDetail() {
                       </tr>
                     ))
                   ) : hostesses.length === 0 ? (
-                    <tr><td colSpan={8} className="text-center py-10 text-muted-foreground">No hostesses assigned.</td></tr>
+                    <tr><td colSpan={8} className="text-center py-10 text-muted-foreground">{t("agency_detail.no_hostesses_assigned")}</td></tr>
                   ) : hostesses.map(h => (
                     <tr key={h.contractId} className="border-b border-white/5 hover:bg-white/5">
                       {/* Photo + Name */}
@@ -491,7 +496,7 @@ export default function AgencyDetail() {
                             <BarChart2 className="w-3.5 h-3.5" />
                           </Button>
                           <Button size="sm" variant="ghost" className="h-7 px-2 text-red-400/70 hover:text-red-400"
-                            onClick={() => { if (confirm(`Remove ${h.fullName} from this agency?`)) removeMut.mutate(h.contractId); }}>
+                            onClick={() => { if (confirm(t("agency_detail.remove_confirm", { name: h.fullName }))) removeMut.mutate(h.contractId); }}>
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
                         </div>
@@ -510,25 +515,25 @@ export default function AgencyDetail() {
             {accountLoading ? (
               <div className="h-40 bg-white/5 animate-pulse rounded-xl" />
             ) : !account ? (
-              <div className="text-center py-10 text-muted-foreground">No account data.</div>
+              <div className="text-center py-10 text-muted-foreground">{t("agency_detail.no_account_data")}</div>
             ) : (
               <>
                 {/* Summary Card */}
                 <Card className="p-5 space-y-4">
                   <div>
-                    <h3 className="font-semibold text-base">{account.agent.name} — Account Summary</h3>
+                    <h3 className="font-semibold text-base">{t("agency_detail.account_summary", { name: account.agent.name })}</h3>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Period: {fmtDate(account.period.from)} – {fmtDate(account.period.to)}
+                      {t("agency_detail.period", { from: fmtDate(account.period.from), to: fmtDate(account.period.to) })}
                     </p>
                   </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                     {[
-                      { label: "Active Hostesses", value: account.summary.totalHostesses, icon: Users },
-                      { label: "Total Sessions", value: account.summary.totalSessions, icon: BarChart2 },
-                      { label: "Gross Revenue", value: formatCurrency(account.summary.grossRevenue, "MYR"), icon: Banknote },
-                      { label: "Agent Cut", value: formatCurrency(account.summary.agentTotalCut, "MYR"), color: "text-amber-400", icon: Banknote },
-                      { label: "Hostess Earn.", value: formatCurrency(account.summary.hostessTotalEarnings, "MYR"), color: "text-green-400", icon: Banknote },
+                      { label: t("agency_detail.col_hostess") + "s", value: account.summary.totalHostesses, icon: Users },
+                      { label: t("agency_detail.total_sessions"), value: account.summary.totalSessions, icon: BarChart2 },
+                      { label: t("agency_detail.gross_revenue"), value: formatCurrency(account.summary.grossRevenue, "MYR"), icon: Banknote },
+                      { label: t("agency_detail.agent_cut"), value: formatCurrency(account.summary.agentTotalCut, "MYR"), color: "text-amber-400", icon: Banknote },
+                      { label: t("agency_detail.hostess_earn"), value: formatCurrency(account.summary.hostessTotalEarnings, "MYR"), color: "text-green-400", icon: Banknote },
                     ].map(({ label, value, color, icon: Icon }) => (
                       <div key={label} className="bg-white/5 rounded-lg p-3">
                         <p className="text-[10px] text-muted-foreground flex items-center gap-1"><Icon className="w-3 h-3" />{label}</p>
@@ -554,18 +559,18 @@ export default function AgencyDetail() {
 
                 {/* Per-hostess breakdown */}
                 <Card className="p-5">
-                  <h3 className="font-semibold text-sm mb-4">Per-Hostess Breakdown</h3>
+                  <h3 className="font-semibold text-sm mb-4">{t("agency_detail.per_hostess_breakdown")}</h3>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-white/10 text-xs text-muted-foreground">
-                          <th className="text-left py-2 pr-4">Hostess</th>
-                          <th className="text-right py-2 pr-4">Sessions</th>
-                          <th className="text-right py-2 pr-4">Gross (MYR)</th>
-                          <th className="text-right py-2 pr-4">Agent Cut</th>
-                          <th className="text-right py-2 pr-4">Hostess Earn.</th>
-                          <th className="text-center py-2 pr-4">Split</th>
-                          <th className="text-center py-2">Detail</th>
+                          <th className="text-left py-2 pr-4">{t("agency_detail.col_hostess")}</th>
+                          <th className="text-right py-2 pr-4">{t("agency_detail.col_sessions")}</th>
+                          <th className="text-right py-2 pr-4">{t("agency_detail.col_gross")}</th>
+                          <th className="text-right py-2 pr-4">{t("agency_detail.col_agent_cut")}</th>
+                          <th className="text-right py-2 pr-4">{t("agency_detail.col_hostess_earn")}</th>
+                          <th className="text-center py-2 pr-4">{t("agency_detail.col_split")}</th>
+                          <th className="text-center py-2">{t("agency_detail.col_detail")}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -598,7 +603,7 @@ export default function AgencyDetail() {
                           </tr>
                         ))}
                         {account.hostessBreakdown.length === 0 && (
-                          <tr><td colSpan={7} className="text-center py-8 text-muted-foreground text-sm">No hostesses with sessions in this period.</td></tr>
+                          <tr><td colSpan={7} className="text-center py-8 text-muted-foreground text-sm">{t("agency_detail.no_hostess_in_period")}</td></tr>
                         )}
                       </tbody>
                     </table>

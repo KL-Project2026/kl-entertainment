@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { DashboardLayout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -439,6 +440,7 @@ function PnLReport({ branchId, month }: { branchId: string; month: string }) {
 }
 
 export default function Reports() {
+  const { t } = useTranslation();
   const { token, user } = useAuthStore();
   const [activeTab, setActiveTab] = useState<TabKey>("revenue");
   const [branchId, setBranchId] = useState(user?.branchId ?? "");
@@ -470,7 +472,7 @@ export default function Reports() {
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-2xl font-display font-bold">Reports</h1>
+            <h1 className="text-2xl font-display font-bold">{t("pages.reports.title")}</h1>
             <p className="text-muted-foreground text-sm mt-1">Revenue, occupancy, commission & P&L analytics</p>
           </div>
           <div className="flex gap-3 flex-wrap items-center">

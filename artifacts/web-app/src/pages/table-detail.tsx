@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/layout";
@@ -113,6 +114,7 @@ function PricingModal({
   onClose: () => void;
   onSave: (f: PriceForm) => void;
 }) {
+  const { t } = useTranslation();
   const [form, setForm] = useState<PriceForm>(initial);
   const set = (k: keyof PriceForm, v: unknown) => setForm(f => ({ ...f, [k]: v }));
   const isEdit = !!initial.id;
@@ -125,46 +127,46 @@ function PricingModal({
     <Dialog open onOpenChange={v => !v && onClose()}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Edit Pricing Rule" : "Add Pricing Rule"}</DialogTitle>
+          <DialogTitle>{isEdit ? t("table_detail.edit_pricing_rule") : t("table_detail.add_pricing_rule")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>Label *</Label>
+              <Label>{t("table_detail.label_required")}</Label>
               <Input className="mt-1" value={form.priceLabel}
                 onChange={e => set("priceLabel", e.target.value)}
-                placeholder='e.g. "Weekday Standard"' />
+                placeholder={t("table_detail.label_placeholder")} />
             </div>
             <div>
-              <Label>Price Type *</Label>
+              <Label>{t("table_detail.price_type_required")}</Label>
               <Select value={form.priceType} onValueChange={v => set("priceType", v)}>
                 <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="PER_HOUR">Per Hour</SelectItem>
-                  <SelectItem value="PER_SESSION">Per Session</SelectItem>
-                  <SelectItem value="FLAT_RATE">Flat Rate</SelectItem>
+                  <SelectItem value="PER_HOUR">{t("table_detail.per_hour")}</SelectItem>
+                  <SelectItem value="PER_SESSION">{t("table_detail.per_session")}</SelectItem>
+                  <SelectItem value="FLAT_RATE">{t("table_detail.flat_rate")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>Base Price (MYR) *</Label>
+              <Label>{t("table_detail.base_price_required")}</Label>
               <Input className="mt-1" type="number" min={0} step={0.01}
                 value={form.basePrice} onChange={e => set("basePrice", e.target.value)}
                 placeholder="120.00" />
             </div>
             <div>
-              <Label>Priority</Label>
+              <Label>{t("table_detail.priority")}</Label>
               <Input className="mt-1" type="number" min={0}
                 value={form.priority} onChange={e => set("priority", parseInt(e.target.value) || 0)} />
-              <p className="text-xs text-muted-foreground mt-1">Higher = wins when rules overlap</p>
+              <p className="text-xs text-muted-foreground mt-1">{t("table_detail.priority_hint")}</p>
             </div>
           </div>
 
           {/* Days of week */}
           <div>
-            <Label>Applicable Days</Label>
+            <Label>{t("table_detail.applicable_days")}</Label>
             <div className="flex gap-1.5 mt-2">
               {DAY_BITS.map(d => (
                 <button key={d.bit} onClick={() => toggleDay(d.bit)}
@@ -177,7 +179,7 @@ function PricingModal({
               ))}
               <button onClick={() => set("applicableDays", 127)}
                 className="ml-1 text-xs text-muted-foreground hover:text-white px-2 underline-offset-2 hover:underline">
-                All
+                {t("table_detail.all")}
               </button>
             </div>
             <p className="text-xs text-muted-foreground mt-1">{fmtDays(form.applicableDays)}</p>
@@ -185,14 +187,14 @@ function PricingModal({
 
           {/* Time window */}
           <div>
-            <Label>Time Window (optional)</Label>
+            <Label>{t("table_detail.time_window")}</Label>
             <div className="grid grid-cols-2 gap-3 mt-1">
               <div>
-                <p className="text-xs text-muted-foreground mb-1">From</p>
+                <p className="text-xs text-muted-foreground mb-1">{t("table_detail.from")}</p>
                 <Input type="time" value={form.timeStart} onChange={e => set("timeStart", e.target.value)} />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground mb-1">To</p>
+                <p className="text-xs text-muted-foreground mb-1">{t("table_detail.to")}</p>
                 <Input type="time" value={form.timeEnd} onChange={e => set("timeEnd", e.target.value)} />
               </div>
             </div>
@@ -200,41 +202,41 @@ function PricingModal({
 
           {/* Date range override */}
           <div>
-            <Label>Date Range Override (optional)</Label>
+            <Label>{t("table_detail.date_range_override")}</Label>
             <div className="grid grid-cols-2 gap-3 mt-1">
               <div>
-                <p className="text-xs text-muted-foreground mb-1">From</p>
+                <p className="text-xs text-muted-foreground mb-1">{t("table_detail.from")}</p>
                 <DateInput value={form.dateFrom} onChange={e => set("dateFrom", e.target.value)} />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground mb-1">To</p>
+                <p className="text-xs text-muted-foreground mb-1">{t("table_detail.to")}</p>
                 <DateInput value={form.dateTo} onChange={e => set("dateTo", e.target.value)} />
               </div>
             </div>
           </div>
 
           <div>
-            <Label>Notes</Label>
+            <Label>{t("table_detail.notes")}</Label>
             <Input className="mt-1" value={form.notes} onChange={e => set("notes", e.target.value)}
-              placeholder="Optional notes for this rule" />
+              placeholder={t("table_detail.notes_placeholder")} />
           </div>
 
           {isEdit && (
             <div className="flex items-center gap-3">
-              <Label>Active</Label>
+              <Label>{t("table_detail.active")}</Label>
               <button onClick={() => set("isActive", !form.isActive)}
                 className={`transition-colors ${form.isActive ? "text-green-400" : "text-muted-foreground"}`}>
                 {form.isActive ? <ToggleRight className="w-6 h-6" /> : <ToggleLeft className="w-6 h-6" />}
               </button>
-              <span className="text-sm text-muted-foreground">{form.isActive ? "Active" : "Inactive"}</span>
+              <span className="text-sm text-muted-foreground">{form.isActive ? t("table_detail.active") : t("table_detail.inactive")}</span>
             </div>
           )}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
           <Button onClick={() => onSave(form)}
             disabled={!form.priceLabel.trim() || !form.basePrice || form.applicableDays === 0}>
-            {isEdit ? "Save Changes" : "Add Rule"}
+            {isEdit ? t("table_detail.save_changes") : t("table_detail.add_rule")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -243,9 +245,9 @@ function PricingModal({
 }
 
 // ── Main Page ──────────────────────────────────────────────────────────────
-const TAB_ITEMS: [string, string][] = [["info", "Info"], ["pricing", "Pricing"]];
-
 export default function TableDetail() {
+  const { t } = useTranslation();
+  const TAB_ITEMS: [string, string][] = [["info", t("table_detail.tab_info")], ["pricing", t("table_detail.tab_pricing")]];
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const { token } = useAuthStore();
@@ -283,7 +285,7 @@ export default function TableDetail() {
       });
       if (!r.ok) throw new Error((await r.json()).error ?? "Error");
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["room-table", id] }); setPriceModal(null); toast({ title: "Pricing rule added" }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["room-table", id] }); setPriceModal(null); toast({ title: t("table_detail.rule_added") }); },
     onError: (e: Error) => toast({ title: e.message, variant: "destructive" }),
   });
 
@@ -301,7 +303,7 @@ export default function TableDetail() {
       });
       if (!r.ok) throw new Error((await r.json()).error ?? "Error");
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["room-table", id] }); setPriceModal(null); toast({ title: "Pricing rule updated" }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["room-table", id] }); setPriceModal(null); toast({ title: t("table_detail.rule_updated") }); },
     onError: (e: Error) => toast({ title: e.message, variant: "destructive" }),
   });
 
@@ -312,7 +314,7 @@ export default function TableDetail() {
       });
       if (!r.ok) throw new Error("Failed to delete");
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["room-table", id] }); toast({ title: "Pricing rule deleted" }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["room-table", id] }); toast({ title: t("table_detail.rule_deleted") }); },
     onError: (e: Error) => toast({ title: e.message, variant: "destructive" }),
   });
 
@@ -328,9 +330,9 @@ export default function TableDetail() {
   if (error || !room) return (
     <DashboardLayout>
       <div className="p-6 text-center py-20 text-muted-foreground">
-        <p>Room / Table not found.</p>
+        <p>{t("table_detail.not_found")}</p>
         <Button variant="ghost" onClick={() => navigate("/tables")} className="mt-4 gap-2">
-          <ArrowLeft className="w-4 h-4" /> Back to list
+          <ArrowLeft className="w-4 h-4" /> {t("table_detail.back_to_list")}
         </Button>
       </div>
     </DashboardLayout>
@@ -360,7 +362,7 @@ export default function TableDetail() {
               {room.status.replace("_", " ")}
             </span>
             <span className="text-sm text-muted-foreground bg-white/5 px-3 py-1 rounded-full">
-              {room.capacity_min}–{room.capacity_max} pax
+              {t("table_detail.pax_range", { min: room.capacity_min, max: room.capacity_max })}
             </span>
           </div>
         </div>
@@ -384,21 +386,21 @@ export default function TableDetail() {
           <div className="space-y-5">
             <Card className="p-5 bg-black/40 border-white/5">
               <h3 className="font-display font-semibold mb-4 flex items-center gap-2 text-primary">
-                <Tag className="w-4 h-4" /> Basic Information
+                <Tag className="w-4 h-4" /> {t("table_detail.basic_info")}
               </h3>
-              <DetailRow label="Name"      value={room.name} />
-              <DetailRow label="Type"      value={room.type} />
-              <DetailRow label="Branch"    value={room.branch_name} />
-              <DetailRow label="Status"    value={room.status.replace("_", " ")} />
-              <DetailRow label="Capacity"  value={`${room.capacity_min} – ${room.capacity_max} pax`} />
-              {room.floor && <DetailRow label="Floor / Level" value={room.floor} />}
-              {room.description && <DetailRow label="Description" value={room.description} />}
+              <DetailRow label={t("table_detail.name")}      value={room.name} />
+              <DetailRow label={t("table_detail.type")}      value={room.type} />
+              <DetailRow label={t("table_detail.branch")}    value={room.branch_name} />
+              <DetailRow label={t("table_detail.status")}    value={room.status.replace("_", " ")} />
+              <DetailRow label={t("table_detail.capacity")}  value={t("table_detail.capacity_range", { min: room.capacity_min, max: room.capacity_max })} />
+              {room.floor && <DetailRow label={t("table_detail.floor_level")} value={room.floor} />}
+              {room.description && <DetailRow label={t("table_detail.description")} value={room.description} />}
             </Card>
 
             {room.amenities?.length > 0 && (
               <Card className="p-5 bg-black/40 border-white/5">
                 <h3 className="font-display font-semibold mb-4 flex items-center gap-2 text-primary">
-                  <MapPin className="w-4 h-4" /> Amenities
+                  <MapPin className="w-4 h-4" /> {t("table_detail.amenities")}
                 </h3>
                 <div className="flex flex-wrap gap-2">
                   {room.amenities.map(a => (
@@ -418,24 +420,24 @@ export default function TableDetail() {
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-semibold flex items-center gap-2">
-                  <DollarSign className="w-4 h-4 text-primary" /> Pricing Rules
+                  <DollarSign className="w-4 h-4 text-primary" /> {t("table_detail.pricing_rules")}
                 </h3>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Higher priority rule wins when multiple rules match
+                  {t("table_detail.higher_priority_wins")}
                 </p>
               </div>
               <Button size="sm" className="gap-2" onClick={() => setPriceModal({ ...EMPTY_PRICE })}>
-                <Plus className="w-4 h-4" /> Add Rule
+                <Plus className="w-4 h-4" /> {t("table_detail.add_rule")}
               </Button>
             </div>
 
             {(!room.pricing || room.pricing.length === 0) ? (
               <div className="py-16 text-center text-muted-foreground border border-white/5 rounded-xl">
                 <DollarSign className="w-8 h-8 mx-auto mb-3 opacity-30" />
-                <p>No pricing rules yet.</p>
+                <p>{t("table_detail.no_pricing_rules")}</p>
                 <Button variant="ghost" size="sm" className="mt-3 gap-2"
                   onClick={() => setPriceModal({ ...EMPTY_PRICE })}>
-                  <Plus className="w-4 h-4" /> Add first rule
+                  <Plus className="w-4 h-4" /> {t("table_detail.add_first_rule")}
                 </Button>
               </div>
             ) : (
@@ -447,10 +449,10 @@ export default function TableDetail() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold">{p.price_label}</span>
                         {!p.is_active && (
-                          <span className="text-xs bg-gray-500/20 text-gray-400 px-2 py-0.5 rounded-full">Inactive</span>
+                          <span className="text-xs bg-gray-500/20 text-gray-400 px-2 py-0.5 rounded-full">{t("table_detail.inactive")}</span>
                         )}
                         <span className="text-xs bg-white/5 border border-white/10 px-2 py-0.5 rounded-full text-muted-foreground">
-                          Priority {p.priority}
+                          {t("table_detail.priority_label", { n: p.priority })}
                         </span>
                       </div>
                       <div className="flex items-center gap-1">
@@ -464,7 +466,7 @@ export default function TableDetail() {
                           className="p-1.5 hover:bg-white/10 rounded transition-colors text-muted-foreground hover:text-white">
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
-                        <button onClick={() => { if (confirm("Delete this pricing rule?")) deletePriceMut.mutate(p.id); }}
+                        <button onClick={() => { if (confirm(t("table_detail.delete_confirm"))) deletePriceMut.mutate(p.id); }}
                           className="p-1.5 hover:bg-red-500/20 rounded transition-colors text-muted-foreground hover:text-red-400">
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -473,7 +475,7 @@ export default function TableDetail() {
 
                     <div className="mt-3 flex flex-wrap gap-4 text-sm">
                       <div>
-                        <p className="text-xs text-muted-foreground">Rate</p>
+                        <p className="text-xs text-muted-foreground">{t("table_detail.rate")}</p>
                         <p className="font-bold text-primary">
                           MYR {parseFloat(p.base_price).toFixed(2)}
                           <span className="text-muted-foreground font-normal ml-1 text-xs">
@@ -482,18 +484,18 @@ export default function TableDetail() {
                         </p>
                       </div>
                       <div>
-                        <p className="text-xs text-muted-foreground">Days</p>
+                        <p className="text-xs text-muted-foreground">{t("table_detail.days")}</p>
                         <p>{fmtDays(p.applicable_days)}</p>
                       </div>
                       {(p.time_start || p.time_end) && (
                         <div>
-                          <p className="text-xs text-muted-foreground">Time</p>
+                          <p className="text-xs text-muted-foreground">{t("table_detail.time")}</p>
                           <p>{fmtTime(p.time_start) || "00:00"} – {fmtTime(p.time_end) || "23:59"}</p>
                         </div>
                       )}
                       {(p.date_from || p.date_to) && (
                         <div>
-                          <p className="text-xs text-muted-foreground">Date Override</p>
+                          <p className="text-xs text-muted-foreground">{t("table_detail.date_override")}</p>
                           <p>{p.date_from ?? "—"} → {p.date_to ?? "—"}</p>
                         </div>
                       )}

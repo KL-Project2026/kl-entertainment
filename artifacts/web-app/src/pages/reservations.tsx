@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
 import { useListBranches, useListReservations, useConfirmReservation, useCheckInReservation, useCheckOutReservation, useCancelReservation } from "@workspace/api-client-react";
 import { useAuthStore } from "@/lib/auth";
@@ -75,7 +76,7 @@ function CancelModal({ reservation, onClose }: { reservation: Reservation; onClo
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <Card className="w-full max-w-md p-6 space-y-4">
         <div className="flex justify-between items-center">
-          <h3 className="font-display text-lg font-bold">Cancel Reservation</h3>
+          <h3 className="font-display text-lg font-bold">{t("pages.reservations.cancel_title")}</h3>
           <button onClick={onClose}><X className="w-4 h-4 text-muted-foreground" /></button>
         </div>
         <p className="text-sm text-muted-foreground">
@@ -83,8 +84,8 @@ function CancelModal({ reservation, onClose }: { reservation: Reservation; onClo
           {reservation.customerName || "Walk-in"}?
         </p>
         <div>
-          <label className="text-sm font-medium text-muted-foreground block mb-2">Reason (optional)</label>
-          <Input placeholder="Cancellation reason..." value={reason} onChange={(e) => setReason(e.target.value)} />
+          <label className="text-sm font-medium text-muted-foreground block mb-2">{t("pages.reservations.cancel_reason")}</label>
+          <Input placeholder={t("pages.reservations.cancel_reason_placeholder")} value={reason} onChange={(e) => setReason(e.target.value)} />
         </div>
         <div className="flex gap-3">
           <Button variant="ghost" onClick={onClose} className="flex-1">Keep</Button>
@@ -156,7 +157,7 @@ function ReservationCard({ reservation }: { reservation: Reservation }) {
 
         <div className="flex gap-2 flex-wrap">
           {reservation.status === "tentative" && (
-            <Button size="sm" onClick={async () => { await confirmMut.mutateAsync({ id: reservation.id }); invalidate(); }} disabled={isBusy} className="flex-1">Confirm</Button>
+            <Button size="sm" onClick={async () => { await confirmMut.mutateAsync({ id: reservation.id }); invalidate(); }} disabled={isBusy} className="flex-1">{t("pages.reservations.confirm")}</Button>
           )}
           {reservation.status === "confirmed" && (
             <Button size="sm" onClick={async () => { await checkInMut.mutateAsync({ id: reservation.id }); invalidate(); }} disabled={isBusy} className="flex-1 gap-1.5">
@@ -168,7 +169,7 @@ function ReservationCard({ reservation }: { reservation: Reservation }) {
               <Button size="sm" variant="outline" onClick={() => navigate(`/pos?reservationId=${reservation.id}`)} className="flex-1 gap-1.5">
                 <ShoppingCart className="w-3.5 h-3.5" /> POS
               </Button>
-              <Button size="sm" onClick={async () => { await checkOutMut.mutateAsync({ id: reservation.id }); invalidate(); }} disabled={isBusy} className="flex-1">Check Out</Button>
+              <Button size="sm" onClick={async () => { await checkOutMut.mutateAsync({ id: reservation.id }); invalidate(); }} disabled={isBusy} className="flex-1">{t("pages.reservations.check_out")}</Button>
             </>
           )}
           {["tentative", "confirmed"].includes(reservation.status) && (
@@ -287,13 +288,13 @@ function HistoryTab({ branches }: { branches: { id: string; name: string }[] }) 
       <Card className="bg-black/40 border-white/5 px-5 py-4">
         <div className="flex flex-wrap gap-3 items-end">
           <div>
-            <p className="text-[11px] text-muted-foreground font-medium mb-1.5 uppercase tracking-wider">Branch</p>
+            <p className="text-[11px] text-muted-foreground font-medium mb-1.5 uppercase tracking-wider">{t("common.branch")}</p>
             <Select value={branchId || "__all__"} onValueChange={v => setBranchId(v === "__all__" ? "" : v)}>
               <SelectTrigger className="w-44 bg-black/30 h-10">
-                <SelectValue placeholder="All branches" />
+                <SelectValue placeholder={t("common.all_branches")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="__all__">All branches</SelectItem>
+                <SelectItem value="__all__">{t("common.all_branches")}</SelectItem>
                 {branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
               </SelectContent>
             </Select>
@@ -307,13 +308,13 @@ function HistoryTab({ branches }: { branches: { id: string; name: string }[] }) 
             <DateInput value={dateTo} onChange={e => setDateTo(e.target.value)} wrapperClassName="w-40" />
           </div>
           <div>
-            <p className="text-[11px] text-muted-foreground font-medium mb-1.5 uppercase tracking-wider">Status</p>
+            <p className="text-[11px] text-muted-foreground font-medium mb-1.5 uppercase tracking-wider">{t("common.status")}</p>
             <Select value={statusF || "__all__"} onValueChange={v => setStatusF(v === "__all__" ? "" : v)}>
               <SelectTrigger className="w-40 bg-black/30 h-10">
-                <SelectValue placeholder="All statuses" />
+                <SelectValue placeholder={t("common.all_statuses")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="__all__">All statuses</SelectItem>
+                <SelectItem value="__all__">{t("common.all_statuses")}</SelectItem>
                 {RESERVATION_STATUS_OPTIONS.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
               </SelectContent>
             </Select>
@@ -334,14 +335,14 @@ function HistoryTab({ branches }: { branches: { id: string; name: string }[] }) 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {/* Total count */}
             <Card className="bg-black/40 border-white/5 px-5 py-4 flex flex-col gap-1">
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">Total Bookings</p>
+              <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">{t("pages.reservations.total_bookings")}</p>
               <p className="text-3xl font-display font-bold text-primary">{summary.total}</p>
               <p className="text-xs text-muted-foreground">{periodDays} day{periodDays !== 1 ? "s" : ""} • avg {(summary.total / periodDays).toFixed(1)}/day</p>
             </Card>
 
             {/* Total revenue */}
             <Card className="bg-black/40 border-white/5 px-5 py-4 flex flex-col gap-1">
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">Total Revenue</p>
+              <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">{t("common.total_revenue")}</p>
               <p className="text-3xl font-display font-bold text-primary">{formatCurrency(summary.totalRevenue)}</p>
               <p className="text-xs text-muted-foreground">
                 {summary.total > 0 ? `avg ${formatCurrency(summary.totalRevenue / summary.total)}/booking` : "No bookings"}
@@ -350,7 +351,7 @@ function HistoryTab({ branches }: { branches: { id: string; name: string }[] }) 
 
             {/* Status breakdown */}
             <Card className="bg-black/40 border-white/5 px-5 py-4 col-span-2 md:col-span-2">
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium mb-3">By Status</p>
+              <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium mb-3">{t("pages.reservations.by_status")}</p>
               <div className="flex flex-wrap gap-2">
                 {summary.byStatus.map(s => (
                   <div key={s.status} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border ${STATUS_COLORS[s.status] || "bg-white/5 text-white border-white/10"}`}>
@@ -367,7 +368,7 @@ function HistoryTab({ branches }: { branches: { id: string; name: string }[] }) 
             <Card className="bg-black/40 border-white/5 px-5 py-4">
               <div className="flex items-center gap-2 mb-4">
                 <BarChart3 className="w-4 h-4 text-primary" />
-                <p className="text-sm font-semibold">Revenue Breakdown by Type</p>
+                <p className="text-sm font-semibold">{t("pages.reservations.revenue_breakdown")}</p>
                 <span className="ml-auto text-xs text-muted-foreground">{formatCurrency(summary.totalRevenue)} total</span>
               </div>
               <div className="space-y-3">
@@ -405,7 +406,7 @@ function HistoryTab({ branches }: { branches: { id: string; name: string }[] }) 
               <span className="font-semibold text-sm">{reservations.length} Reservations</span>
               <div className="ml-auto">
                 <Input
-                  placeholder="Search booking# / customer…"
+                  placeholder={t("pages.reservations.search_placeholder")}
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   className="h-8 w-52 text-sm bg-black/30"
@@ -416,7 +417,7 @@ function HistoryTab({ branches }: { branches: { id: string; name: string }[] }) 
             {reservations.length === 0 ? (
               <div className="py-16 text-center">
                 <History className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">No reservations found for selected period</p>
+                <p className="text-sm text-muted-foreground">{t("pages.reservations.no_reservations_period")}</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -515,6 +516,7 @@ function HistoryTab({ branches }: { branches: { id: string; name: string }[] }) 
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function Reservations() {
+  const { t } = useTranslation();
   const [, navigate]  = useLocation();
   const { user }      = useAuthStore();
   const [activeTab, setActiveTab] = useState<"today" | "history">("today");
@@ -577,20 +579,20 @@ export default function Reservations() {
           <div className="flex flex-wrap gap-3">
             <Select value={branchId || "__all__"} onValueChange={v => setBranchId(v === "__all__" ? "" : v)}>
               <SelectTrigger className="w-48 bg-black/30">
-                <SelectValue placeholder="All branches" />
+                <SelectValue placeholder={t("common.all_branches")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="__all__">All branches</SelectItem>
+                <SelectItem value="__all__">{t("common.all_branches")}</SelectItem>
                 {branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
               </SelectContent>
             </Select>
             <DateInput value={date} onChange={e => setDate(e.target.value)} wrapperClassName="w-44" />
             <Select value={serverStatus || "__all__"} onValueChange={v => setServerStatus(v === "__all__" ? "" : v)}>
               <SelectTrigger className="w-44 bg-black/30">
-                <SelectValue placeholder="All statuses" />
+                <SelectValue placeholder={t("common.all_statuses")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="__all__">All statuses</SelectItem>
+                <SelectItem value="__all__">{t("common.all_statuses")}</SelectItem>
                 {RESERVATION_STATUS_OPTIONS.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
               </SelectContent>
             </Select>
